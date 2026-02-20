@@ -1,0 +1,53 @@
+flowchart TD
+    %% STIJLEN (Corporate & Clean)
+    classDef soft fill:#E1F5FE,stroke:#0277BD,stroke-width:2px,color:#000;
+    classDef hard fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#000;
+    classDef data fill:#FFF9C4,stroke:#FBC02d,stroke-width:2px,color:#000;
+    classDef sim  fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray: 5 5,color:#000;
+
+    %% --- DOMEIN 1: KIOSK (LINKS) ---
+    subgraph Kiosk ["Kiosk (Frontend) "]
+        direction TB
+        NFC[NFC Reader]:::hard
+        CamTab[Tablet camera]:::hard
+        App[Android app]:::soft
+        
+        NFC -->|Badge ID| App
+        CamTab -->|Aztec code| App
+    end
+
+    %% --- DOMEIN 2: BACKEND (MIDDEN) ---
+    subgraph Backend ["Backend (Proxmox Server) "]
+        direction TB
+        API[REST API]:::soft
+        AIService[AI Inference Service]:::soft
+        DB[(PostgreSQL)]:::data
+        
+        API <-->|"Query / Result"| DB
+        API <-->|"Analyze Image"| AIService
+    end
+
+    %% --- DOMEIN 3: VISION BOX (RECHTS) ---
+    subgraph Box ["Vision Box (Thin Client) "]
+        direction TB
+        RPi[RPi Controller]:::hard
+        CamBox[Camera]:::hard
+        Lock[Elektronisch slot]:::hard
+        
+        CamBox -->|Photo| RPi
+        RPi -->|"Open/Close"| Lock
+    end
+
+    %% --- SIMULATIE (ONDER) ---
+    Sim[Python Load Gen]:::sim
+
+    %% --- HOOFD VERBINDINGEN ---
+    
+    %% Kiosk praat met API
+    App <-->|"HTTPS JSON<br/>JWT Auth"| API
+
+    %% API praat met Box (Nu met Image upload)
+    RPi <-->|"POST Image &<br/>Get Command"| API
+
+    %% Simulatie test de API (QUOTES TOEGEVOEGD HIERONDER)
+    Sim -.->|"Load test"| API

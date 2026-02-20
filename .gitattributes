@@ -1,0 +1,18 @@
+# Standaard gedrag: auto-detectie, maar forceer LF (Linux stijl) in de repo
+* text=auto eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+
+# Linux scripts (moeten altijd LF zijn, anders crashen ze in Docker)
+*.sh text eol=lf
+
+# Tekst-based afbeeldingen (SVG fix!)
+*.svg text eol=lf
+
+# Binaire bestanden (Git, blijf hier met je poten vanaf)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

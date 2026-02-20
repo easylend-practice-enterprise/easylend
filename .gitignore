@@ -1,0 +1,47 @@
+# ===========================
+# OS & IDE
+# ===========================
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===========================
+# Python / FastAPI (Backend)
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+.venv/
+.pytest_cache/
+
+# ===========================
+# Android / Java (Kiosk App)
+# ===========================
+build/
+.gradle/
+local.properties
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ===========================
+# Docker & Infrastructuur
+# ===========================
+backend/database/pgdata/
+backend/database/pgadmin-data/
+backend/database/redis_data/
+backend/database/sqlbak_volume/
+uptime-kuma/data/
+
+# ===========================
+# Logs & Tijdelijke bestanden
+# ===========================
+*.log
+tmp/
+temp/
