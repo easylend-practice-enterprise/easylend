@@ -137,3 +137,16 @@ Opmerking:
 
 - Wij behouden `.gitattributes` in de repo als de primaire bron van waarheid voor eol-normalisatie. Deze `git config`-aanbevelingen zijn bedoeld om ontwikkelaars een consistente, veilige lokale setup te geven.
 - Als je wilt dat ik deze exacte instellingen in een korte `setup`-script of README toevoeg, dan maak ik dat aan.
+
+## 7. Bugfixes na een Squash & Merge
+
+Heb je een branch succesvol gesquashed en gemerged (bijv. `ELP-16`), maar ontdek je later toch een bug?
+**Heropen NOOIT de oude branch en force-push NOOIT over de historie heen.**
+
+Volg altijd deze Enterprise-flow:
+
+1. Sleep het originele ticket in YouTrack terug naar "In Progress" (of maak een nieuw bug-ticket aan).
+2. Zorg dat je lokaal op de nieuwste `main` branch zit (`git pull origin main`).
+3. Maak een **nieuwe** fix-branch aan vanaf `main` (bijv. `fix/ELP-16-database-url-typo`).
+4. Fix de code, push de nieuwe branch, en doe een verse Squash & Merge PR.
+Zo blijft de `main` tijdlijn altijd vooruit bewegen zonder Git-conflicten.

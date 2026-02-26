@@ -1,4 +1,4 @@
-name: Backend API - Docker Build Test
+name: Backend API - CI Pipeline
 
 on:
   push:
@@ -9,9 +9,42 @@ on:
       - 'backend/api/**'
 
 jobs:
-  build-and-test:
+  lint-and-test:
+    name: Code Quality & Unit Tests
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/api/uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: ./backend/api
+        run: uv sync
+
+      - name: Run Ruff (Linting)
+        working-directory: ./backend/api
+        run: uv run ruff check .
+
+      - name: Run Ruff (Formatting Check)
+        working-directory: ./backend/api
+        run: uv run ruff format --check .
+
+      - name: Run Pytest (Unit Tests)
+        working-directory: ./backend/api
+        run: uv run pytest
+
+  build-docker:
+    name: Docker Build Test
+    needs: lint-and-test # wacht op de lint-and-test job voordat deze start
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -24,7 +57,7 @@ jobs:
         with:
           context: ./backend/api
           file: ./backend/api/Dockerfile
-          push: false # geen push, alleen lokaal testen of de build slaagt
+          push: false
           tags: easylend-api:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
