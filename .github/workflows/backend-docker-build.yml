@@ -1,0 +1,30 @@
+name: Backend API - Docker Build Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'backend/api/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/api
+          file: ./backend/api/Dockerfile
+          push: false # geen push, alleen lokaal testen of de build slaagt
+          tags: easylend-api:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
