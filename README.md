@@ -5,9 +5,9 @@ Dit repository bevat de volledige stack voor de EasyLend kiosk, inclusief backen
 
 ## Documentatie
 
-Bekijk onze documentatie voor een diepgaand begrip van het systeem:
+Bekijk onze documentatie voor meer duidelijkheid over het systeem:
 
-- [Architectuur & Systeemontwerp](docs/architecture.md) - *De Holy Grail: Proxmox, Netwerken, AI Microservice & Database ERD.*
+- [Architectuur & Systeemontwerp](docs/architecture.md) - *Proxmox, Netwerken, AI Microservice & Database ERD.*
 - [Workflows & Logica](docs/workflows.md) - *Sequence diagrammen van de checkout, inlevering, AI quarantaine en PXE boot checks.*
 - [Bijdragen & Git Regels](CONTRIBUTING.md) - *Onze afspraken over YouTrack, branches en cross-platform (Windows/Linux) ontwikkeling.*
 
