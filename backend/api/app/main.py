@@ -5,9 +5,6 @@ from fastapi import FastAPI
 from app.db.redis import (
     check_redis_connection,
     redis_client,
-    set_refresh_token,
-    get_refresh_token,
-    delete_refresh_token,
 )
 
 
