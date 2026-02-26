@@ -1,0 +1,23 @@
+{
+    "folders": [
+        {
+            "name": "Root (Easylend)",
+            "path": "."
+        },
+        {
+            "name": "API Backend",
+            "path": "backend/api"
+        },
+        {
+            "name": "Vision Box",
+            "path": "vision-box"
+        },
+        {
+            "name": "Simulatie",
+            "path": "simulation"
+        }
+    ],
+    "settings": {
+        "editor.formatOnSave": true
+    }
+}
