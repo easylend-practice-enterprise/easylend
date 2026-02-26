@@ -1,0 +1,101 @@
+erDiagram
+    %% Lookup Tabellen
+    ROLES ||--o{ USERS : has
+    CATEGORIES ||--o{ ASSETS : categorizes
+    
+    %% Infrastructuur
+    KIOSKS ||--o{ LOCKERS : contains
+    LOCKERS ||--o{ ASSETS : currently_holds
+    
+    %% Transacties
+    USERS ||--o{ LOANS : initiates
+    ASSETS ||--o{ LOANS : is_part_of
+    LOCKERS ||--o{ LOANS : checkout_location
+    LOCKERS ||--o{ LOANS : return_location
+    
+    %% Analyses & Security
+    LOANS ||--o{ AI_EVALUATIONS : evaluated_by
+    USERS ||--o{ AUDIT_LOGS : performs
+    
+    ROLES {
+        uuid role_id PK
+        varchar role_name UK
+    }
+    
+    CATEGORIES {
+        uuid category_id PK
+        varchar category_name UK
+    }
+    
+    USERS {
+        uuid user_id PK
+        uuid role_id FK
+        varchar first_name
+        varchar last_name
+        varchar email UK
+        varchar nfc_tag_id UK "Nullable: Voor onboarding"
+        varchar pin_hash
+        int failed_login_attempts "Anti-brute-force"
+        timestamp locked_until "Lockout timer"
+        boolean is_active
+        varchar ban_reason "Nullable"
+    }
+    
+    KIOSKS {
+        uuid kiosk_id PK
+        varchar name
+        varchar location_description
+        enum kiosk_status "ONLINE, OFFLINE, MAINTENANCE"
+    }
+
+    LOCKERS {
+        uuid locker_id PK
+        uuid kiosk_id FK
+        int logical_number "Fysiek nummer 1, 2, 3..."
+        enum locker_status "AVAILABLE, OCCUPIED, MAINTENANCE, ERROR_OPEN"
+    }
+    
+    ASSETS {
+        uuid asset_id PK
+        uuid category_id FK
+        uuid locker_id FK "Nullable: NULL als uitgeleend"
+        varchar name
+        varchar aztec_code UK
+        enum asset_status "AVAILABLE, BORROWED, RESERVED, MAINTENANCE, LOST"
+    }
+    
+    LOANS {
+        uuid loan_id PK
+        uuid user_id FK
+        uuid asset_id FK
+        uuid checkout_locker_id FK
+        uuid return_locker_id FK "Nullable: Totdat item geretourneerd is"
+        timestamp reserved_at "Nullable"
+        timestamp borrowed_at "Nullable"
+        timestamp due_date "Nullable"
+        timestamp returned_at "Nullable"
+        enum loan_status "RESERVED, ACTIVE, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+    }
+    
+    AI_EVALUATIONS {
+        uuid evaluation_id PK
+        uuid loan_id FK
+        enum evaluation_type "CHECKOUT, RETURN"
+        varchar photo_url
+        float ai_confidence
+        jsonb detected_objects
+        varchar model_version
+        boolean is_approved
+        varchar rejection_reason "Nullable"
+        timestamp analyzed_at
+    }
+    
+    AUDIT_LOGS {
+        uuid audit_id PK
+        uuid user_id FK "Nullable: Bij anonieme errors"
+        enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        jsonb payload
+        varchar previous_hash
+        varchar current_hash
+        timestamp created_at
+    }
