@@ -3,6 +3,14 @@
 Monorepo voor het EasyLend Practice Enterprise project.
 Dit repository bevat de volledige stack voor de EasyLend kiosk, inclusief backend, frontend, computer vision en infrastructuur.
 
+## Documentatie
+
+Bekijk onze documentatie voor een diepgaand begrip van het systeem:
+
+- [Architectuur & Systeemontwerp](docs/architecture.md) - *De Holy Grail: Proxmox, Netwerken, AI Microservice & Database ERD.*
+- [Workflows & Logica](docs/workflows.md) - *Sequence diagrammen van de checkout, inlevering, AI quarantaine en PXE boot checks.*
+- [Bijdragen & Git Regels](CONTRIBUTING.md) - *Onze afspraken over YouTrack, branches en cross-platform (Windows/Linux) ontwikkeling.*
+
 ## Project Structuur
 
 - `.github/`: GitHub Actions en CI/CD workflows (work in progress).
@@ -20,4 +28,4 @@ Zie de respectievelijke mappen voor specifieke setup-instructies per domein. De 
 
 ## Team
 
-Maxim, Jasper en Injo
+Maxim, Jasper en Injo zijn de hoofdontwikkelaars van dit project. We werken nauw samen en volgen de richtlijnen in `CONTRIBUTING.md` voor een gestroomlijnde samenwerking.
