@@ -1,0 +1,37 @@
+flowchart TD
+    %% STIJLEN
+    classDef container fill:#bfdbfe,stroke:#3b82f6,stroke-width:2px,color:#000;
+    classDef db fill:#fef08a,stroke:#eab308,stroke-width:2px,color:#000;
+    classDef edge fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,color:#000;
+
+    subgraph Edge ["Edge Devices & Interfaces"]
+        direction TB
+        K["Android Kiosk App<br/>(NFC + UI)"]:::edge
+        V["Vision Box<br/>(Camera + Slot)"]:::edge
+        S["Digital Twin<br/>(Python Simulatie)"]:::edge
+    end
+
+    subgraph Proxmox ["Proxmox VE Server (Hypervisor)"]
+        direction TB
+        
+        subgraph VM1 ["VM 1: Core Backend (Ubuntu)"]
+            API["FastAPI REST & WSS<br/>(Docker Container)"]:::container
+            DB[("PostgreSQL 17")]:::db
+            REDIS[("Redis Cache")]:::db
+            MONITOR["pgAdmin / UptimeKuma<br/>(Internal Network)"]:::container
+        end
+
+        subgraph VM2 ["VM 2: AI Microservice (Ubuntu)"]
+            YOLO["YOLOv26 Medium<br/>(Inference Engine)"]:::container
+        end
+    end
+
+    %% Connections
+    K <-->|"HTTPS / REST (JWT)"| API
+    V <-->|"HTTP POST (Image) & WSS"| API
+    S <-->|"HTTP / WSS"| API
+    
+    API <-->|"Read / Write"| DB
+    API <-->|"Pub / Sub"| REDIS
+    API <-->|"POST Image / Get JSON"| YOLO
+    API <-->|"Health / Metrics"| MONITOR
