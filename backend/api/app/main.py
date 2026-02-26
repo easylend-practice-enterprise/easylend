@@ -1,22 +1,34 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-app = FastAPI(
-    title="EasyLend API",
-    description="Core Backend for the EasyLend Practice Enterprise",
-    version="1.0.0"
+# Voeg je nieuwe functies toe aan de import:
+from app.db.redis import (
+    check_redis_connection,
+    redis_client,
+    set_refresh_token,
+    get_refresh_token,
+    delete_refresh_token,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Dingen die hier staan gebeuren bij het OPSTARTEN
+    await check_redis_connection()
+    yield
+    # Dingen die hier staan gebeuren bij het AFSLUITEN
+    await redis_client.aclose()
+
+
+# Koppel de lifespan aan je app
+app = FastAPI(title="EasyLend API", lifespan=lifespan)
+
+
 @app.get("/")
-async def root():
-    return {
-        "message": "Welcome to the EasyLend API!",
-        "docs_url": "/docs"
-    }
+def read_root():
+    return {"message": "Welcome to the EasyLend API!", "docs_url": "/docs"}
+
 
 @app.get("/api/v1/health")
-async def health_check():
-    """
-    Simpel endpoint voor Uptime Kuma om te checken of de API ademt.
-    Later breiden we dit uit met een DB en Redis check.
-    """
+def health_check():
     return {"status": "healthy", "components": {"api": "ok"}}
