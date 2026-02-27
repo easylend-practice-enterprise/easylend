@@ -13,8 +13,9 @@ erDiagram
     LOCKERS ||--o{ LOANS : checkout_location
     LOCKERS ||--o{ LOANS : return_location
     
-    %% Analyses & Security
+    %% Analyses, Security & AI
     LOANS ||--o{ AI_EVALUATIONS : evaluated_by
+    AI_EVALUATIONS ||--o{ DAMAGE_REPORTS : detects
     USERS ||--o{ AUDIT_LOGS : performs
     
     ROLES {
@@ -83,11 +84,21 @@ erDiagram
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
         float ai_confidence
-        jsonb detected_objects
+        jsonb detected_objects "Bijv. Aztec code locatie, object type"
+        boolean has_damage_detected "Snel filteren op probleem-evaluaties"
         varchar model_version
         boolean is_approved
         varchar rejection_reason "Nullable"
         timestamp analyzed_at
+    }
+
+    DAMAGE_REPORTS {
+        uuid damage_id PK
+        uuid evaluation_id FK
+        varchar damage_type "Bijv. kras, barst, ontbrekende toets"
+        varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
+        jsonb segmentation_data "YOLO polygon/bounding box coördinaten"
+        boolean requires_repair
     }
     
     AUDIT_LOGS {

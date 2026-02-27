@@ -18,7 +18,7 @@ Bekijk onze documentatie voor meer duidelijkheid over het systeem:
   - `api/`: De REST API backend (FastAPI).
   - `database/`: Docker Compose configuraties voor de infrastructuur (PostgreSQL, Redis, pgAdmin, SQLBak).
 - `docs/`: Architectuur documentatie en diagrammen (Mermaid/SVG).
-- `kiosk-app/`: De Android/Frontend kiosk applicatie (Kotlin).
+- `kiosk-app/`: De Android/Frontend kiosk applicatie (Flutter).
 - `simulation/`: Scripts voor het simuleren van hardware-interacties en workflows.
 - `vision-box/`: Computer vision componenten voor objectherkenning in de Vision Box.
 
