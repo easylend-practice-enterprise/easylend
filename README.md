@@ -5,6 +5,8 @@ Dit repository bevat de volledige stack voor de EasyLend kiosk, inclusief backen
 
 ## Documentatie
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/easylend-practice-enterprise/easylend)
+
 Bekijk onze documentatie voor meer duidelijkheid over het systeem:
 
 - [Architectuur](docs/architecture.md) - *Proxmox, Netwerken, AI Microservice & Database ERD.*
