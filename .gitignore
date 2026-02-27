@@ -1,15 +1,16 @@
-# ===========================
 # OS & IDE
-# ===========================
 .DS_Store
 .idea/
-.vscode/
 *.swp
 *.swo
 
-# ===========================
+# VS Code (Negeer persoonlijke status, maar behoud team-settings)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
 # Python / FastAPI (Backend)
-# ===========================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,30 +19,32 @@ env/
 .env
 .venv/
 .pytest_cache/
+.ruff_cache/
 
-# ===========================
-# Android / Java (Kiosk App)
-# ===========================
+# Flutter / Dart (Kiosk App)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
 build/
-.gradle/
-local.properties
-*.iml
-captures/
-.externalNativeBuild/
-.cxx/
 
-# ===========================
+# (Native Android/iOS build folders binnen Flutter)
+android/.gradle/
+android/app/build/
+android/local.properties
+ios/Pods/
+ios/.symlinks/
+
 # Docker & Infrastructuur
-# ===========================
 backend/database/pgdata/
 backend/database/pgadmin-data/
 backend/database/redis_data/
 backend/database/sqlbak_volume/
 uptime-kuma/data/
 
-# ===========================
 # Logs & Tijdelijke bestanden
-# ===========================
 *.log
 tmp/
 temp/

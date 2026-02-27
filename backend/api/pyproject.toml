@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "asyncpg>=0.31.0",
     "fastapi>=0.133.1",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.12.5",
@@ -15,12 +16,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "httpx>=0.28.1",
-    "pre-commit>=4.5.1",
-    "pytest>=9.0.2",
-    "ruff>=0.15.4",
-]
+dev = ["httpx>=0.28.1", "pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff.lint]
+extend-select = ["DTZ"] # flake8-datetimez regels
