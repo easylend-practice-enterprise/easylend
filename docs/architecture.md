@@ -59,18 +59,18 @@ flowchart TD
     classDef data fill:#FFF9C4,stroke:#FBC02d,stroke-width:2px,color:#000;
     classDef sim  fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray: 5 5,color:#000;
 
-    %% --- DOMEIN 1: KIOSK (LINKS) ---
+    %% DOMEIN 1: KIOSK (LINKS)
     subgraph Kiosk ["Kiosk (Frontend)"]
         direction TB
         NFC[NFC Reader]:::hard
         CamTab["Tablet camera"]:::hard
-        App["Android App (Kotlin)"]:::soft
+        App["Android App (Flutter)"]:::soft
         
         NFC -->|Badge ID| App
         CamTab -->|Aztec code| App
     end
 
-    %% --- DOMEIN 2: BACKEND (MIDDEN) ---
+    %% DOMEIN 2: BACKEND (MIDDEN)
     subgraph Backend ["Backend (Proxmox Server)"]
         direction TB
         API["FastAPI & WebSockets"]:::soft
@@ -85,7 +85,7 @@ flowchart TD
         API <-->|"Hardware Status"| PXE
     end
 
-    %% --- DOMEIN 3: VISION BOX (RECHTS) ---
+    %% DOMEIN 3: VISION BOX (RECHTS)
     subgraph Box ["Vision Box (Thin Client)"]
         direction TB
         RPi["Raspberry Pi / ESP32"]:::hard
@@ -96,10 +96,10 @@ flowchart TD
         RPi -->|"Open/Close"| Lock
     end
 
-    %% --- SIMULATIE (ONDER) ---
+    %% SIMULATIE (ONDER)
     Sim["Digital Twin WebUI"]:::sim
 
-    %% --- HOOFD VERBINDINGEN ---
+    %% HOOFD VERBINDINGEN
     
     %% Kiosk praat met API
     App <-->|"HTTPS JSON<br/>(JWT Auth)"| API
@@ -148,8 +148,9 @@ erDiagram
     LOCKERS ||--o{ LOANS : checkout_location
     LOCKERS ||--o{ LOANS : return_location
     
-    %% Analyses & Security
+    %% Analyses, Security & AI
     LOANS ||--o{ AI_EVALUATIONS : evaluated_by
+    AI_EVALUATIONS ||--o{ DAMAGE_REPORTS : detects
     USERS ||--o{ AUDIT_LOGS : performs
     
     ROLES {
@@ -218,11 +219,21 @@ erDiagram
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
         float ai_confidence
-        jsonb detected_objects
+        jsonb detected_objects "Bijv. Aztec code locatie, object type"
+        boolean has_damage_detected "Snel filteren op probleem-evaluaties"
         varchar model_version
         boolean is_approved
         varchar rejection_reason "Nullable"
         timestamp analyzed_at
+    }
+
+    DAMAGE_REPORTS {
+        uuid damage_id PK
+        uuid evaluation_id FK
+        varchar damage_type "Bijv. kras, barst, ontbrekende toets"
+        varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
+        jsonb segmentation_data "YOLO polygon/bounding box coördinaten"
+        boolean requires_repair
     }
     
     AUDIT_LOGS {
