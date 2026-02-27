@@ -7,9 +7,9 @@ Dit repository bevat de volledige stack voor de EasyLend kiosk, inclusief backen
 
 Bekijk onze documentatie voor meer duidelijkheid over het systeem:
 
-- [Architectuur & Systeemontwerp](docs/architecture.md) - *Proxmox, Netwerken, AI Microservice & Database ERD.*
-- [Workflows & Logica](docs/workflows.md) - *Sequence diagrammen van de checkout, inlevering, AI quarantaine en PXE boot checks.*
-- [Bijdragen & Git Regels](CONTRIBUTING.md) - *Onze afspraken over YouTrack, branches en cross-platform (Windows/Linux) ontwikkeling.*
+- [Architectuur](docs/architecture.md) - *Proxmox, Netwerken, AI Microservice & Database ERD.*
+- [Workflows](docs/workflows.md) - *Sequence diagrammen van de checkout, inlevering, AI quarantaine en PXE boot checks.*
+- [Git Regels](CONTRIBUTING.md) - *Onze afspraken over YouTrack, branches en cross-platform (Windows/Linux) ontwikkeling.*
 
 ## Project Structuur
 
@@ -28,4 +28,4 @@ Zie de respectievelijke mappen voor specifieke setup-instructies per domein. De 
 
 ## Team
 
-Maxim, Jasper en Injo zijn de hoofdontwikkelaars van dit project. We werken nauw samen en volgen de richtlijnen in `CONTRIBUTING.md` voor een gestroomlijnde samenwerking.
+Maxim Huardel, Jasper Savels en Injo De Pot zijn de hoofdontwikkelaars van dit project. We werken nauw samen en volgen de richtlijnen in `CONTRIBUTING.md` voor een gestroomlijnde samenwerking.
