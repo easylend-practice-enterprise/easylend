@@ -8,17 +8,17 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      database:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_started
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
     networks:
       - backend-net
 
-  database:
+  postgres:
     image: postgres:17
     container_name: postgres
     restart: unless-stopped
@@ -45,6 +45,9 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
     container_name: pgadmin
     restart: unless-stopped
     ports:
