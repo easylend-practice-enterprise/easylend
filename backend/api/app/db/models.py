@@ -21,7 +21,6 @@ class Role(Base):
     )
     role_name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
 
-    # Relatie: Een rol heeft meerdere users
     users: Mapped[list["User"]] = relationship("User", back_populates="role")
 
 
@@ -40,13 +39,11 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
 
-    # Nullable voor onboarding
     nfc_tag_id: Mapped[str | None] = mapped_column(
         String(100), unique=True, nullable=True
     )
     pin_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # Security velden
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -54,7 +51,6 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # Relatie terug naar Rol
     role: Mapped["Role"] = relationship("Role", back_populates="users")
 
 
@@ -108,7 +104,6 @@ class Kiosk(Base):
         Enum(KioskStatus), default=KioskStatus.ONLINE
     )
 
-    # Relatie: Een Kiosk heeft meerdere Lockers
     lockers: Mapped[list["Locker"]] = relationship("Locker", back_populates="kiosk")
 
 
@@ -127,7 +122,6 @@ class Locker(Base):
         Enum(LockerStatus), default=LockerStatus.AVAILABLE
     )
 
-    # Relaties
     kiosk: Mapped["Kiosk"] = relationship("Kiosk", back_populates="lockers")
     assets: Mapped[list["Asset"]] = relationship("Asset", back_populates="locker")
 
@@ -155,7 +149,6 @@ class Asset(Base):
         ForeignKey("categories.category_id"), nullable=False
     )
 
-    # Nullable, want als hij is uitgeleend zit hij niet in een locker!
     locker_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("lockers.locker_id"), nullable=True
     )
@@ -166,7 +159,6 @@ class Asset(Base):
         Enum(AssetStatus), default=AssetStatus.AVAILABLE
     )
 
-    # Relaties
     category: Mapped["Category"] = relationship("Category", back_populates="assets")
     locker: Mapped["Locker"] = relationship("Locker", back_populates="assets")
 
@@ -188,7 +180,6 @@ class Loan(Base):
         ForeignKey("lockers.locker_id"), nullable=False
     )
 
-    # Nullable, we weten pas in welk kluisje hij terugkomt als hij daadwerkelijk geretourneerd wordt
     return_locker_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("lockers.locker_id"), nullable=True
     )
@@ -210,7 +201,6 @@ class Loan(Base):
         Enum(LoanStatus), default=LoanStatus.RESERVED
     )
 
-    # Relaties
     user: Mapped["User"] = relationship("User", backref="loans")
     asset: Mapped["Asset"] = relationship("Asset", backref="loans")
     checkout_locker: Mapped["Locker"] = relationship(
@@ -241,10 +231,9 @@ class AIEvaluation(Base):
     photo_url: Mapped[str] = mapped_column(String(255), nullable=False)
     ai_confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
-    # Hier slaan we op wát er in z'n algemeenheid is gezien (bijv. "laptop", "aztec_code")
     detected_objects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    # DIT IS DE REGEL DIE IK VERGAT (De performance denormalisatie!)
+    # Performance denormalisatie voor snelle queries zonder joins
     has_damage_detected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -254,7 +243,6 @@ class AIEvaluation(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    # Relaties
     loan: Mapped["Loan"] = relationship("Loan", back_populates="evaluations")
     damage_reports: Mapped[list["DamageReport"]] = relationship(
         "DamageReport", back_populates="evaluation"
@@ -272,18 +260,13 @@ class DamageReport(Base):
         ForeignKey("ai_evaluations.evaluation_id"), nullable=False
     )
 
-    damage_type: Mapped[str] = mapped_column(
-        String(100), nullable=False
-    )  # bijv. "barst", "kras"
-    severity: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # bijv. "LOW", "CRITICAL"
+    damage_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    severity: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    # DIT IS DE MAGIE: Hier komen de YOLOv26 bounding boxes / segmentations in!
+    # YOLOv26 bounding boxes / segmentations data
     segmentation_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     requires_repair: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Relatie
     evaluation: Mapped["AIEvaluation"] = relationship(
         "AIEvaluation", back_populates="damage_reports"
     )
@@ -296,17 +279,14 @@ class AuditLog(Base):
     audit_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    # Kan null zijn als een anoniem iemand aan de kluisjes trekt
+
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.user_id"), nullable=True
     )
 
-    action_type: Mapped[str] = mapped_column(
-        String(100), nullable=False
-    )  # bijv. "DOOR_FORCED_OPEN"
+    action_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    # Blockchain-achtige beveiliging
     previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     current_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
@@ -314,5 +294,4 @@ class AuditLog(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
-    # Relatie
     user: Mapped["User"] = relationship("User", backref="audit_logs")
