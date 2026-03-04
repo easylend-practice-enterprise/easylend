@@ -1,4 +1,4 @@
-name: Backend API - CI Pipeline
+name: Backend API - CI/CD Pipeline
 
 on:
   push:
@@ -9,6 +9,14 @@ on:
     branches: [ "main" ]
     paths:
       - 'backend/api/**'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/easylend-backend
 
 jobs:
   lint-and-test:
@@ -43,9 +51,9 @@ jobs:
         working-directory: ./backend/api
         run: uv run pytest
 
-  build-docker:
-    name: Docker Build Test
-    needs: lint-and-test # wacht op de lint-and-test job voordat deze start
+  build-and-push-docker:
+    name: Docker Build & Push
+    needs: lint-and-test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -54,12 +62,42 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker Image
+      - name: Log in to the Container registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha
+
+      - name: Build and push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: ./backend/api
           file: ./backend/api/Dockerfile
-          push: false
-          tags: easylend-api:ci-test
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: 'table'
+          # Set exit code to 0 so the pipeline doesn't crash on warnings,
+          # allowing logs to be reviewed in GitHub Actions.
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
