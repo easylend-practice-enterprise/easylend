@@ -48,3 +48,14 @@ uptime-kuma/data/
 *.log
 tmp/
 temp/
+
+# AI
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pt
+*.onnx
+datasets/
+runs/

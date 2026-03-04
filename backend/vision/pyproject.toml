@@ -1,0 +1,26 @@
+[project]
+name = "vision"
+version = "0.1.0"
+description = "AI Vision Service for EasyLend using YOLO"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ultralytics", # YOLOv8 en alle AI dependencies (PyTorch, OpenCV, etc.)
+]
+
+[dependency-groups]
+dev = ["pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff.lint]
+extend-select = [
+    "DTZ",
+    "S",
+    "I",
+    "UP",
+] # datetimez, flake8-bandit (security), isort, pyupgrade
+
+[tool.ruff.lint.per-file-ignores]
+"**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden
