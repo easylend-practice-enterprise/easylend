@@ -1,11 +1,10 @@
-import uuid
 import enum
-from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, ForeignKey, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from sqlalchemy import Enum, Float
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Base(DeclarativeBase):
@@ -55,20 +54,20 @@ class User(Base):
 
 
 # ENUMS
-class KioskStatus(str, enum.Enum):
+class KioskStatus(enum.StrEnum):
     ONLINE = "ONLINE"
     OFFLINE = "OFFLINE"
     MAINTENANCE = "MAINTENANCE"
 
 
-class LockerStatus(str, enum.Enum):
+class LockerStatus(enum.StrEnum):
     AVAILABLE = "AVAILABLE"
     OCCUPIED = "OCCUPIED"
     MAINTENANCE = "MAINTENANCE"
     ERROR_OPEN = "ERROR_OPEN"
 
 
-class AssetStatus(str, enum.Enum):
+class AssetStatus(enum.StrEnum):
     AVAILABLE = "AVAILABLE"
     BORROWED = "BORROWED"
     RESERVED = "RESERVED"
@@ -76,7 +75,7 @@ class AssetStatus(str, enum.Enum):
     LOST = "LOST"
 
 
-class LoanStatus(str, enum.Enum):
+class LoanStatus(enum.StrEnum):
     RESERVED = "RESERVED"
     ACTIVE = "ACTIVE"
     OVERDUE = "OVERDUE"
@@ -86,7 +85,7 @@ class LoanStatus(str, enum.Enum):
     PENDING_INSPECTION = "PENDING_INSPECTION"
 
 
-class EvaluationType(str, enum.Enum):
+class EvaluationType(enum.StrEnum):
     CHECKOUT = "CHECKOUT"
     RETURN = "RETURN"
 
@@ -240,7 +239,7 @@ class AIEvaluation(Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analyzed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     loan: Mapped["Loan"] = relationship("Loan", back_populates="evaluations")
@@ -291,7 +290,7 @@ class AuditLog(Base):
     current_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )
 
     user: Mapped["User"] = relationship("User", backref="audit_logs")

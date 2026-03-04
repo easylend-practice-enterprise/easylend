@@ -1,7 +1,7 @@
 import asyncio
-from logging.config import fileConfig
-import sys
 import os
+import sys
+from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
 from app.db.models import Base
+
 # --------------------------------------------------------------------
 
 # this is the Alembic Config object, which provides
