@@ -79,6 +79,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=ci-test,enable=${{ github.event_name == 'pull_request' }}
             type=sha
 
       - name: Build and push Docker Image
@@ -87,6 +88,8 @@ jobs:
           context: ./backend/api
           file: ./backend/api/Dockerfile
           push: ${{ github.event_name == 'push' }}
+          # image naar github local docker daemon tijdens PR, voor Trivy scan, en naar GHCR tijdens main push
+          load: ${{ github.event_name == 'pull_request' }} 
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -95,11 +98,10 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # latest of ci-test tag, afhankelijk van event type
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
           format: 'table'
-          # Set exit code to 0 so the pipeline doesn't crash on warnings,
-          # allowing logs to be reviewed in GitHub Actions.
-          exit-code: '0'
+          exit-code: '1' # crash bij vulnerabilities
           ignore-unfixed: true
-          vuln-type: 'os,library'
+          vuln-type: 'library' # alleen in libraries, niet in OS packages
           severity: 'CRITICAL,HIGH'
