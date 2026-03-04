@@ -9,7 +9,11 @@
             "path": "backend/api"
         },
         {
-            "name": "Vision Box",
+            "name": "AI Vision Service",
+            "path": "backend/vision"
+        },
+        {
+            "name": "Vision Box Hardware",
             "path": "vision-box"
         },
         {
