@@ -5,10 +5,12 @@ on:
     branches: [ "main" ]
     paths:
       - 'backend/api/**'
+      - '.github/workflows/backend-docker-build.yml'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'backend/api/**'
+      - '.github/workflows/backend-docker-build.yml'
 
 permissions:
   contents: read
