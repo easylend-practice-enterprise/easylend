@@ -1,0 +1,46 @@
+name: Vision AI - CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'backend/vision/**'
+      - '.github/workflows/vision-ci.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'backend/vision/**'
+      - '.github/workflows/vision-ci.yml'
+
+jobs:
+  lint-and-test:
+    name: Code Quality (Vision)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/vision/uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        working-directory: ./backend/vision
+        run: uv sync
+
+      - name: Run Ruff (Linting)
+        working-directory: ./backend/vision
+        run: uv run ruff check .
+
+      - name: Run Ruff (Formatting Check)
+        working-directory: ./backend/vision
+        run: uv run ruff format --check .
+
+      - name: Run Pytest (Unit Tests)
+        working-directory: ./backend/vision
+        run: uv run pytest
