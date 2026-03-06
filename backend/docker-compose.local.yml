@@ -1,9 +1,11 @@
+name: easylend-local
+
 services:
   api:
     build:
       context: ./api
       dockerfile: Dockerfile
-    container_name: easylend_api
+    container_name: easylend_api_local
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -20,17 +22,16 @@ services:
 
   postgres:
     image: postgres:17
-    container_name: postgres
+    container_name: postgres_local
     restart: unless-stopped
     ports:
-      # Alleen bereikbaar vanaf de server zelf (of via SSH Tunnel)
-      - "127.0.0.1:5432:5432"
+      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data_local:/var/lib/postgresql/data
     shm_size: 256mb
     healthcheck:
       test:
@@ -48,7 +49,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    container_name: pgadmin
+    container_name: pgadmin_local
     restart: unless-stopped
     ports:
       - "48050:80"
@@ -56,38 +57,26 @@ services:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - pgadmin_data_local:/var/lib/pgadmin
     networks:
       - management-net
 
   redis:
     image: redis:7-alpine
-    container_name: redis_cache
+    container_name: redis_cache_local
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
     ports:
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
     volumes:
-      - redis_data:/data
-    networks:
-      - backend-net
-
-  sqlbak:
-    image: pranasnet/sqlbak
-    container_name: sqlbak
-    restart: unless-stopped
-    environment:
-      - sqlbak_key=${SQLBAK_TOKEN}
-    volumes:
-      - sqlbak_data:/opt/sqlbak
+      - redis_data_local:/data
     networks:
       - backend-net
 
 volumes:
-  pg_data:
-  pgadmin_data:
-  redis_data:
-  sqlbak_data:
+  pg_data_local:
+  pgadmin_data_local:
+  redis_data_local:
 
 networks:
   backend-net:

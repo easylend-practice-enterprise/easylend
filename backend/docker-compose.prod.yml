@@ -67,18 +67,22 @@ services:
       - backend-net
 
   watchtower:
-    image: containrrr/watchtower
+    image: nickfedor/watchtower
     container_name: watchtower
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    command: --interval 300 --cleanup --scope easylend
+    command: --interval 60 --cleanup --scope easylend
     environment:
+      - WATCHTOWER_SCOPE=easylend
+      - TZ=Europe/Brussels
+      - WATCHTOWER_NOTIFICATIONS_HOSTNAME=EasyLend-Proxmox
+      # Authentificatie (optioneel voor public images, maar prima als best practice)
       - REPO_USER=${GHCR_USERNAME}
       - REPO_PASS=${GHCR_PAT}
-      - WATCHTOWER_SCOPE=easylend
-    labels:
-      - "com.centurylinklabs.watchtower.scope=easylend"
+      # Notificaties veilig via de .env file
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_URL=${NTFY_WEBHOOK_URL}
 
 volumes:
   pg_data:
