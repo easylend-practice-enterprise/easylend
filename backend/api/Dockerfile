@@ -13,11 +13,11 @@ RUN pip install --no-cache-dir uv
 # Gebruik uv om de dependencies te installeren (system-wide in de container, geen venv nodig)
 RUN uv pip install --system -r pyproject.toml
 
-# Kopieer de rest van de backend code
+# Kopieer de backend code
 COPY app/ ./app/
 
-# Exposeer de poort voor FastAPI
+# Zet de poort voor FastAPI open
 EXPOSE 8000
 
-# Start de applicatie
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start de applicatie: EERST migraties runnen, DAN uvicorn starten
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
