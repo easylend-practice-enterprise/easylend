@@ -1,6 +1,7 @@
 {
-    "python.analysis.typeCheckingMode": "standard",
-    "python.analysis.diagnosticSeverityOverrides": {
-        "reportDeprecated": "warning"
-    }
+  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportDeprecated": "warning"
+  },
+  "cmake.ignoreCMakeListsMissing": true
 }
