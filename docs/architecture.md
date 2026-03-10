@@ -104,7 +104,7 @@ flowchart TD
     %% HOOFD VERBINDINGEN
     
     %% Kiosk praat met API
-    App <-->|"HTTPS JSON<br/>(JWT Auth)"| API
+    App <-->|"HTTPS REST + Polling<br/>(JWT Auth)"| API
 
     %% API praat met Box
     RPi <-->|"WSS & POST Image<br/>(Static API Key)"| API
