@@ -46,11 +46,12 @@ flowchart TD
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> WaitReturnWSS[App waits for WebSocket event]
+    ReturnOpenBox --> PollReturnWSS[App polls: GET /loans/status]
 
-    WaitReturnWSS --> WSSReturnEvent{WSS: return_status?}
-    WSSReturnEvent -->|Success| ReturnSuccess[Return Complete]
-    WSSReturnEvent -->|Pending Inspection| ReturnQuarantine[Show Damage/Quarantine Alert]
+    PollReturnWSS --> WSSReturnEvent{Status updated?}
+    WSSReturnEvent -->|No (Pending)| PollReturnWSS
+    WSSReturnEvent -->|Yes (Completed)| ReturnSuccess[Return Complete]
+    WSSReturnEvent -->|Yes (Inspection)| ReturnQuarantine[Show Damage/Quarantine Alert]
 
     ReturnQuarantine --> Dashboard
     ReturnSuccess --> Dashboard

@@ -84,7 +84,7 @@ sequenceDiagram
         API-->>App: 409 Conflict
         App-->>User: "Item niet beschikbaar"
     else Asset beschikbaar
-        API->>DB: INSERT loan {status: ACTIVE}
+        API->>DB: INSERT loan {loan_status: ACTIVE}
         API->>DB: UPDATE asset SET asset_status = BORROWED
         API-->>App: 202 Accepted {loan_id, locker_number}
         App-->>User: Toon lader: "Ga naar locker #N"
@@ -106,7 +106,7 @@ sequenceDiagram
             API->>VB: WSS: set_led {color: red}
         else Kluisje leeg (Succes)
             API->>DB: UPDATE locker SET locker_status = AVAILABLE
-            API->>DB: UPDATE loan SET loan_status = COMPLETED
+            API->>DB: UPDATE loan SET loan_status = ACTIVE
             API->>VB: WSS: set_led {color: green}
         end
 
@@ -143,7 +143,7 @@ sequenceDiagram
     App-->>User: Toon Aztec code scanner
     User->>App: Scant Aztec code van item
     App->>API: POST /api/v1/loans/return/initiate {aztec_code} [JWT]
-    API->>DB: SELECT loan WHERE aztec_code = ? AND status = ACTIVE
+    API->>DB: SELECT loan WHERE aztec_code = ? AND loan_status = ACTIVE
     DB-->>API: loan info
 
     alt Geen actieve uitleen gevonden
