@@ -62,7 +62,7 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 | Asset catalogus | ELP-41 | ❌ Open |
 | API calls (login, assets, transactie) | ELP-48 | ❌ Open |
 | Kiosk-app docs | ELP-70 | ❌ Open |
-| `pubspec.yaml` beschrijving aanpassen |: | ❌ Nog open |
+| `pubspec.yaml` beschrijving aanpassen | - | ❌ Nog open |
 
 > [!NOTE]
 > ELP-83 is nu correct: Flutter als definitieve keuze staat in de ticket-beschrijving. ✅
