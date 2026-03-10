@@ -9,7 +9,7 @@ flowchart TD
     BadgeID --> PIN[PIN Entry Screen]
 
     PIN --> ShowError{Error Displayed?}
-    ShowError -->|Yes| RateLimit[Rate Limit Screen<br/>4 attempts max]
+    ShowError -->|Yes| RateLimit[Rate Limit Screen<br/>5 attempts max]
     ShowError -->|No| Validate[Validate PIN via API]
 
     Validate -->|Success| AuthSuccess[Store JWT Token]

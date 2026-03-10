@@ -116,8 +116,8 @@ sequenceDiagram
         alt Status is FRAUD_SUSPECTED
             API-->>App: 200 OK {status: FRAUD_SUSPECTED}
             App-->>User: "Fout gedetecteerd. Item niet meegenomen."
-        else Status is COMPLETED
-            API-->>App: 200 OK {status: COMPLETED}
+        else Status is ACTIVE
+            API-->>App: 200 OK {status: ACTIVE}
             App-->>User: "Veel succes! Breng het item tijdig terug."
         end
     end
