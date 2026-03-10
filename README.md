@@ -51,7 +51,7 @@ uvx pre-commit install
 Handmatig alle bestanden controleren:
 
 ```bash
-uv run pre-commit run --all-files
+uvx pre-commit run --all-files
 ```
 
 ## Team

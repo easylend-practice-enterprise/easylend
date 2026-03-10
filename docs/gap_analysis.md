@@ -84,7 +84,7 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 
 | Gap | Ticket | Status |
 | --- | --- | --- |
-| `backend/vision/` API code ontbreekt |: | ❌ Nog leeg |
+| `backend/vision/` API code ontbreekt | ELP-48 | ❌ Nog leeg |
 | AI docs | ELP-72 | ❌ Open |
 | AI model trainen/valideren | ELP-56 | 🔄 In Progress |
 
@@ -105,7 +105,7 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 | --- | --- | --- |
 | `backend/vision/README.md` | ELP-72 | ✅ Toegevoegd in architectuur-sprint |
 | Setup guide per component | ELP-67 | ❌ Niet begonnen |
-| `kiosk-app/pubspec.yaml` beschrijving |: | ❌ Nog standaard Flutter tekst |
+| `kiosk-app/pubspec.yaml` beschrijving | ELP-70 | ❌ Nog standaard Flutter tekst |
 
 > [!NOTE]
 > `docs/workflows.md` is aangemaakt ✅. `simulation/README.md` is aangemaakt ✅.
@@ -116,7 +116,7 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 
 | Prioriteit | Actie | Ticket | Was |
 | --- | --- | --- | --- |
-| 🔴 Hoog | `kiosk-app/pubspec.yaml` beschrijving aanpassen |: | Nog open |
+| 🔴 Hoog | `kiosk-app/pubspec.yaml` beschrijving aanpassen | TBD | Nog open |
 | 🟡 Medium | AI docs schrijven zodra Injo ontwerp klaar heeft | ELP-72 | Ongewijzigd |
 | 🟡 Medium | Backend API endpoint-documenten | ELP-68 | Ongewijzigd |
 | 🟡 Medium | Hash-chaining audit logs beschrijven | ELP-29 | Ongewijzigd |
@@ -125,4 +125,4 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 | 🟢 Laag | Simulatie code + docs schrijven | ELP-33, ELP-34, ELP-69 | Ongewijzigd |
 | 🟢 Laag | Kiosk app: login scherm, NFC, flow, API calls | ELP-38, ELP-39, ELP-40, ELP-41, ELP-42, ELP-48 | Ongewijzigd |
 | 🟢 Laag | Vision Box: elektronica schema's, aansluiten, GPIO scripts | ELP-53, ELP-58, ELP-85 | Ongewijzigd |
-| 🟢 Laag | `backend/vision/README.md` API code schrijven (FastAPI endpoint) | - | Ongewijzigd |
+| 🟢 Laag | `backend/vision/README.md` API code schrijven (FastAPI endpoint) | ELP-48 | Ongewijzigd |

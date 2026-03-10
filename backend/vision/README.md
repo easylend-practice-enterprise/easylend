@@ -40,15 +40,22 @@ yolo benchmark model=yolo26m.pt imgsz=640
 
 ## Huidige staat
 
-- `yolo26m.pt`: YOLO26 Medium model (gedownload)
+Bestanden in deze repo:
+
 - `main.py`: trainingsscript (proof of concept op rock-paper-scissors dataset)
 - `utils/webcam.py`: webcam capture utility
+
+Lokaal gegenereerde/gedownloade artifacts (**niet** in Git, staan in `.gitignore`):
+
+- `yolo26m.pt`: YOLO26 Medium model
 - `datasets/`: trainingsdatasets
 - `runs/`: trainingsresultaten (Ultralytics output)
 
 > De daadwerkelijke asset-dataset (foto's van ICT-materiaal) en de bijhorende inferentie-API endpoint (`POST /api/v1/vision/analyze`) worden later uitgewerkt zodra het AI-ontwerp vaststaat (ELP-72).
 
 ## Lokaal uitvoeren
+
+*(Zorg dat `yolo26m.pt` en de `datasets/` map lokaal aanwezig zijn)*
 
 ```bash
 uv run python main.py

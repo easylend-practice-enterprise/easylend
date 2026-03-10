@@ -1,7 +1,7 @@
 # Mermaid
 
 ```mermaid
-flowchart
+flowchart TD
     Start[App Start] --> Login[Login Screen]
 
     Login --> NFC{NFC Badge Scan?}
@@ -19,37 +19,40 @@ flowchart
 
     AuthSuccess --> Dashboard[Asset Catalog Dashboard]
 
+    %% CHECKOUT FLOW (Uitlenen)
     Dashboard --> SelectAsset{Select Asset to Lend?}
-    SelectAsset -->|Yes| ConfirmLend[Confirm Lending]
+    SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
 
-    ConfirmLend --> ScanAztec[Scan Aztec Code]
-    ScanAztec --> ValidateAztec[Validate via API]
-    ValidateAztec -->|Success| OpenBox[Open Vision Box Lock]
-    ValidateAztec -->|Error| ShowAztecError[Show Aztec Error]
-    ShowAztecError --> ScanAztec
-
-    OpenBox --> LendSuccess[Transaction Complete]
+    ConfirmLend --> APIOpenBox[API Opens Vision Box Lock]
+    APIOpenBox --> WaitForWSS[App waits for WebSocket event]
+    
+    WaitForWSS --> WSSCheckoutEvent{WSS: checkout_complete?}
+    WSSCheckoutEvent -->|Success| LendSuccess[Transaction Complete]
+    WSSCheckoutEvent -->|Fraud/Error| CheckoutError[Show Checkout Error]
+    
+    CheckoutError --> Dashboard
     LendSuccess --> Dashboard
 
+    %% RETURN FLOW (Inleveren met Tablet Camera)
     Dashboard --> SelectReturn{Select Asset to Return?}
     SelectReturn -->|Yes| ConfirmReturn[Confirm Return]
-    ConfirmReturn --> ScanAztecReturn[Scan Aztec Code]
-    ScanAztecReturn --> ValidateAztecReturn[Validate via API]
+    SelectReturn -->|No| Dashboard
+
+    ConfirmReturn --> ScanAztecReturn[Tablet Camera: Scan Aztec Code]
+    ScanAztecReturn --> ValidateAztecReturn[Validate Return via API]
+    
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
-    ValidateAztecReturn -->|Success| ActivateLight[Open Vision Box and activate Light]
-    SelectReturn -->|No| Dashboard
+    ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
+    ReturnOpenBox --> WaitReturnWSS[App waits for WebSocket event]
 
-    ActivateLight --> CapturePhoto[Capture Returned Item Photo]
-    CapturePhoto --> UploadPhoto[Upload Photo to AI Service]
+    WaitReturnWSS --> WSSReturnEvent{WSS: return_status?}
+    WSSReturnEvent -->|Success| ReturnSuccess[Return Complete]
+    WSSReturnEvent -->|Pending Inspection| ReturnQuarantine[Show Damage/Quarantine Alert]
 
-    UploadPhoto --> PollAI[Poll AI Inference Status]
-    PollAI --> AIComplete{AI Complete?}
-    AIComplete -->|Yes| ReturnSuccess[Return Complete]
-    AIComplete -->|No| PollAI
-
+    ReturnQuarantine --> Dashboard
     ReturnSuccess --> Dashboard
 
 ```

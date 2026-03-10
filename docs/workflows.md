@@ -24,7 +24,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     User->>App: Houdt NFC-badge voor lezer
-    App->>API: POST /auth/nfc {nfc_tag_id}
+    App->>API: POST /api/v1/auth/nfc {nfc_tag_id}
     API->>DB: SELECT user WHERE nfc_tag_id = ?
     DB-->>API: User record
 
@@ -35,7 +35,7 @@ sequenceDiagram
         API-->>App: 200 Vraag PIN
         App-->>User: Toon PIN-invoer scherm
         User->>App: Voert PIN in
-        App->>API: POST /auth/pin {nfc_tag_id, pin}
+        App->>API: POST /api/v1/auth/pin {nfc_tag_id, pin}
         API->>DB: SELECT pin_hash WHERE nfc_tag_id = ?
         DB-->>API: pin_hash
 
@@ -111,7 +111,7 @@ sequenceDiagram
             API->>DB: UPDATE locker SET locker_status = AVAILABLE
             API->>DB: INSERT audit_log {CHECKOUT_COMPLETED}
             API->>VB: WSS: set_led {color: green}
-            API-->>App: WSS: checkout_complete
+            API-->>App: WSS: checkout_complete_event
             App-->>User: "Veel succes! Breng het item terug voor [due_date]"
         end
     end
