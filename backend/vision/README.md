@@ -99,10 +99,10 @@ results = model("image.jpg")
 
 ### Stap 3b: Exporteren naar OpenVINO (INT8): aanbevolen voor Intel CPU
 
-Geeft standaard FP32, voeg `half=True` toe voor INT8 kwantisatie:
+Geeft standaard FP32, voeg `int8=True` toe voor INT8 kwantisatie:
 
 ```bash
-yolo export model=yolo26m.pt format=openvino imgsz=640 half=True
+yolo export model=yolo26m.pt format=openvino imgsz=640 int8=True
 ```
 
 Geeft een map `yolo26m_openvino_model/` terug. Inferentie:

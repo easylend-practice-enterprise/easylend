@@ -101,7 +101,7 @@ sequenceDiagram
         AI-->>API: {locker_empty, objects, confidence}
 
         alt Kluisje niet leeg (item achtergelaten of verwisseld)
-            API->>DB: UPDATE loan SET status = FRAUD_SUSPECTED
+            API->>DB: UPDATE loan SET loan_status = FRAUD_SUSPECTED
             API->>DB: INSERT audit_log {CHECKOUT_INCOMPLETE}
             API->>VB: WSS: set_led {color: red}
             API-->>App: 409 Checkout onvolledig: item niet meegenomen
@@ -160,7 +160,7 @@ sequenceDiagram
         alt Schade gedetecteerd
             API->>DB: INSERT ai_evaluation {type: RETURN, has_damage: true}
             API->>DB: INSERT damage_reports [...]
-            API->>DB: UPDATE loan SET status = PENDING_INSPECTION
+            API->>DB: UPDATE loan SET loan_status = PENDING_INSPECTION
             API->>DB: UPDATE locker SET locker_status = MAINTENANCE
             API->>DB: INSERT audit_log {DAMAGE_DETECTED}
             API->>VB: WSS: LED oranje (quarantaine)
@@ -168,7 +168,7 @@ sequenceDiagram
             App-->>User: "Schade gedetecteerd. Beheerder verwittigd."
         else Geen schade
             API->>DB: INSERT ai_evaluation {type: RETURN, has_damage: false, approved: true}
-            API->>DB: UPDATE loan SET status = COMPLETED, return_locker_id, returned_at
+            API->>DB: UPDATE loan SET loan_status = COMPLETED, return_locker_id, returned_at
             API->>DB: UPDATE asset SET asset_status = AVAILABLE, locker_id = return_locker_id
             API->>DB: UPDATE locker SET locker_status = OCCUPIED
             API->>DB: INSERT audit_log {RETURN_COMPLETED}

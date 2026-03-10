@@ -36,7 +36,7 @@ Tickets ELP-32/33/34 hernoemd. `simulation/README.md` aangemaakt ✅
 
 ### Backend (ELP-10 — Open)
 
-> Zie [Backend Stappenplan](file:///C:/Users/Jaske/.gemini/antigravity/brain/311cbeb1-302b-484d-bd0f-b523a6c16110/backend_plan.md) voor de volledige volgorde.
+> Zie [Backend Stappenplan](../backend/backend_plan.md) voor de volledige volgorde.
 
 | Gap | Ticket | Status |
 | --- | --- | --- |

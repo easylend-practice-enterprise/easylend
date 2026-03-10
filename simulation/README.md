@@ -48,4 +48,4 @@ simulation/
 
 ## Setup (nog niet beschikbaar)
 
-Zie ELP-32 en ELP-32 voor de uiteindelijke setup-instructies zodra het framework gekozen is.
+Zie ELP-32 tot ELP-35 voor de uiteindelijke setup-instructies zodra het framework gekozen is.
