@@ -1,4 +1,4 @@
-# EasyLend Backend — Stappenplan
+# EasyLend Backend: Stappenplan
 
 > Volgorde gebaseerd op technische afhankelijkheden. Auth moet volledig klaar zijn voor CRUD, CRUD voor business logic.
 
@@ -13,7 +13,7 @@
 - Verify bij login
 - **Done-criteria:** unit test die hash + verify valideert
 
-> **Seed script (chore, geen ticket):** `seed.py` is al aangemaakt in `backend/api/`. Let op de **FK-volgorde** — de DB enforceert referentiële integriteit:
+> **Seed script (chore, geen ticket):** `seed.py` wordt in de volgende sprint aangemaakt in `backend/api/`. Let op de **FK-volgorde**, de DB enforceert referentiële integriteit:
 >
 > ```text
 > Stap 1: ROLES (role_id wordt FK in USERS)
@@ -31,7 +31,7 @@
 
 **Ticket:** ELP-82 · **Status:** 📋 Next up · *Blokkeert: stap 3-5*
 
-ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing hebt over:
+ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt over:
 
 - [ ] JWT algoritme (HS256 vs RS256)
 - [ ] Access token TTL (bijv. 15 min)
@@ -68,7 +68,7 @@ ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing h
   - `POST /api/v1/auth/login` → access + refresh token
   - `POST /api/v1/auth/logout`
 
-> **Test met seed data (stap 1)** — geen User CRUD nodig om dit te testen.
+> **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.
 
 ---
 
@@ -104,7 +104,7 @@ ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing h
 
 - `GET /api/v1/users/me`
 - `GET /api/v1/users/{id}` (admin only)
-- `POST /api/v1/users` (admin — nieuw gebruiker aanmaken)
+- `POST /api/v1/users` (admin: nieuw gebruiker aanmaken)
 - Role-based access control dependency
 - Permissions model (RBAC: admin / medewerker / kiosk)
 
@@ -122,13 +122,13 @@ ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing h
 
 > **FK-volgorde verplicht:** Elke entiteit heeft een FK naar de vorige. Bouw in deze volgorde.
 
-**Kiosks** *(kiosk_id FK in LOCKERS — moet eerst)*
+**Kiosks** *(kiosk_id FK in LOCKERS: moet eerst)*
 
 - `GET /api/v1/kiosks` (admin)
-- `POST /api/v1/kiosks` (admin — nieuw kioskapparaat registreren)
+- `POST /api/v1/kiosks` (admin: nieuw kioskapparaat registreren)
 - `PUT /api/v1/kiosks/{id}/status`
 
-**Categories** *(category_id FK in ASSETS — moet eerst)*
+**Categories** *(category_id FK in ASSETS: moet eerst)*
 
 - `GET /api/v1/categories`
 - `POST /api/v1/categories` (admin)
@@ -136,16 +136,16 @@ ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing h
 
 **Lockers** *(requires kiosk_id)*
 
-- `GET /api/v1/lockers` (admin — overzicht + status)
+- `GET /api/v1/lockers` (admin: overzicht + status)
 - `GET /api/v1/lockers/{id}`
-- `POST /api/v1/lockers` (admin — kluisje aan kiosk koppelen)
-- `PUT /api/v1/lockers/{id}/status` (admin — bijv. naar MAINTENANCE)
+- `POST /api/v1/lockers` (admin: kluisje aan kiosk koppelen)
+- `PUT /api/v1/lockers/{id}/status` (admin: bijv. naar MAINTENANCE)
 
 **Assets** *(requires category_id + locker_id)*
 
 - `GET /api/v1/assets` (paginatie, filter op status)
 - `GET /api/v1/assets/{id}`
-- `POST /api/v1/assets` (admin — inclusief `aztec_code` en `category_id`)
+- `POST /api/v1/assets` (admin: inclusief `aztec_code` en `category_id`)
 - `PUT /api/v1/assets/{id}` (admin)
 - `DELETE /api/v1/assets/{id}` (admin, soft-delete)
 
@@ -168,10 +168,10 @@ ELP-82 is research — niet implementatie. Vink dit af zodra je een beslissing h
 
 **Ticket:** ELP-28 · **Status:** ❌ Open · *Requires: stap 8 (assets + lockers)*
 
-De basis business-logica zonder hardware-koppeling — testbaar via Swagger/Postman.
+De basis business-logica zonder hardware-koppeling: testbaar via Swagger/Postman.
 
-- `POST /api/v1/loans/checkout` — asset uitlenen, locker toewijzen
-- `POST /api/v1/loans/return/initiate` — inleverproces starten, vrije locker zoeken
+- `POST /api/v1/loans/checkout`: asset uitlenen, locker toewijzen
+- `POST /api/v1/loans/return/initiate`: inleverproces starten, vrije locker zoeken
 - Validatie: asset beschikbaar? gebruiker actief? locker vrij?
 - Status-update asset + locker + audit log entry
 
@@ -183,7 +183,7 @@ De basis business-logica zonder hardware-koppeling — testbaar via Swagger/Post
 
 Veruit het complexste deel. Koppelt de transactielogica met de fysieke hardware.
 
-**Beslissing vóór implementatie — Foto-opslag (`photo_url`):**
+**Beslissing vóór implementatie: Foto-opslag (`photo_url`):**
 
 De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 
@@ -202,7 +202,7 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 
 **AI Evaluatie-endpoint (voor Vision Box):**
 
-- `POST /api/v1/vision/analyze` — ontvangt foto + loan_id van Vision Box (M2M auth)
+- `POST /api/v1/vision/analyze`: ontvangt foto + loan_id van Vision Box (M2M auth)
 - Sla foto op (zie foto-opslag beslissing) → genereer `photo_url`
 - Stuurt foto door naar YOLO26 AI Service (VM2)
 - Verwerkt resultaat:
@@ -218,7 +218,7 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 
 - Pydantic validators op alle request bodies
 - Max-length checks, regex op e-mails / IDs
-- SQL injection niet van toepassing (SQLAlchemy ORM) — wel XSS in string velden
+- SQL injection niet van toepassing (SQLAlchemy ORM): wel XSS in string velden
 
 ---
 
@@ -259,6 +259,6 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
                             WebSockets + fallback + /vision/analyze
         → [9] M2M tokens  ← vóór 10b, Vision Box auth
 [11] Input sanitization (parallel, vanaf stap 10+)
-[12] Rate limiting (requires Redis — stap 6)
+[12] Rate limiting (requires Redis: stap 6)
 [13] Hash-chaining audit logs (requires stap 10a)
 ```

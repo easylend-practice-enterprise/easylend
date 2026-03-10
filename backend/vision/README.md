@@ -20,7 +20,7 @@ De Vision Box (Raspberry Pi 4) stuurt een foto door naar deze service via de API
 
 **Exportformaat voor productie (ELP-56):**
 
-- **OpenVINO (INT8)** — definitieve keuze. De Xeon Gold 6426Y heeft AVX-512 en Intel AMX waardoor INT8-kwantisatie natively versneld wordt (tot 3× sneller dan PyTorch `.pt`)
+- **OpenVINO (INT8)**: definitieve keuze. De Xeon Gold 6426Y heeft AVX-512 en Intel AMX waardoor INT8-kwantisatie natively versneld wordt (tot 3× sneller dan PyTorch `.pt`)
 - ONNX als noodoplossing als OpenVINO installatieproblemen geeft
 
 **Proxmox VM specs (aanbeveling):**

@@ -63,7 +63,7 @@ sequenceDiagram
 
 ## 2. Checkout Flow (Item uitlenen)
 
-De gebruiker kiest een item in de app. De API valideert de aanvraag en opent **zelf** het slot via de Vision Box — de App heeft nooit directe controle over hardware. Na het sluiten van de deur fotografeert de Vision Box het kluisje om te bevestigen dat het **leeg** is.
+De gebruiker kiest een item in de app. De API valideert de aanvraag en opent **zelf** het slot via de Vision Box: de App heeft nooit directe controle over hardware. Na het sluiten van de deur fotografeert de Vision Box het kluisje om te bevestigen dat het **leeg** is.
 
 ```mermaid
 sequenceDiagram
@@ -96,7 +96,7 @@ sequenceDiagram
         VB->>API: WSS: slot_closed event
 
         Note over VB,AI: Foto ná deur-dicht: kluisje hoort leeg te zijn
-        VB->>API: POST /vision/analyze {loan_id, image, type: CHECKOUT}
+        VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: CHECKOUT}
         API->>AI: POST /predict {image}
         AI-->>API: {locker_empty, objects, confidence}
 
@@ -106,7 +106,7 @@ sequenceDiagram
             API->>VB: WSS: set_led {color: red}
             API-->>App: 409 Checkout onvolledig: item niet meegenomen
             App-->>User: "Fout gedetecteerd. Neem contact op met beheerder."
-        else Kluisje leeg — checkout geslaagd
+        else Kluisje leeg: checkout geslaagd
             API->>DB: INSERT ai_evaluation {type: CHECKOUT, locker_empty: true}
             API->>DB: UPDATE locker SET locker_status = AVAILABLE
             API->>DB: INSERT audit_log {CHECKOUT_COMPLETED}
@@ -153,7 +153,7 @@ sequenceDiagram
         User->>VB: Plaatst item in locker, sluit deur
         VB->>API: WSS: slot_closed event
 
-        VB->>API: POST /vision/analyze {loan_id, image, type: RETURN}
+        VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
         API->>AI: POST /predict {image}
         AI-->>API: {objects, confidence, has_damage, damage_details}
 

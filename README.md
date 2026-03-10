@@ -38,13 +38,14 @@ Hooks die draaien bij elke commit:
 
 | Hook | Omschrijving |
 | --- | --- |
-| `ruff-check` | Linter (incl. security, isort, pyupgrade) — auto-fix aan |
+| `ruff-check` | Linter (incl. security, isort, pyupgrade) auto-fix aan |
 | `ruff-format` | Code formatter |
 
-Eenmalig installeren (in de repo root):
+Eenmalig installeren in de repo root:
 
 ```bash
-uv run pre-commit install
+# Zorg dat je in de ROOT van de repository staat
+uvx pre-commit install
 ```
 
 Handmatig alle bestanden controleren:

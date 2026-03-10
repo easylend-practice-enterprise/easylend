@@ -16,11 +16,11 @@ In plaats van echte hardware spreekt de simulatie rechtstreeks met de API via We
 ## Verbinding met de API
 
 ```text
-WSS: wss://<api-host>/ws/device
+WSS: wss://<api-host>/ws/visionbox
 Headers: X-Device-Token: <static_key>
 ```
 
-De simulatie gedraagt zich als een Vision Box: ze luistert naar `open_slot` / `close_slot` events en stuurt `slot_closed` events terug.
+De simulatie gedraagt zich als een Vision Box: ze luistert naar `open_slot` events en stuurt `slot_closed` events terug.
 
 ## Framework
 
