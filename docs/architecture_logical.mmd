@@ -20,7 +20,7 @@ flowchart TD
     subgraph Backend ["Backend (Proxmox Server)"]
         direction TB
         API["FastAPI & WebSockets"]:::soft
-        AIService["YOLOv26 AI Service"]:::soft
+        AIService["YOLO26 AI Service"]:::soft
         PXE["PXE Live Boot Service"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
