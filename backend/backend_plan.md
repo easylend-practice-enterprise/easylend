@@ -65,7 +65,8 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `create_access_token()` en `verify_access_token()` functies
 - FastAPI dependency `get_current_user` via `Authorization: Bearer`
 - Endpoints:
-  - `POST /api/v1/auth/login` → access + refresh token
+  - `POST /api/v1/auth/nfc` → start login via NFC (geeft tijdelijke context)
+  - `POST /api/v1/auth/pin` → verifieert PIN en geeft access + refresh token
   - `POST /api/v1/auth/logout`
 
 > **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.

@@ -19,39 +19,40 @@ flowchart TD
 
     AuthSuccess --> Dashboard[Asset Catalog Dashboard]
 
-    %% CHECKOUT FLOW (Uitlenen)
+    %% CHECKOUT FLOW (Uitlenen via REST Polling)
     Dashboard --> SelectAsset{Select Asset to Lend?}
     SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
 
-    ConfirmLend --> APIOpenBox[API Opens Vision Box Lock]
-    APIOpenBox --> WaitForWSS[App waits for WebSocket event]
+    ConfirmLend --> APIOpenBox[POST /checkout: API Opens Vision Box]
+    APIOpenBox --> PollCheckout[App polls: GET /loans/status]
     
-    WaitForWSS --> WSSCheckoutEvent{WSS: checkout_complete?}
-    WSSCheckoutEvent -->|Success| LendSuccess[Transaction Complete]
-    WSSCheckoutEvent -->|Fraud/Error| CheckoutError[Show Checkout Error]
+    PollCheckout --> CheckoutStatus{Status updated?}
+    CheckoutStatus -->|No (Pending)| PollCheckout
+    CheckoutStatus -->|Yes (Completed)| LendSuccess[Transaction Complete]
+    CheckoutStatus -->|Yes (Fraud/Error)| CheckoutError[Show Checkout Error]
     
     CheckoutError --> Dashboard
     LendSuccess --> Dashboard
 
-    %% RETURN FLOW (Inleveren met Tablet Camera)
+    %% RETURN FLOW (Inleveren met Tablet Camera via REST Polling)
     Dashboard --> SelectReturn{Select Asset to Return?}
     SelectReturn -->|Yes| ConfirmReturn[Confirm Return]
     SelectReturn -->|No| Dashboard
 
     ConfirmReturn --> ScanAztecReturn[Tablet Camera: Scan Aztec Code]
-    ScanAztecReturn --> ValidateAztecReturn[Validate Return via API]
+    ScanAztecReturn --> ValidateAztecReturn[POST /return/initiate]
     
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> PollReturnWSS[App polls: GET /loans/status]
+    ReturnOpenBox --> PollReturn[App polls: GET /loans/status]
 
-    PollReturnWSS --> WSSReturnEvent{Status updated?}
-    WSSReturnEvent -->|No (Pending)| PollReturnWSS
-    WSSReturnEvent -->|Yes (Completed)| ReturnSuccess[Return Complete]
-    WSSReturnEvent -->|Yes (Inspection)| ReturnQuarantine[Show Damage/Quarantine Alert]
+    PollReturn --> ReturnStatus{Status updated?}
+    ReturnStatus -->|No (Pending)| PollReturn
+    ReturnStatus -->|Yes (Completed)| ReturnSuccess[Return Complete]
+    ReturnStatus -->|Yes (Inspection)| ReturnQuarantine[Show Damage Alert]
 
     ReturnQuarantine --> Dashboard
     ReturnSuccess --> Dashboard

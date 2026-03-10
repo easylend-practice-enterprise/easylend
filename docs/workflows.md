@@ -84,7 +84,7 @@ sequenceDiagram
         API-->>App: 409 Conflict
         App-->>User: "Item niet beschikbaar"
     else Asset beschikbaar
-        API->>DB: INSERT loan {loan_status: ACTIVE}
+        API->>DB: INSERT loan {loan_status: RESERVED}
         API->>DB: UPDATE asset SET asset_status = BORROWED
         API-->>App: 202 Accepted {loan_id, locker_number}
         App-->>User: Toon lader: "Ga naar locker #N"
