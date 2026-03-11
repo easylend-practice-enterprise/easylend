@@ -25,12 +25,12 @@ flowchart TD
     SelectAsset -->|No| Dashboard
 
     ConfirmLend --> APIOpenBox[POST /api/v1/loans/checkout]
-    APIOpenBox --> PollCheckout[App polls: GET /api/v1/loans/{loan_id}/status]
+    APIOpenBox --> PollCheckout[App polls: GET /api/v1/loans/&#123;loan_id&#125;/status]
     
     PollCheckout --> CheckoutStatus{Status updated?}
-    CheckoutStatus -->|No (Pending)| PollCheckout
-    CheckoutStatus -->|Yes (ACTIVE)| LendSuccess[Transaction Complete]
-    CheckoutStatus -->|Yes (FRAUD_SUSPECTED)| CheckoutError[Show Checkout Error]
+    CheckoutStatus -->|No - Still RESERVED| PollCheckout
+    CheckoutStatus -->|Yes - ACTIVE| LendSuccess[Transaction Complete]
+    CheckoutStatus -->|Yes - FRAUD_SUSPECTED| CheckoutError[Show Checkout Error]
     
     CheckoutError --> Dashboard
     LendSuccess --> Dashboard
@@ -47,12 +47,12 @@ flowchart TD
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> PollReturn[App polls: GET /api/v1/loans/{loan_id}/status]
+    ReturnOpenBox --> PollReturn[App polls: GET /api/v1/loans/&#123;loan_id&#125;/status]
 
     PollReturn --> ReturnStatus{Status updated?}
-    ReturnStatus -->|No (Pending)| PollReturn
-    ReturnStatus -->|Yes (Completed)| ReturnSuccess[Return Complete]
-    ReturnStatus -->|Yes (Inspection)| ReturnQuarantine[Show Damage Alert]
+    ReturnStatus -->|No - Still ACTIVE| PollReturn
+    ReturnStatus -->|Yes - COMPLETED| ReturnSuccess[Return Complete]
+    ReturnStatus -->|Yes - PENDING_INSPECTION| ReturnQuarantine[Show Damage Alert]
 
     ReturnQuarantine --> Dashboard
     ReturnSuccess --> Dashboard

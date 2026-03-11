@@ -103,6 +103,8 @@ sequenceDiagram
 
         alt Kluisje niet leeg (Fraude/Fout)
             API->>DB: UPDATE loan SET loan_status = FRAUD_SUSPECTED
+            API->>DB: UPDATE asset SET asset_status = PENDING_INSPECTION
+            API->>DB: UPDATE locker SET locker_status = MAINTENANCE
             API->>VB: WSS: set_led {color: red}
         else Kluisje leeg (Succes)
             API->>DB: UPDATE locker SET locker_status = AVAILABLE
@@ -150,7 +152,7 @@ sequenceDiagram
         API-->>App: 404 Not Found
         App-->>User: "Geen actieve uitleen voor dit item"
     else Uitleen gevonden
-        API->>DB: BEGIN; SELECT locker WHERE kiosk_id = current_kiosk_id AND locker_status = AVAILABLE FOR UPDATE SKIP LOCKED LIMIT 1
+        API->>DB: BEGIN and SELECT locker WHERE kiosk_id = current_kiosk_id AND locker_status = AVAILABLE FOR UPDATE SKIP LOCKED LIMIT 1
         DB-->>API: Vrije locker
         API-->>App: 202 Accepted {return_locker_id, locker_number}
         App-->>User: Toon lader: "Breng item naar locker #N"

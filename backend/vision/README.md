@@ -71,7 +71,7 @@ uv run ruff format .
 
 ## Export guide: PyTorch --> ONNX / OpenVINO
 
-*Voor Injo: uit te voeren op de Proxmox VM of de trainingsmachine met GPU.*
+*Voer deze stappen uit op de Proxmox VM of op een trainingsmachine met GPU.*
 
 ### Stap 1: Model trainen of downloaden
 
