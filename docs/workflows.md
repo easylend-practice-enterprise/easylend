@@ -42,7 +42,7 @@ sequenceDiagram
         alt PIN incorrect
             API->>DB: UPDATE failed_login_attempts + 1
             alt Limiet bereikt (5 pogingen)
-                API->>DB: SET locked_until = NOW() + interval
+                API->>DB: SET locked_until = NOW() + interval '15 minutes'
                 API->>DB: INSERT audit_log {LOGIN_FAILED, ACCOUNT_LOCKED}
                 API-->>App: 403 Account geblokkeerd
             else Nog pogingen over

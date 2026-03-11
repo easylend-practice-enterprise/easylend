@@ -25,7 +25,7 @@ flowchart TD
     SelectAsset -->|No| Dashboard
 
     ConfirmLend --> APIOpenBox[POST /api/v1/loans/checkout]
-    APIOpenBox --> PollCheckout[App polls: GET /api/v1/loans/&#123;loan_id&#125;/status]
+    APIOpenBox --> PollCheckout["App polls: GET /api/v1/loans/{loan_id}/status"]
     
     PollCheckout --> CheckoutStatus{Status updated?}
     CheckoutStatus -->|No - Still RESERVED| PollCheckout
@@ -47,7 +47,7 @@ flowchart TD
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> PollReturn[App polls: GET /api/v1/loans/&#123;loan_id&#125;/status]
+    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status"]
 
     PollReturn --> ReturnStatus{Status updated?}
     ReturnStatus -->|No - Still ACTIVE| PollReturn
