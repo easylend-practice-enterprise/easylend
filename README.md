@@ -45,13 +45,15 @@ Eenmalig installeren in de repo root:
 
 ```bash
 # Zorg dat je in de ROOT van de repository staat
-uvx pre-commit install
+uv tool install pre-commit
+pre-commit install
 ```
 
 Handmatig alle bestanden controleren:
 
 ```bash
-uvx pre-commit run --all-files
+# Handmatig alles controleren
+pre-commit run --all-files
 ```
 
 ## Team

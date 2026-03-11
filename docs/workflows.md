@@ -150,7 +150,7 @@ sequenceDiagram
         API-->>App: 404 Not Found
         App-->>User: "Geen actieve uitleen voor dit item"
     else Uitleen gevonden
-        API->>DB: SELECT locker WHERE locker_status = AVAILABLE LIMIT 1
+        API->>DB: BEGIN; SELECT locker WHERE kiosk_id = current_kiosk_id AND locker_status = AVAILABLE FOR UPDATE SKIP LOCKED LIMIT 1
         DB-->>API: Vrije locker
         API-->>App: 202 Accepted {return_locker_id, locker_number}
         App-->>User: Toon lader: "Breng item naar locker #N"
