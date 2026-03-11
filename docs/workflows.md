@@ -170,7 +170,7 @@ sequenceDiagram
             API->>VB: WSS: set_led {color: orange}
         else Geen schade
             API->>DB: UPDATE loan SET loan_status = COMPLETED
-            API->>DB: UPDATE asset SET asset_status = AVAILABLE
+            API->>DB: UPDATE asset SET asset_status = AVAILABLE, locker_id = return_locker_id
             API->>DB: UPDATE locker SET locker_status = OCCUPIED
             API->>VB: WSS: set_led {color: green}
         end
@@ -218,7 +218,7 @@ sequenceDiagram
     else Beheerder verwerpt AI rapport (Fout-positief)
         Admin->>API: PATCH /api/v1/admin/evaluations/{id} {is_approved: false}
         API->>DB: UPDATE loan SET loan_status = COMPLETED
-        API->>DB: UPDATE asset SET asset_status = AVAILABLE
+        API->>DB: UPDATE asset SET asset_status = AVAILABLE, locker_id = return_locker_id
         API->>DB: UPDATE locker SET locker_status = OCCUPIED
         API->>DB: INSERT audit_log {DAMAGE_REJECTED_FALSE_POSITIVE}
         API->>VB: WSS: set_led {color: green}

@@ -24,8 +24,8 @@ flowchart TD
     SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
 
-    ConfirmLend --> APIOpenBox[POST /checkout: API Opens Vision Box]
-    APIOpenBox --> PollCheckout[App polls: GET /loans/status]
+    ConfirmLend --> APIOpenBox[POST /api/v1/loans/checkout]
+    APIOpenBox --> PollCheckout[App polls: GET /api/v1/loans/{loan_id}/status]
     
     PollCheckout --> CheckoutStatus{Status updated?}
     CheckoutStatus -->|No (Pending)| PollCheckout
@@ -41,13 +41,13 @@ flowchart TD
     SelectReturn -->|No| Dashboard
 
     ConfirmReturn --> ScanAztecReturn[Tablet Camera: Scan Aztec Code]
-    ScanAztecReturn --> ValidateAztecReturn[POST /return/initiate]
+    ScanAztecReturn --> ValidateAztecReturn[POST /api/v1/loans/return/initiate]
     
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> PollReturn[App polls: GET /loans/status]
+    ReturnOpenBox --> PollReturn[App polls: GET /api/v1/loans/{loan_id}/status]
 
     PollReturn --> ReturnStatus{Status updated?}
     ReturnStatus -->|No (Pending)| PollReturn
