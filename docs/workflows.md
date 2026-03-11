@@ -154,7 +154,7 @@ sequenceDiagram
     else Uitleen gevonden
         API->>DB: BEGIN and SELECT locker WHERE kiosk_id = current_kiosk_id AND locker_status = AVAILABLE FOR UPDATE SKIP LOCKED LIMIT 1
         DB-->>API: Vrije locker
-        API-->>App: 202 Accepted {return_locker_id, locker_number}
+        API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
         App-->>User: Toon lader: "Breng item naar locker #N"
 
         API->>VB: WSS: open_slot {return_locker_id}

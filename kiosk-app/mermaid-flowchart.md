@@ -46,8 +46,8 @@ flowchart TD
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
-    ValidateAztecReturn -->|Success| ReturnOpenBox[API Opens Vision Box]
-    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status"]
+    ValidateAztecReturn -->|Success| ReturnOpenBox["API Opens Vision Box<br/>Response: {loan_id}"]
+    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id uit initiate)"]
 
     PollReturn --> ReturnStatus{Status updated?}
     ReturnStatus -->|No - Still ACTIVE| PollReturn

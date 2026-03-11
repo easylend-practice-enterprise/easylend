@@ -188,7 +188,11 @@ Veruit het complexste deel. Koppelt de transactielogica met de fysieke hardware.
 **Beslissing: Foto-opslag (`photo_url`):**
 We gebruiken een **Lokaal Docker Volume** (`/app/uploads`). Dit past perfect in de scope van het prototype en is bloedsnel.
 
-- Foto's worden weggeschreven naar schijf en de API serveert ze via een nieuw, simpel endpoint: `GET /api/v1/images/{filename}`.
+- Foto's worden weggeschreven naar schijf en de API serveert ze via een nieuw endpoint: `GET /api/v1/images/{filename}`.
+  - **Security:** implementatie moet:
+    - Een veilige bestandsnaam-strategie afdwingen (UUID's, geen ruwe user input).
+    - Het pad normaliseren en valideren om path traversal (`../`) tegen te gaan.
+    - Authorisatie toepassen (enkel admins of de eigenaar van de lening mogen de foto zien).
 
 **WebSockets (Vision Box aansturing):**
 
