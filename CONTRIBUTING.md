@@ -107,7 +107,7 @@ git config --global fetch.prune true
 
 Linux/macOS (aanbevolen variant: pas paden en voorkeuren aan):
 
-Op Linux raden we aan `core.autocrlf` op `input` te zetten (convert CRLF → LF on commit) of `false` als je volledig vertrouwt op `.gitattributes`. Een voorbeeldconfig:
+Op Linux raden we aan `core.autocrlf` op `input` te zetten (convert CRLF --> LF on commit) of `false` als je volledig vertrouwt op `.gitattributes`. Een voorbeeldconfig:
 
 ```bash
 core.editor=code --wait

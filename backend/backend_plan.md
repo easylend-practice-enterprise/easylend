@@ -20,7 +20,7 @@
 > Stap 2: CATEGORIES (category_id wordt FK in ASSETS)
 > Stap 3: KIOSKS (kiosk_id wordt FK in LOCKERS)
 > Stap 4: LOCKERS (locker_id wordt FK in ASSETS)
-> Stap 5: USERS met role_id → ASSETS met category_id + locker_id
+> Stap 5: USERS met role_id --> ASSETS met category_id + locker_id
 > ```
 >
 > Uitvoeren: `uv run python seed.py`
@@ -65,8 +65,8 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `create_access_token()` en `verify_access_token()` functies
 - FastAPI dependency `get_current_user` via `Authorization: Bearer`
 - Endpoints:
-  - `POST /api/v1/auth/nfc` → start login via NFC (geeft tijdelijke context)
-  - `POST /api/v1/auth/pin` → verifieert PIN en geeft access + refresh token
+  - `POST /api/v1/auth/nfc` --> start login via NFC (geeft tijdelijke context)
+  - `POST /api/v1/auth/pin` --> verifieert PIN en geeft access + refresh token
   - `POST /api/v1/auth/logout`
 
 > **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.
@@ -78,7 +78,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 **Ticket:** ELP-24 · **Status:** 📋 Queued · *Requires: stap 4*
 
 - `POST /api/v1/auth/refresh` endpoint
-- Refresh token valideren → nieuw access token uitschrijven
+- Refresh token valideren --> nieuw access token uitschrijven
 - Refresh token na gebruik invalideren (rotation)
 
 ---
@@ -117,7 +117,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 ---
 
-## Stap 8: CRUD: Kiosks → Categories → Lockers → Assets
+## Stap 8: CRUD: Kiosks --> Categories --> Lockers --> Assets
 
 **Ticket:** ELP-26 · **Status:** ❌ Open · *Requires: stap 7 (permissions)*
 
@@ -172,6 +172,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 De basis business-logica zonder hardware-koppeling: testbaar via Swagger/Postman.
 
 - `POST /api/v1/loans/checkout`: asset uitlenen, locker toewijzen
+  - 🏆 **Pro-feature (Idempotentie):** Vereist een `Idempotency-Key` in de header (bijv. een UUID). De API checkt in Redis of deze key recent gebruikt is om te voorkomen dat een haperende tablet (double-taps) per ongeluk twee leningen start.
 - `POST /api/v1/loans/return/initiate`: inleverproces starten, vrije locker zoeken
 - Validatie: asset beschikbaar? gebruiker actief? locker vrij?
 - Status-update asset + locker + audit log entry
@@ -184,14 +185,10 @@ De basis business-logica zonder hardware-koppeling: testbaar via Swagger/Postman
 
 Veruit het complexste deel. Koppelt de transactielogica met de fysieke hardware.
 
-**Beslissing vóór implementatie: Foto-opslag (`photo_url`):**
+**Beslissing: Foto-opslag (`photo_url`):**
+We gebruiken een **Lokaal Docker Volume** (`/app/uploads`). Dit past perfect in de scope van het prototype en is bloedsnel.
 
-De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
-
-| Optie | Pro | Con |
-| --- | --- | --- |
-| Lokaal volume (Docker mount) | Simpel, geen extra service | Niet schaalbaar, verloren bij container rebuild |
-| MinIO (S3-compatible, self-hosted) | Productie-waardig, persistent | Extra service in Docker Compose |
+- Foto's worden weggeschreven naar schijf en de API serveert ze via een nieuw, simpel endpoint: `GET /api/v1/images/{filename}`.
 
 **WebSockets (Vision Box aansturing):**
 
@@ -199,17 +196,29 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 - `open_slot {locker_id}` sturen na checkout-goedkeuring
 - `set_led {color}` sturen op basis van AI-resultaat of fout
 - `slot_closed` event ontvangen van Vision Box
-- **Fallback:** als er geen actieve WSS-sessie is van de Vision Box → stuur `503` terug naar de App met melding "Vision Box niet bereikbaar". Log in audit.
+- **Fallback:** als er geen actieve WSS-sessie is van de Vision Box --> stuur `503` terug naar de App met melding "Vision Box niet bereikbaar". Log in audit.
 
 **AI Evaluatie-endpoint (voor Vision Box):**
 
 - `POST /api/v1/vision/analyze`: ontvangt foto + loan_id van Vision Box (M2M auth)
-- Sla foto op (zie foto-opslag beslissing) → genereer `photo_url`
+- Sla foto op in `/app/uploads` --> genereer `photo_url`
 - Stuurt foto door naar YOLO26 AI Service (VM2)
 - Verwerkt resultaat:
-  - **Checkout:** kluisje leeg? → `CHECKOUT_COMPLETED` of `FRAUD_SUSPECTED`
-  - **Return:** schade? → `RETURN_COMPLETED` of `PENDING_INSPECTION`
+  - **Checkout:** kluisje leeg? --> `ACTIVE` of `FRAUD_SUSPECTED`
+  - **Return:** schade? --> `COMPLETED` of `PENDING_INSPECTION`
 - Slaat op in `ai_evaluations` tabel inclusief `photo_url` en `model_version`
+
+---
+
+## Stap 10c: Admin Quarantaine Dashboard
+
+**Status:** ❌ Open · *Requires: stap 10b*
+
+Endpoints voor het beheerpaneel om geblokkeerde leningen (schade of fraude) af te handelen. Deze worden gebruikt in de Quarantaine Flow.
+
+- `GET /api/v1/admin/loans?status=PENDING_INSPECTION` (lijst van leningen in quarantaine)
+- `GET /api/v1/admin/evaluations/{evaluation_id}` (haalt het AI rapport en de `photo_url` op)
+- `PATCH /api/v1/admin/evaluations/{id}` (Beheerder keurt goed: status naar `DISPUTED`, of keurt af: status naar `COMPLETED`)
 
 ---
 
@@ -238,7 +247,7 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 **Ticket:** ELP-29 · **Status:** ❌ Open · *Requires: stap 10a (transacties)*
 
 - Elke auditlog-entry bevat `prev_hash` van de vorige entry
-- SHA-256 over `(prev_hash + entry_data)` → `current_hash`
+- SHA-256 over `(prev_hash + entry_data)` --> `current_hash`
 - Tamper-detection: check of chain intact is bij opvragen
 - Endpoint: `GET /api/v1/audit` (admin only)
 
@@ -247,18 +256,19 @@ De ERD heeft `AI_EVALUATIONS.photo_url`. Kies één strategie vóór je begint:
 ## Overzicht
 
 ```text
-[1] Password hashing + seed.py  ← ROLES/CATEGORIES/KIOSKS ook seeden!
-  → [2] Auth research afronden
-    → [3] JWT model
-      → [4] JWT tokens  ← test met seed data
-        → [5] Refresh token
-          → [6] Redis integratie
-            → [7] Users CRUD  ← incl. PATCH /users/{id}/nfc
-              → [8] Kiosks → Categories → Lockers → Assets CRUD
-                → [10a] Transactie CRUD
-                  → [10b] Hardware & AI  ← beslissing foto-opslag eerst!
-                            WebSockets + fallback + /vision/analyze
-        → [9] M2M tokens  ← vóór 10b, Vision Box auth
+[1] Password hashing + seed.py  <-- ROLES/CATEGORIES/KIOSKS ook seeden!
+  --> [2] Auth research afronden
+    --> [3] JWT model
+      --> [4] JWT tokens  <-- test met seed data
+        --> [5] Refresh token
+          --> [6] Redis integratie
+            --> [7] Users CRUD  <-- incl. PATCH /users/{id}/nfc
+              --> [8] Kiosks --> Categories --> Lockers --> Assets CRUD
+                --> [10a] Transactie CRUD
+                  --> [10b] Hardware & AI  <-- beslissing: Lokaal Docker Volume
+                          WebSockets + fallback + /vision/analyze
+                    --> [10c] Admin Quarantaine Dashboard
+        --> [9] M2M tokens  <-- vóór 10b, Vision Box auth
 [11] Input sanitization (parallel, vanaf stap 10+)
 [12] Rate limiting (requires Redis: stap 6)
 [13] Hash-chaining audit logs (requires stap 10a)

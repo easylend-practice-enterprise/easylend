@@ -29,8 +29,8 @@ flowchart TD
     
     PollCheckout --> CheckoutStatus{Status updated?}
     CheckoutStatus -->|No (Pending)| PollCheckout
-    CheckoutStatus -->|Yes (Completed)| LendSuccess[Transaction Complete]
-    CheckoutStatus -->|Yes (Fraud/Error)| CheckoutError[Show Checkout Error]
+    CheckoutStatus -->|Yes (ACTIVE)| LendSuccess[Transaction Complete]
+    CheckoutStatus -->|Yes (FRAUD_SUSPECTED)| CheckoutError[Show Checkout Error]
     
     CheckoutError --> Dashboard
     LendSuccess --> Dashboard

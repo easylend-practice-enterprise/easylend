@@ -35,7 +35,7 @@ De Vision Box (Raspberry Pi 4) stuurt een foto door naar deze service via de API
 Benchmarken op de VM zelf:
 
 ```bash
-yolo benchmark model=yolo26m.pt imgsz=640
+uv run yolo benchmark model=yolo26m.pt imgsz=640
 ```
 
 ## Huidige staat
@@ -69,7 +69,7 @@ uv run ruff check . --fix
 uv run ruff format .
 ```
 
-## Export guide: PyTorch → ONNX / OpenVINO
+## Export guide: PyTorch --> ONNX / OpenVINO
 
 *Voor Injo: uit te voeren op de Proxmox VM of de trainingsmachine met GPU.*
 
@@ -82,7 +82,7 @@ Zorg dat `yolo26m.pt` beschikbaar is (getraind of gedownload via Ultralytics).
 Voor je exporteert, vergelijk de formaten op de **Proxmox VM zelf**:
 
 ```bash
-yolo benchmark model=yolo26m.pt imgsz=640
+uv run yolo benchmark model=yolo26m.pt imgsz=640
 ```
 
 Dit toont inference-snelheid per formaat (PyTorch, ONNX, OpenVINO, ...).
@@ -105,6 +105,9 @@ results = model("image.jpg")
 ```
 
 ### Stap 3b: Exporteren naar OpenVINO (INT8): aanbevolen voor Intel CPU
+
+> **Let op:** Om dit te kunnen doen, moet je eerst de juiste packages installeren, aangezien deze niet standaard in de `uv.lock` zitten om de image klein te houden:
+> `uv pip install openvino onnx onnxruntime`
 
 Geeft standaard FP32, voeg `int8=True` toe voor INT8 kwantisatie:
 
