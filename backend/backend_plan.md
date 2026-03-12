@@ -29,14 +29,14 @@
 
 ## Stap 2: Auth Research afronden
 
-**Ticket:** ELP-82 · **Status:** 📋 Next up · *Blokkeert: stap 3-5*
+**Ticket:** ELP-82 · **Status:** ✅ Done
 
 ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt over:
 
-- [ ] JWT algoritme (HS256 vs RS256)
-- [ ] Access token TTL (bijv. 15 min)
-- [ ] Refresh token TTL (bijv. 7 dagen)
-- [ ] Refresh token opslag: Redis key-structuur (`refresh:{user_id}:{token_id}`)
+- [x] JWT algoritme (HS256 vs RS256)
+- [x] Access token TTL (bijv. 15 min)
+- [x] Refresh token TTL (bijv. 7 dagen)
+- [x] Refresh token opslag: Redis key-structuur (`refresh:{user_id}:{token_id}`)
 
 ---
 
