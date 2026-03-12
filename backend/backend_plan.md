@@ -4,16 +4,16 @@
 
 ---
 
-## Stap 1: Password Hashing (lopend)
+## Stap 1: Password Hashing (afgerond)
 
-**Ticket:** ELP-23 · **Status:** 🔄 In Progress
+**Ticket:** ELP-23 · **Status:** ✅ Done
 
 - `passlib` of `bcrypt` integreren in de FastAPI app
 - Hash wachtwoord bij registratie / update
 - Verify bij login
 - **Done-criteria:** unit test die hash + verify valideert
 
-> **Seed script (chore, geen ticket):** `seed.py` wordt in de volgende sprint aangemaakt in `backend/api/`. Let op de **FK-volgorde**, de DB enforceert referentiële integriteit:
+> **Seed script (chore, geen ticket):** `seed.py` is beschikbaar onder `backend/api/scripts/seed.py`. Let op de **FK-volgorde**, de DB enforceert referentiële integriteit:
 >
 > ```text
 > Stap 1: ROLES (role_id wordt FK in USERS)
@@ -23,7 +23,7 @@
 > Stap 5: USERS met role_id --> ASSETS met category_id + locker_id
 > ```
 >
-> Uitvoeren: `uv run python seed.py`
+> Uitvoeren in lokale testomgeving: `uv run python scripts/seed.py`
 
 ---
 
