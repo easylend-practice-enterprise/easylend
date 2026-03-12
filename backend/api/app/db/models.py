@@ -262,7 +262,7 @@ class DamageReport(Base):
     damage_type: Mapped[str] = mapped_column(String(100), nullable=False)
     severity: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    # YOLOv26 bounding boxes / segmentations data
+    # YOLO26 bounding boxes / segmentations data
     segmentation_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     requires_repair: Mapped[bool] = mapped_column(Boolean, default=False)
 

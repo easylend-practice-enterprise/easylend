@@ -30,6 +30,32 @@ Bekijk onze documentatie voor meer duidelijkheid over het systeem:
 
 Zie de respectievelijke mappen voor specifieke setup-instructies per domein. De hoofd-infrastructuur (database, cache, monitoring) wordt beheerd via Docker Compose in `backend/database`.
 
+## Pre-commit
+
+Pre-commit is geconfigureerd via `.pre-commit-config.yaml` in de root en geldt voor alle Python microservices (`backend/api`, `backend/vision`, `simulation`). **Niet** van toepassing op de Flutter kiosk-app.
+
+Hooks die draaien bij elke commit:
+
+| Hook | Omschrijving |
+| --- | --- |
+| `ruff-check` | Linter (incl. security, isort, pyupgrade) auto-fix aan |
+| `ruff-format` | Code formatter |
+
+Eenmalig installeren in de repo root:
+
+```bash
+# Zorg dat je in de ROOT van de repository staat
+uv tool install pre-commit
+pre-commit install
+```
+
+Handmatig alle bestanden controleren:
+
+```bash
+# Handmatig alles controleren
+pre-commit run --all-files
+```
+
 ## Team
 
 Maxim Huardel, Jasper Savels en Injo De Pot zijn de hoofdontwikkelaars van dit project. We werken nauw samen en volgen de richtlijnen in `CONTRIBUTING.md` voor een gestroomlijnde samenwerking.

@@ -33,7 +33,7 @@ flowchart TD
         end
 
         subgraph VM2 ["VM 2: AI Microservice (Ubuntu)"]
-            YOLO["YOLOv26 Medium<br/>(Inference Engine)"]:::container
+            YOLO["YOLO26 Medium<br/>(Inference Engine)"]:::container
         end
     end
 
@@ -74,7 +74,7 @@ flowchart TD
     subgraph Backend ["Backend (Proxmox Server)"]
         direction TB
         API["FastAPI & WebSockets"]:::soft
-        AIService["YOLOv26 AI Service"]:::soft
+        AIService["YOLO26 AI Service"]:::soft
         PXE["PXE Live Boot Service"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
@@ -88,12 +88,14 @@ flowchart TD
     %% DOMEIN 3: VISION BOX (RECHTS)
     subgraph Box ["Vision Box (Thin Client)"]
         direction TB
-        RPi["Raspberry Pi / ESP32"]:::hard
+        RPi["Raspberry Pi 4"]:::hard
         CamBox[Camera]:::hard
         Lock["Elektronisch slot"]:::hard
+        LED["LED Strip"]:::hard
         
         CamBox -->|Photo| RPi
         RPi -->|"Open/Close"| Lock
+        RPi -->|"Status signaal"| LED
     end
 
     %% SIMULATIE (ONDER)
@@ -102,7 +104,7 @@ flowchart TD
     %% HOOFD VERBINDINGEN
     
     %% Kiosk praat met API
-    App <-->|"HTTPS JSON<br/>(JWT Auth)"| API
+    App <-->|"HTTPS REST + Polling<br/>(JWT Auth)"| API
 
     %% API praat met Box
     RPi <-->|"WSS & POST Image<br/>(Static API Key)"| API

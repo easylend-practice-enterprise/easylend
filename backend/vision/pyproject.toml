@@ -5,7 +5,7 @@ description = "AI Vision Service for EasyLend using YOLO"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "ultralytics", # YOLOv8 en alle AI dependencies (PyTorch, OpenCV, etc.)
+    "ultralytics>=8,<9", # YOLO26 en alle AI dependencies (PyTorch, OpenCV, etc.)
 ]
 
 [dependency-groups]

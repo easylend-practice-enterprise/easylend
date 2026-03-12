@@ -1,7 +1,7 @@
 # Mermaid
 
 ```mermaid
-flowchart
+flowchart TD
     Start[App Start] --> Login[Login Screen]
 
     Login --> NFC{NFC Badge Scan?}
@@ -9,7 +9,7 @@ flowchart
     BadgeID --> PIN[PIN Entry Screen]
 
     PIN --> ShowError{Error Displayed?}
-    ShowError -->|Yes| RateLimit[Rate Limit Screen<br/>4 attempts max]
+    ShowError -->|Yes| RateLimit[Rate Limit Screen<br/>5 attempts max]
     ShowError -->|No| Validate[Validate PIN via API]
 
     Validate -->|Success| AuthSuccess[Store JWT Token]
@@ -19,37 +19,42 @@ flowchart
 
     AuthSuccess --> Dashboard[Asset Catalog Dashboard]
 
+    %% CHECKOUT FLOW (Uitlenen via REST Polling)
     Dashboard --> SelectAsset{Select Asset to Lend?}
-    SelectAsset -->|Yes| ConfirmLend[Confirm Lending]
+    SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
 
-    ConfirmLend --> ScanAztec[Scan Aztec Code]
-    ScanAztec --> ValidateAztec[Validate via API]
-    ValidateAztec -->|Success| OpenBox[Open Vision Box Lock]
-    ValidateAztec -->|Error| ShowAztecError[Show Aztec Error]
-    ShowAztecError --> ScanAztec
-
-    OpenBox --> LendSuccess[Transaction Complete]
+    ConfirmLend --> APIOpenBox[POST /api/v1/loans/checkout]
+    APIOpenBox --> PollCheckout["App polls: GET /api/v1/loans/{loan_id}/status"]
+    
+    PollCheckout --> CheckoutStatus{Status updated?}
+    CheckoutStatus -->|No - Still RESERVED| PollCheckout
+    CheckoutStatus -->|Yes - ACTIVE| LendSuccess[Transaction Complete]
+    CheckoutStatus -->|Yes - FRAUD_SUSPECTED| CheckoutError[Show Checkout Error]
+    
+    CheckoutError --> Dashboard
     LendSuccess --> Dashboard
 
+    %% RETURN FLOW (Inleveren met Tablet Camera via REST Polling)
     Dashboard --> SelectReturn{Select Asset to Return?}
     SelectReturn -->|Yes| ConfirmReturn[Confirm Return]
-    ConfirmReturn --> ScanAztecReturn[Scan Aztec Code]
-    ScanAztecReturn --> ValidateAztecReturn[Validate via API]
+    SelectReturn -->|No| Dashboard
+
+    ConfirmReturn --> ScanAztecReturn[Tablet Camera: Scan Aztec Code]
+    ScanAztecReturn --> ValidateAztecReturn[POST /api/v1/loans/return/initiate]
+    
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
-    ValidateAztecReturn -->|Success| ActivateLight[Open Vision Box and activate Light]
-    SelectReturn -->|No| Dashboard
+    ValidateAztecReturn -->|Success| ReturnOpenBox["API Opens Vision Box<br/>Response: {loan_id}"]
+    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id uit initiate)"]
 
-    ActivateLight --> CapturePhoto[Capture Returned Item Photo]
-    CapturePhoto --> UploadPhoto[Upload Photo to AI Service]
+    PollReturn --> ReturnStatus{Status updated?}
+    ReturnStatus -->|No - Still ACTIVE| PollReturn
+    ReturnStatus -->|Yes - COMPLETED| ReturnSuccess[Return Complete]
+    ReturnStatus -->|Yes - PENDING_INSPECTION| ReturnQuarantine[Show Damage Alert]
 
-    UploadPhoto --> PollAI[Poll AI Inference Status]
-    PollAI --> AIComplete{AI Complete?}
-    AIComplete -->|Yes| ReturnSuccess[Return Complete]
-    AIComplete -->|No| PollAI
-
+    ReturnQuarantine --> Dashboard
     ReturnSuccess --> Dashboard
 
 ```
