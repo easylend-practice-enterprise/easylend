@@ -110,6 +110,7 @@ Linux/macOS (aanbevolen variant: pas paden en voorkeuren aan):
 Op Linux raden we aan `core.autocrlf` op `input` te zetten (convert CRLF --> LF on commit) of `false` als je volledig vertrouwt op `.gitattributes`. Een voorbeeldconfig:
 
 ```bash
+git config --global --list
 core.editor=code --wait
 core.autocrlf=input
 core.safecrlf=true
