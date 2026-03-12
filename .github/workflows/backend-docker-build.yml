@@ -51,6 +51,8 @@ jobs:
 
       - name: Run Pytest (Unit Tests)
         working-directory: ./backend/api
+        env:
+          JWT_SECRET_KEY: "dummy-secret-for-ci-testing-only"
         run: uv run pytest
 
   build-and-push-docker:
