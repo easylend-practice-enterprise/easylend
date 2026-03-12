@@ -24,15 +24,14 @@ logger = logging.getLogger(__name__)
 
 
 async def get_or_create(session, model, defaults=None, **kwargs):
-    """Helper functie om een bestaand record op te halen of een nieuwe aan te maken if not exists."""
-    # Copilot Fix 2: Check voor exacte matches en voorkom silent errors bij duplicaten
+    """Haalt een bestaand record op of maakt een nieuwe aan."""
     result = await session.execute(select(model).filter_by(**kwargs))
     instances = result.scalars().all()
 
     if len(instances) > 1:
         raise RuntimeError(
-            f"get_or_create vond meerdere records voor {model.__name__} "
-            f"met filter {kwargs}. Zorg voor unieke data of los duplicaten op."
+            f"Meerdere records gevonden voor {model.__name__} met filter {kwargs}. "
+            "Zorg voor unieke data."
         )
 
     if len(instances) == 1:
@@ -51,20 +50,16 @@ async def get_or_create(session, model, defaults=None, **kwargs):
 async def seed_database():
     env = os.getenv("ENVIRONMENT", "production").lower()
     if env != "development":
-        # Copilot Fix 1: Duidelijke instructies voor de developer
         raise RuntimeError(
-            f"Veiligheidsblokkade: Seeding is alleen toegestaan in 'development' (huidig: {env}).\n"
-            "Stel de omgevingsvariabele ENVIRONMENT in op 'development' om lokaal te seeden.\n"
-            'In PowerShell:  $env:ENVIRONMENT="development"; uv run python seed.py\n'
-            "In Bash/Zsh:    ENVIRONMENT=development uv run python seed.py"
+            f"Seeding is alleen toegestaan in development. Huidige omgeving is {env}.\n"
+            "Stel de omgevingsvariabele ENVIRONMENT in op 'development'."
         )
 
-    logger.info("🌱 Starten met seeden van de database...")
+    logger.info("Starten met seeden van de database.")
 
     async with AsyncSessionLocal() as session:
         try:
             async with session.begin():
-                # --- STAP 1: ROLES ---
                 roles_to_create = ["Admin", "Kiosk", "User"]
                 admin_role = None
                 for role_name in roles_to_create:
@@ -72,11 +67,10 @@ async def seed_database():
                         session, Role, role_name=role_name
                     )
                     if created:
-                        logger.info(f"✅ Rol aangemaakt: {role_name}")
+                        logger.info(f"Rol aangemaakt: {role_name}")
                     if role_name == "Admin":
                         admin_role = role
 
-                # --- STAP 2: CATEGORIES ---
                 cats_to_create = ["Laptops", "Tablets"]
                 laptop_cat = None
                 for cat_name in cats_to_create:
@@ -84,11 +78,10 @@ async def seed_database():
                         session, Category, category_name=cat_name
                     )
                     if created:
-                        logger.info(f"✅ Categorie aangemaakt: {cat_name}")
+                        logger.info(f"Categorie aangemaakt: {cat_name}")
                     if cat_name == "Laptops":
                         laptop_cat = cat
 
-                # --- STAP 3: KIOSKS ---
                 kiosk, created = await get_or_create(
                     session,
                     Kiosk,
@@ -99,9 +92,8 @@ async def seed_database():
                     name="Hoofdgebouw A",
                 )
                 if created:
-                    logger.info("✅ Kiosk aangemaakt: Hoofdgebouw A")
+                    logger.info("Kiosk aangemaakt: Hoofdgebouw A")
 
-                # --- STAP 4: LOCKERS ---
                 for logical_num, status in [
                     (1, LockerStatus.OCCUPIED),
                     (2, LockerStatus.AVAILABLE),
@@ -115,26 +107,31 @@ async def seed_database():
                         logical_number=logical_num,
                     )
                     if created:
-                        logger.info(f"✅ Locker aangemaakt: Logical nr {logical_num}")
+                        logger.info(f"Locker aangemaakt. Logical nr: {logical_num}")
 
-                # --- STAP 5: USERS ---
                 if not admin_role:
-                    raise RuntimeError("Admin rol mist! Kan gebruiker niet aanmaken.")
+                    raise RuntimeError("Admin rol mist. Kan gebruiker niet aanmaken.")
 
                 admin_pin = os.getenv("ADMIN_DEFAULT_PIN", "123456")
                 admin_email = os.getenv("ADMIN_DEFAULT_EMAIL", "admin@easylend.be")
                 admin_nfc = "NFC-ADMIN-001"
 
-                # Copilot Fix 3: Zoek op Email OF NFC tag (Upsert logica)
                 result = await session.execute(
                     select(User).where(
                         or_(User.email == admin_email, User.nfc_tag_id == admin_nfc)
                     )
                 )
-                admin_user = result.scalars().first()
+                admin_users = result.scalars().all()
+
+                if len(admin_users) > 1:
+                    raise RuntimeError(
+                        "Meerdere admin users gevonden met hetzelfde email of NFC-tag. "
+                        "Los dit conflict op."
+                    )
+
+                admin_user = admin_users[0] if admin_users else None
 
                 if admin_user:
-                    # Update bestaande gebruiker
                     admin_user.email = admin_email
                     admin_user.nfc_tag_id = admin_nfc
                     admin_user.role_id = admin_role.role_id
@@ -155,16 +152,15 @@ async def seed_database():
                     created = True
 
                 if created:
-                    logger.info(f"✅ Admin user aangemaakt ({admin_email}).")
+                    logger.info(f"Admin user aangemaakt: {admin_email}")
 
-                # --- STAP 6: ASSETS ---
                 locker1, _ = await get_or_create(
                     session, Locker, kiosk_id=kiosk.kiosk_id, logical_number=1
                 )
 
                 if not laptop_cat or not locker1:
                     raise RuntimeError(
-                        "Categorie of Locker mist! Kan asset niet aanmaken."
+                        "Categorie of Locker mist. Kan asset niet aanmaken."
                     )
 
                 asset, created = await get_or_create(
@@ -179,15 +175,15 @@ async def seed_database():
                     aztec_code="AZ-LAP-001",
                 )
                 if created:
-                    logger.info("✅ Asset aangemaakt: Dell XPS 15")
+                    logger.info("Asset aangemaakt: Dell XPS 15")
 
-            logger.info("🚀 Database seeding voltooid!")
+            logger.info("Database seeding voltooid.")
 
         except SQLAlchemyError as e:
-            logger.error(f"❌ Database error tijdens seeding: {e}")
+            logger.error(f"Database error tijdens seeding: {e}")
             raise
         except Exception as e:
-            logger.error(f"❌ Onverwachte fout tijdens seeding: {e}")
+            logger.error(f"Onverwachte fout tijdens seeding: {e}")
             raise
 
 
