@@ -1,0 +1,3 @@
+# uv gebruikt quinn-proto voor downloads, maar draait niet als webserver. 
+# Geen risico voor onze applicatie. Wachten op upstream patch van Astral.
+CVE-2026-31812
