@@ -3,8 +3,10 @@ import logging
 import os
 import sys
 
+# Zorg ervoor dat Python de 'app' module kan vinden vanaf de scripts map
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy import or_, select
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.security import get_pin_hash
 from app.db.database import AsyncSessionLocal
@@ -23,8 +25,8 @@ from app.db.models import (
 logger = logging.getLogger(__name__)
 
 
-async def get_or_create(session, model, defaults=None, **kwargs):
-    """Haalt een bestaand record op of maakt een nieuwe aan."""
+async def get_or_create(session, model, defaults=None, update_existing=False, **kwargs):
+    """Haalt een bestaand record op of maakt een nieuwe aan. Werkt bestaande bij indien vereist."""
     result = await session.execute(select(model).filter_by(**kwargs))
     instances = result.scalars().all()
 
@@ -35,7 +37,11 @@ async def get_or_create(session, model, defaults=None, **kwargs):
         )
 
     if len(instances) == 1:
-        return instances[0], False
+        instance = instances[0]
+        if defaults and update_existing:
+            for key, value in defaults.items():
+                setattr(instance, key, value)
+        return instance, False
 
     params = dict((k, v) for k, v in kwargs.items())
     if defaults:
@@ -48,13 +54,6 @@ async def get_or_create(session, model, defaults=None, **kwargs):
 
 
 async def seed_database():
-    env = os.getenv("ENVIRONMENT", "production").lower()
-    if env != "development":
-        raise RuntimeError(
-            f"Seeding is alleen toegestaan in development. Huidige omgeving is {env}.\n"
-            "Stel de omgevingsvariabele ENVIRONMENT in op 'development'."
-        )
-
     logger.info("Starten met seeden van de database.")
 
     async with AsyncSessionLocal() as session:
@@ -89,6 +88,7 @@ async def seed_database():
                         "location_description": "Inkomhal naast de receptie",
                         "kiosk_status": KioskStatus.ONLINE,
                     },
+                    update_existing=True,
                     name="Hoofdgebouw A",
                 )
                 if created:
@@ -103,6 +103,7 @@ async def seed_database():
                         session,
                         Locker,
                         defaults={"locker_status": status},
+                        update_existing=True,
                         kiosk_id=kiosk.kiosk_id,
                         logical_number=logical_num,
                     )
@@ -172,6 +173,7 @@ async def seed_database():
                         "name": "Dell XPS 15",
                         "asset_status": AssetStatus.AVAILABLE,
                     },
+                    update_existing=True,
                     aztec_code="AZ-LAP-001",
                 )
                 if created:
@@ -179,11 +181,8 @@ async def seed_database():
 
             logger.info("Database seeding voltooid.")
 
-        except SQLAlchemyError as e:
-            logger.error(f"Database error tijdens seeding: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Onverwachte fout tijdens seeding: {e}")
+        except Exception:
+            logger.exception("Fout tijdens seeding")
             raise
 
 
