@@ -172,9 +172,13 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 De basis business-logica zonder hardware-koppeling: testbaar via Swagger/Postman.
 
 - `POST /api/v1/loans/checkout`: asset uitlenen, locker toewijzen
-  - 🏆 **Pro-feature (Idempotentie):** Vereist een `Idempotency-Key` in de header (bijv. een UUID). De API checkt in Redis of deze key recent gebruikt is om te voorkomen dat een haperende tablet (double-taps) per ongeluk twee leningen start.
-- `POST /api/v1/loans/return/initiate`: inleverproces starten, vrije locker zoeken
-- Validatie: asset beschikbaar? gebruiker actief? locker vrij?
+  - **Concurrency:** Gebruik `SELECT ... FOR UPDATE NOWAIT` om te garanderen dat 2 users nooit tegelijkertijd hetzelfde asset krijgen toegewezen.
+  - **Pro-feature (Idempotentie):** Vereist een `Idempotency-Key` in de header (bijv. een UUID). De API checkt in Redis of deze key recent gebruikt is om te voorkomen dat een haperende tablet (double-taps) per ongeluk twee leningen start.
+- `POST /api/v1/loans/return/initiate`: inleverproces starten, vrije locker zoeken.
+  - **Pro-feature (Idempotentie):** Vereist een `Idempotency-Key` in de header (tegen double-taps).
+- `GET /api/v1/loans/{loan_id}/status`: polling endpoint voor de actuele transactiestatus.
+- **Timeout Worker (Hardware-bewust):** Een achtergrondtaak annuleert leningen na 3 minuten inactiviteit. **Let op:** Als de hardware al is geactiveerd (WSS `open_slot` is verstuurd) mag de status NOOIT gerollbacked worden naar `AVAILABLE`. Bij een timeout ná fysieke actie gaat de locker direct naar `MAINTENANCE` (fysieke controle vereist).
+- Validatie: asset beschikbaar/actief? gebruiker actief? locker vrij? **Is deze lening van de ingelogde gebruiker (`loan.user_id == jwt.sub`)?**
 - Status-update asset + locker + audit log entry
 
 ---
@@ -197,8 +201,8 @@ We gebruiken een **Lokaal Docker Volume** (`/app/uploads`). Dit past perfect in 
 **WebSockets (Vision Box aansturing):**
 
 - WebSocket manager opzetten in FastAPI (`/ws/visionbox`)
-- `open_slot {locker_id}` sturen na checkout-goedkeuring
-- `set_led {color}` sturen op basis van AI-resultaat of fout
+- `open_slot {locker_id, loan_id}` sturen na checkout-goedkeuring
+- `set_led {locker_id, color}` sturen op basis van AI-resultaat of fout
 - `slot_closed` event ontvangen van Vision Box
 - **Fallback:** als er geen actieve WSS-sessie is van de Vision Box --> stuur `503` terug naar de App met melding "Vision Box niet bereikbaar". Log in audit.
 
@@ -208,8 +212,9 @@ We gebruiken een **Lokaal Docker Volume** (`/app/uploads`). Dit past perfect in 
 - Sla foto op in `/app/uploads` --> genereer `photo_url`
 - Stuurt foto door naar YOLO26 AI Service (VM2)
 - Verwerkt resultaat:
-  - **Checkout:** kluisje leeg? --> `ACTIVE` of `FRAUD_SUSPECTED`
+  - **Checkout:** kluisje leeg? --> `ACTIVE` of `FRAUD_SUSPECTED` (bij fraude: asset + locker terug naar `AVAILABLE`)
   - **Return:** schade? --> `COMPLETED` of `PENDING_INSPECTION`
+  - **Fallback (AI Timeout/Crash):** Als de AI VM niet antwoordt binnen 10s: markeer loan als `PENDING_INSPECTION`, locker naar `MAINTENANCE` (vereist fysieke controle door beheerder).
 - Slaat op in `ai_evaluations` tabel inclusief `photo_url` en `model_version`
 
 ---
@@ -236,13 +241,20 @@ Endpoints voor het beheerpaneel om geblokkeerde leningen (schade of fraude) af t
 
 ---
 
-## Stap 12: Rate Limiting
+## Stap 12: Rate Limiting & Abuse Prevention
 
 **Ticket:** ELP-31 · **Status:** ❌ Open · *Requires: stap 6 (Redis)*
 
-- `slowapi` of Redis-based rate limiter
-- Login endpoint: max 5 pogingen / 15 min per IP
-- API algemeen: max 100 req/min per token
+Rate limiting gebeurt in 3 strategische lagen (hybride aanpak):
+
+1. **Laag 1: Business Logic (Vertical Brute-force)**
+   - De database (`failed_login_attempts`) blokkeert één specifiek account na 5 foute PINs.
+2. **Laag 2: Public Endpoints (DDoS & Horizontal Brute-force)**
+   - Endpoints zoals `/auth/nfc` zijn publiek. Hier gebruiken we **IP-based** rate limiting via Redis/slowapi.
+   - We zetten de limiet ruim (bijv. 500 req/min per IP) om problemen met campus-NAT (meerdere kiosken op 1 netwerk) te voorkomen, maar bots te blokkeren.
+3. **Laag 3: Authenticated Endpoints (Spam/Glitch preventie)**
+   - Zodra een client een JWT of M2M token heeft, rate-limiten we op **Token ID (`sub` / `kiosk_id`)**.
+   - Dit voorkomt dat een gecompromitteerd account of haperende app de server overbelast (bijv. 60 req/min per user), zonder andere gebruikers op hetzelfde netwerk te straffen.
 
 ---
 
