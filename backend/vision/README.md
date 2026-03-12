@@ -12,7 +12,7 @@ De Vision Box (Raspberry Pi 4) stuurt een foto door naar deze service via de API
 
 | Eigenschap | Waarde |
 | --- | --- |
-| Model | YOLO26 Medium (`yolo26m.pt`) |
+| Model | YOLO26 Medium Segmentation (`yolo26m-seg.pt`) |
 | Framework | [Ultralytics](https://docs.ultralytics.com/) |
 | Training hardware | RTX 3090 (CUDA) |
 | Inferentie | Proxmox VM (CPU-only) |
@@ -47,7 +47,7 @@ Bestanden in deze repo:
 
 Lokaal gegenereerde/gedownloade artifacts (**niet** in Git, staan in `.gitignore`):
 
-- `yolo26m.pt`: YOLO26 Medium model
+- `yolo26m-seg.pt`: YOLO26 Medium Segmentation model
 - `datasets/`: trainingsdatasets
 - `runs/`: trainingsresultaten (Ultralytics output)
 
@@ -55,7 +55,7 @@ Lokaal gegenereerde/gedownloade artifacts (**niet** in Git, staan in `.gitignore
 
 ## Lokaal uitvoeren
 
-*(Zorg dat `yolo26m.pt` en de `datasets/` map lokaal aanwezig zijn)*
+*(Zorg dat `yolo26m-seg.pt` en de `datasets/` map lokaal aanwezig zijn)*
 
 ```bash
 uv run python main.py
@@ -75,14 +75,14 @@ uv run ruff format .
 
 ### Stap 1: Model trainen of downloaden
 
-Zorg dat `yolo26m.pt` beschikbaar is (getraind of gedownload via Ultralytics).
+Zorg dat `yolo26m-seg.pt` beschikbaar is (getraind of gedownload via Ultralytics).
 
 ### Stap 2: Benchmarken (optioneel maar aanbevolen)
 
 Voor je exporteert, vergelijk de formaten op de **Proxmox VM zelf**:
 
 ```bash
-uv run yolo benchmark model=yolo26m.pt imgsz=640
+uv run yolo benchmark model=yolo26m-seg.pt imgsz=640
 ```
 
 Dit toont inference-snelheid per formaat (PyTorch, ONNX, OpenVINO, ...).
@@ -92,10 +92,10 @@ Dit toont inference-snelheid per formaat (PyTorch, ONNX, OpenVINO, ...).
 Makkelijkste optie, werkt op elke CPU:
 
 ```bash
-yolo export model=yolo26m.pt format=onnx imgsz=640
+yolo export model=yolo26m-seg.pt format=onnx imgsz=640
 ```
 
-Geeft `yolo26m.onnx` terug. Inferentie:
+Geeft `yolo26m-seg.onnx` terug. Inferentie:
 
 ```python
 from ultralytics import YOLO
@@ -112,15 +112,15 @@ results = model("image.jpg")
 Geeft standaard FP32, voeg `int8=True` toe voor INT8 kwantisatie:
 
 ```bash
-yolo export model=yolo26m.pt format=openvino imgsz=640 int8=True
+yolo export model=yolo26m-seg.pt format=openvino imgsz=640 int8=True
 ```
 
-Geeft een map `yolo26m_openvino_model/` terug. Inferentie:
+Geeft een map `yolo26m-seg_openvino_model/` terug. Inferentie:
 
 ```python
 from ultralytics import YOLO
 
-model = YOLO("yolo26m_openvino_model/")
+model = YOLO("yolo26m-seg_openvino_model/")
 results = model("image.jpg")
 ```
 

@@ -6,13 +6,14 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 def main():
-    model = YOLO("yolo26n.pt")
+    model = YOLO("yolo26m-seg.pt")
     model.train(
-        data="datasets/rock-paper-scissors/data.yaml",
-        epochs=5,
+        data="datasets/Laptop.v2-laptop.yolo26/data.yaml",
+        epochs=10,
         imgsz=640,
-        name="yolo26n_rock-paper-scissors",
-        project=os.path.join(current_dir, "runs", "rock-paper-scissors"),
+        device=0,
+        name="yolo26m-seg_laptop_detection",
+        project=os.path.join(current_dir, "runs", "laptop-detection"),
     )
 
 
