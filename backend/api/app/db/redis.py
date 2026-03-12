@@ -8,30 +8,41 @@ redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 async def check_redis_connection():
     try:
         await redis_client.ping()  # type: ignore
-        print("✅ Succesvol verbonden met Redis Cache!")
+        print("Succesvol verbonden met Redis Cache.")
     except Exception as e:
-        print(f"❌ Kan niet verbinden met Redis: {e}")
+        print(f"Kan niet verbinden met Redis: {e}")
 
 
-async def set_refresh_token(user_id: str, token: str, expires_in: int = 604800):
+async def set_refresh_token(user_id: str, jti: str, expires_in: int = 604800):
     """
-    Slaat een refresh token op in Redis.
-    Standaard vervaltijd is 7 dagen (604800 seconden).
+    Markeert een sessie als actief in Redis op basis van user_id en jti (multi-session).
     """
-    # We gebruiken een logische sleutel, bijv. "refresh_token:123"
-    await redis_client.set(f"refresh_token:{user_id}", token, ex=expires_in)
+    await redis_client.set(f"refresh:{user_id}:{jti}", "active", ex=expires_in)
 
 
-async def get_refresh_token(user_id: str) -> str | None:
+async def verify_refresh_token_exists(user_id: str, jti: str) -> bool:
     """
-    Haalt het refresh token van een specifieke gebruiker op.
-    Geeft None terug als het token niet bestaat of verlopen is.
+    Controleert of een specifieke sessie nog actief is.
     """
-    return await redis_client.get(f"refresh_token:{user_id}")
+    result = await redis_client.exists(f"refresh:{user_id}:{jti}")
+    return result > 0
 
 
-async def delete_refresh_token(user_id: str):
+async def revoke_refresh_token(user_id: str, jti: str):
     """
-    Verwijdert het refresh token (wordt gebruikt bij uitloggen).
+    Verwijdert één specifieke sessie (logout van één apparaat).
     """
-    await redis_client.delete(f"refresh_token:{user_id}")
+    await redis_client.delete(f"refresh:{user_id}:{jti}")
+
+
+async def revoke_all_refresh_tokens(user_id: str):
+    """
+    Verwijdert alle actieve sessies van een gebruiker (overal uitloggen).
+    """
+    cursor = 0
+    while True:
+        cursor, keys = await redis_client.scan(cursor, match=f"refresh:{user_id}:*")
+        if keys:
+            await redis_client.delete(*keys)
+        if cursor == 0:
+            break

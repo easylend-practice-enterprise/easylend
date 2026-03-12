@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 class TokenPayload(BaseModel):
     """
-    Payload structuur van de JWT token (wat er ín de token versleuteld zit).
+    Payload structuur van de JWT token (wat er ín de token gesigned en base64url-gecodeerd zit).
     Dit gebruiken we intern in de applicatie om permissies te checken.
     """
 

@@ -36,7 +36,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - [x] JWT algoritme (HS256 vs RS256)
 - [x] Access token TTL (bijv. 15 min)
 - [x] Refresh token TTL (bijv. 7 dagen)
-- [x] Refresh token opslag: Redis key-structuur (`refresh:{user_id}:{token_id}`)
+- [x] Refresh token opslag: Redis key-structuur (`refresh_token:{user_id}`)
 
 ---
 
@@ -91,7 +91,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - Refresh tokens opslaan in Redis met TTL:
 
   ```text
-  SET refresh:{jti} {user_id} EX 604800
+  SET refresh_token:{user_id} {token} EX 604800
   ```
 
 - Revocation check bij elke refresh aanvraag
