@@ -4,9 +4,9 @@
 
 ---
 
-## Stap 1: Password Hashing (lopend)
+## Stap 1: Password Hashing (afgerond)
 
-**Ticket:** ELP-23 · **Status:** 🔄 In Progress
+**Ticket:** ELP-23 · **Status:** ✅ Done
 
 - `passlib` of `bcrypt` integreren in de FastAPI app
 - Hash wachtwoord bij registratie / update
