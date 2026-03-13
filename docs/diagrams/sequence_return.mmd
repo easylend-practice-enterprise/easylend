@@ -31,7 +31,7 @@ sequenceDiagram
             API->>DB: BEGIN transactie
             API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' FOR UPDATE SKIP LOCKED
             DB-->>API: Vrije locker (LIMIT 1)
-            API->>DB: UPDATE lockers SET locker_status = 'RESERVED'
+            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = return_locker_id
             API->>DB: COMMIT
             API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
             App-->>User: Toon lader: "Breng item naar locker #N"
@@ -48,7 +48,7 @@ sequenceDiagram
             alt Kluisje is leeg (Fraude!) of Schade gedetecteerd
                 API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
                 API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE'
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = return_locker_id
                 API->>VB: WSS: set_led {return_locker_id, color: orange}
             else AI timeout (Model crash)
                 API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
@@ -59,7 +59,7 @@ sequenceDiagram
             else Item aanwezig en Geen schade
                 API->>DB: UPDATE loans SET loan_status = 'COMPLETED'
                 API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = return_locker_id
-                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED'
+                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = return_locker_id
                 API->>VB: WSS: set_led {return_locker_id, color: green}
             end
 
