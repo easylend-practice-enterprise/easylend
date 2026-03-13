@@ -15,7 +15,7 @@ sequenceDiagram
         App-->>User: "Kluisje momenteel buiten gebruik"
     else Vision Box online
         API->>DB: BEGIN transactie
-        API->>DB: SELECT * FROM assets WHERE asset_id = ? AND asset_status = 'AVAILABLE' FOR UPDATE NOWAIT
+        API->>DB: SELECT * FROM assets WHERE asset_id = ? AND asset_status = 'AVAILABLE' AND is_deleted = FALSE FOR UPDATE NOWAIT
         DB-->>API: Asset + locker_id
 
         alt Asset niet beschikbaar (of DB locked)
