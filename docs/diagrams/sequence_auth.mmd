@@ -33,7 +33,7 @@ sequenceDiagram
             App-->>User: Foutmelding
         else PIN correct
             API->>DB: UPDATE users SET failed_login_attempts = 0
-            API->>DB: INSERT audit_log {LOGIN_SUCCESS}
+            API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_SUCCESS'}
             API-->>App: 200 OK {access_token: JWT}
             App-->>User: Ingelogd: toon asset catalogus
         end
