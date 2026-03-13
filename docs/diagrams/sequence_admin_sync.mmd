@@ -8,7 +8,7 @@ sequenceDiagram
     Note over App,API: Scenario A: Kiosk Boot Sequence
     App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [Met M2M Token]
     API->>DB: Haal fysieke status van kluisjes op
-    DB-->>API: Statussen (bijv. AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, OCCUPIED)
+    DB-->>API: Statussen (bijv. AVAILABLE, MAINTENANCE, OCCUPIED)
     API-->>App: 200 OK (Kiosk UI tekent actuele kluisjes)
 
     Note over Admin,VB: Scenario B: Admin Remote Control
