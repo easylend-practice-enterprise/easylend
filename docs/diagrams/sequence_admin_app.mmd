@@ -30,7 +30,7 @@ sequenceDiagram
         opt Markeer als Defect
             Admin->>App: Tik op Kluisje 1 -> Markeer MAINTENANCE
             App->>API: PATCH /api/v1/lockers/1/status {locker_status: 'MAINTENANCE'}
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE'
+            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = 1
             API-->>App: 200 OK (Kluisje gemarkeerd)
         end
 
