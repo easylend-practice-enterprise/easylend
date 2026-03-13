@@ -14,7 +14,7 @@ sequenceDiagram
         Admin->>App: Selecteert Kiosk A en opent Locker Grid
         App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers
         API->>DB: Haal fysieke status van kluisjes op
-        DB-->>API: Statussen (bijv. AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, OCCUPIED)
+        DB-->>API: Statussen (bijv. AVAILABLE, MAINTENANCE, OCCUPIED)
         API-->>App: 200 OK (Actuele status per locker)
 
         opt Forceer Deur Open
