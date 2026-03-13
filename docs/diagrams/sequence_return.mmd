@@ -53,7 +53,7 @@ sequenceDiagram
             else AI timeout (Model crash)
                 API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
                 API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE'
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = return_locker_id
                 API->>VB: WSS: set_led {return_locker_id, color: orange}
                 Note over API,DB: Handmatige controle vereist wegens systeemfout
             else Item aanwezig en Geen schade
