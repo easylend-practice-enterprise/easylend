@@ -71,6 +71,7 @@ class AssetStatus(enum.StrEnum):
     AVAILABLE = "AVAILABLE"
     BORROWED = "BORROWED"
     RESERVED = "RESERVED"
+    PENDING_INSPECTION = "PENDING_INSPECTION"
     MAINTENANCE = "MAINTENANCE"
     LOST = "LOST"
 
@@ -157,6 +158,7 @@ class Asset(Base):
     asset_status: Mapped[AssetStatus] = mapped_column(
         Enum(AssetStatus), default=AssetStatus.AVAILABLE
     )
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
 
     category: Mapped["Category"] = relationship("Category", back_populates="assets")
     locker: Mapped["Locker"] = relationship("Locker", back_populates="assets")

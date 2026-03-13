@@ -1,0 +1,40 @@
+sequenceDiagram
+    actor User as Gebruiker
+    participant App as Kiosk App (Flutter)
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    User->>App: Houdt NFC-badge voor lezer
+    App->>API: POST /api/v1/auth/nfc {nfc_tag_id}
+    API->>DB: SELECT * FROM users WHERE nfc_tag_id = ?
+    DB-->>API: User record
+
+    alt Account geblokkeerd (locked_until > NOW)
+        API-->>App: 403 Account geblokkeerd
+        App-->>User: "Account tijdelijk geblokkeerd"
+    else Account actief
+        API-->>App: 200 OK (Vraag PIN)
+        App-->>User: Toon PIN-invoer scherm
+        User->>App: Voert PIN in
+        App->>API: POST /api/v1/auth/pin {nfc_tag_id, pin}
+        API->>DB: SELECT pin_hash FROM users WHERE nfc_tag_id = ?
+        DB-->>API: pin_hash
+
+        alt PIN incorrect
+            API->>DB: UPDATE users SET failed_login_attempts = failed_login_attempts + 1
+                alt Limiet bereikt (5 pogingen)
+                    API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes'
+                    API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
+                API-->>App: 403 Account geblokkeerd
+                else Nog pogingen over
+                API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED'}
+                API-->>App: 401 Onjuiste PIN (N pogingen over)
+            end
+            App-->>User: Foutmelding
+        else PIN correct
+            API->>DB: UPDATE users SET failed_login_attempts = 0
+            API->>DB: INSERT audit_log {LOGIN_SUCCESS}
+            API-->>App: 200 OK {access_token: JWT}
+            App-->>User: Ingelogd: toon asset catalogus
+        end
+    end

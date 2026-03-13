@@ -16,49 +16,7 @@ De vier kernflows zijn:
 
 De gebruiker scant zijn NFC-badge en voert zijn PIN in om een JWT-token te ontvangen. Ingebouwd anti-brute-force mechanisme blokkeert het account na 5 mislukte pogingen.
 
-```mermaid
-sequenceDiagram
-    actor User as Gebruiker
-    participant App as Kiosk App (Flutter)
-    participant API as FastAPI Backend
-    participant DB as PostgreSQL
-
-    User->>App: Houdt NFC-badge voor lezer
-    App->>API: POST /api/v1/auth/nfc {nfc_tag_id}
-    API->>DB: SELECT user WHERE nfc_tag_id = ?
-    DB-->>API: User record
-
-    alt Account geblokkeerd (locked_until > NOW)
-        API-->>App: 403 Account geblokkeerd
-        App-->>User: "Account tijdelijk geblokkeerd"
-    else Account actief
-        API-->>App: 200 OK (Vraag PIN)
-        App-->>User: Toon PIN-invoer scherm
-        User->>App: Voert PIN in
-        App->>API: POST /api/v1/auth/pin {nfc_tag_id, pin}
-        API->>DB: SELECT pin_hash WHERE nfc_tag_id = ?
-        DB-->>API: pin_hash
-
-        alt PIN incorrect
-            API->>DB: UPDATE failed_login_attempts + 1
-            alt Limiet bereikt (5 pogingen)
-                API->>DB: SET locked_until = NOW() + interval '15 minutes'
-                API->>DB: INSERT audit_log {LOGIN_FAILED, ACCOUNT_LOCKED}
-                API-->>App: 403 Account geblokkeerd
-            else Nog pogingen over
-                API->>DB: INSERT audit_log {LOGIN_FAILED}
-                API-->>App: 401 Onjuiste PIN (N pogingen over)
-            end
-            App-->>User: Foutmelding
-        else PIN correct
-            API->>DB: UPDATE failed_login_attempts = 0
-            API->>DB: INSERT audit_log {LOGIN_SUCCESS}
-            API-->>App: 200 OK {access_token: JWT}
-            App-->>User: Ingelogd: toon asset catalogus
-        end
-    end
-
-```
+[Bekijk het sequence diagram: Login Flow](./diagrams/sequence_auth.mmd)
 
 ---
 
@@ -66,75 +24,7 @@ sequenceDiagram
 
 De app vraagt een lening aan via REST. De API stuurt de Vision Box aan via WSS. De app "pollt" intussen de API om te weten of de hardware- en AI-acties zijn voltooid.
 
-```mermaid
-sequenceDiagram
-    actor User as Gebruiker
-    participant App as Kiosk App (Flutter)
-    participant API as FastAPI Backend
-    participant DB as PostgreSQL
-    participant VB as Vision Box (RPi 4)
-    participant AI as YOLO26 AI Service (VM2)
-
-    User->>App: Kiest asset uit catalogus
-    App->>API: POST /api/v1/loans/checkout {asset_id} [JWT, Idempotency-Key]
-    
-    API->>VB: Controleer WSS verbinding
-    alt Vision Box offline
-        API-->>App: 503 Service Unavailable (Hardware offline)
-        App-->>User: "Kluisje momenteel buiten gebruik"
-    else Vision Box online
-        API->>DB: BEGIN transactie
-        API->>DB: SELECT asset WHERE asset_id = ? AND asset_status = AVAILABLE FOR UPDATE NOWAIT
-        DB-->>API: Asset + locker_id
-
-        alt Asset niet beschikbaar (of DB locked)
-            API-->>App: 409 Conflict
-            App-->>User: "Item is momenteel niet beschikbaar"
-        else Asset beschikbaar
-            API->>DB: INSERT loan {loan_status: RESERVED}
-            API->>DB: UPDATE asset SET asset_status = BORROWED
-            API->>DB: UPDATE locker SET locker_status = RESERVED
-            API->>DB: COMMIT
-            API-->>App: 202 Accepted {loan_id, locker_number}
-            App-->>User: Toon lader: "Ga naar locker #N"
-
-        Note over API,VB: API stuurt Vision Box realtime aan
-        API->>VB: WSS: open_slot {locker_id, loan_id}
-        VB->>VB: GPIO: slot openen + LED groen
-
-        User->>VB: Neemt item uit locker, sluit deur
-        VB->>API: WSS: slot_closed event
-
-        Note over VB,AI: Achtergrondcontrole: kluisje moet leeg zijn
-        VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: CHECKOUT}
-        API->>AI: POST /predict {image}
-        AI-->>API: {locker_empty, confidence}
-
-        alt Kluisje niet leeg (Fraude/Fout: item niet meegenomen)
-            API->>DB: UPDATE loan SET loan_status = FRAUD_SUSPECTED
-            API->>DB: UPDATE asset SET asset_status = AVAILABLE
-            API->>DB: UPDATE locker SET locker_status = AVAILABLE
-            API->>VB: WSS: set_led {locker_id, color: red}
-        else Kluisje leeg (Succes)
-            API->>DB: UPDATE locker SET locker_status = AVAILABLE
-            API->>DB: UPDATE loan SET loan_status = ACTIVE
-            API->>VB: WSS: set_led {locker_id, color: green}
-        end
-
-        Note over App,API: App vraagt de API elke 3 sec om een statusupdate (Polling)
-        App->>API: GET /api/v1/loans/{loan_id}/status
-        
-        alt Status is FRAUD_SUSPECTED
-            API-->>App: 200 OK {status: FRAUD_SUSPECTED}
-            App-->>User: "Fout gedetecteerd. Item niet meegenomen."
-        else Status is ACTIVE
-            API-->>App: 200 OK {status: ACTIVE}
-            App-->>User: "Veel succes! Breng het item tijdig terug."
-        end
-    end
-end
-
-```
+[Bekijk het sequence diagram: Checkout Flow](./diagrams/sequence_checkout.mmd)
 
 ---
 
@@ -142,83 +32,7 @@ end
 
 De gebruiker scant de Aztec code via de tablet. De API wijst een leeg kluisje toe. Na het sluiten controleert de AI of het item daadwerkelijk in het kluisje ligt en of er schade is.
 
-```mermaid
-sequenceDiagram
-    actor User as Gebruiker
-    participant App as Kiosk App (Flutter)
-    participant API as FastAPI Backend
-    participant DB as PostgreSQL
-    participant VB as Vision Box (RPi 4)
-    participant AI as YOLO26 AI Service (VM2)
-
-    User->>App: Kiest "Item inleveren"
-    App-->>User: Toon Aztec code scanner (Tablet Camera)
-    User->>App: Scant Aztec code van item
-    App->>API: POST /api/v1/loans/return/initiate {aztec_code} [JWT, Idempotency-Key]
-    API->>DB: SELECT loan WHERE aztec_code = ? AND loan_status = ACTIVE
-    DB-->>API: loan info
-
-    alt Geen actieve lening gevonden
-        API-->>App: 404 Not Found
-        App-->>User: "Geen actieve lening voor dit item"
-    else Lening behoort tot andere gebruiker
-        API->>DB: Check of loan.user_id == jwt.sub
-        API-->>App: 403 Forbidden
-        App-->>User: "Dit item is niet door jou uitgeleend"
-    else Lening gevonden & Eigenaar klopt
-        API->>VB: Controleer WSS verbinding
-        alt Vision Box offline
-            API-->>App: 503 Service Unavailable
-            App-->>User: "Kluisjes momenteel buiten gebruik"
-        else Vision Box online
-            API->>DB: BEGIN transactie
-            API->>DB: SELECT locker WHERE kiosk_id = current_kiosk_id AND locker_status = AVAILABLE FOR UPDATE SKIP LOCKED
-            DB-->>API: Vrije locker (LIMIT 1)
-            API->>DB: UPDATE locker SET locker_status = RESERVED
-            API->>DB: COMMIT
-            API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
-            App-->>User: Toon lader: "Breng item naar locker #N"
-
-            API->>VB: WSS: open_slot {return_locker_id, loan_id}
-            VB->>VB: GPIO: slot openen + LED groen
-            User->>VB: Plaatst item in locker, sluit deur
-            VB->>API: WSS: slot_closed event
-
-            VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
-            API->>AI: POST /predict {image}
-            AI-->>API: {is_empty, has_damage, damage_details}
-
-            alt Kluisje is leeg (Fraude!) of Schade gedetecteerd
-                API->>DB: UPDATE loan SET loan_status = PENDING_INSPECTION
-                API->>DB: UPDATE asset SET asset_status = PENDING_INSPECTION
-                API->>DB: UPDATE locker SET locker_status = MAINTENANCE
-                API->>VB: WSS: set_led {return_locker_id, color: orange}
-            else AI timeout (Model crash)
-                API->>DB: UPDATE loan SET loan_status = PENDING_INSPECTION
-                API->>DB: UPDATE locker SET locker_status = MAINTENANCE
-                API->>VB: WSS: set_led {return_locker_id, color: orange}
-                Note over API,DB: Handmatige controle vereist wegens systeemfout
-            else Item aanwezig en Geen schade
-                API->>DB: UPDATE loan SET loan_status = COMPLETED
-                API->>DB: UPDATE asset SET asset_status = AVAILABLE, locker_id = return_locker_id
-                API->>DB: UPDATE locker SET locker_status = OCCUPIED
-                API->>VB: WSS: set_led {return_locker_id, color: green}
-            end
-
-            Note over App,API: App vraagt de API elke 3 sec om een statusupdate (Polling)
-            App->>API: GET /api/v1/loans/{loan_id}/status
-            
-            alt Status is PENDING_INSPECTION
-                API-->>App: 200 OK {status: PENDING_INSPECTION}
-                App-->>User: "Schade gedetecteerd. Beheerder is verwittigd."
-            else Status is COMPLETED
-                API-->>App: 200 OK {status: COMPLETED}
-                App-->>User: "Item succesvol ingeleverd!"
-            end
-        end
-    end
-
-```
+[Bekijk het sequence diagram: Return Flow](./diagrams/sequence_return.mmd)
 
 ---
 
@@ -226,35 +40,28 @@ sequenceDiagram
 
 Wanneer de AI in de Return Flow schade detecteert, moet een menselijke admin dit goedkeuren of verwerpen via het dashboard.
 
-```mermaid
-sequenceDiagram
-    participant API as FastAPI Backend
-    participant DB as PostgreSQL
-    participant VB as Vision Box (RPi 4)
-    participant Admin as Beheerder
+[Bekijk het sequence diagram: AI Quarantaine Flow](./diagrams/sequence_quarantine.mmd)
 
-    Note over API,VB: Systeem bevindt zich in PENDING_INSPECTION (oranje LED brandt)
+---
 
-    Admin->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION [JWT admin]
-    API-->>Admin: Lijst van loans in quarantaine
+## 5. Catalogus en Autorisatie Flow (RBAC)
 
-    Admin->>API: GET /api/v1/admin/evaluations/{evaluation_id}
-    API-->>Admin: Foto, AI rapport, damage details
+De weergave van de catalogus verschilt op basis van de rol van de ingelogde gebruiker (Student vs. Admin). Studenten zien enkel een geanonimiseerde 'pool' van beschikbare items, Admins zien alle details.
 
-    alt Beheerder keurt schade goed (Echte schade of Fraude)
-        Admin->>API: PATCH /api/v1/admin/evaluations/{id} {is_approved: true}
-        API->>DB: UPDATE loan SET loan_status = DISPUTED
-        API->>DB: UPDATE asset SET asset_status = UNAVAILABLE
-        API->>DB: INSERT audit_log {DAMAGE_CONFIRMED}
-        API-->>Admin: 200 OK (Schade bevestigd, gebruiker gemarkeerd)
-    else Beheerder verwerpt AI rapport (Fout-positief)
-        Admin->>API: PATCH /api/v1/admin/evaluations/{id} {is_approved: false}
-        API->>DB: UPDATE loan SET loan_status = COMPLETED
-        API->>DB: UPDATE asset SET asset_status = AVAILABLE, locker_id = return_locker_id
-        API->>DB: UPDATE locker SET locker_status = OCCUPIED
-        API->>DB: INSERT audit_log {DAMAGE_REJECTED_FALSE_POSITIVE}
-        API->>VB: WSS: set_led {locker_id, color: green}
-        API-->>Admin: 200 OK (Quarantaine opgeheven)
-    end
+[Bekijk het sequence diagram: Catalogus Flow](./diagrams/sequence_catalog.mmd)
 
-```
+---
+
+## 6. Kiosk Boot & Admin Remote Control
+
+Wanneer een Kiosk opstart, haalt deze zijn eigen hardware-status op via een M2M-token. Een beheerder (met een Admin JWT) kan via de app op afstand kluisjes forceren of beheren.
+
+[Bekijk het sequence diagram: Admin Sync & Boot Flow](./diagrams/sequence_admin_sync.mmd)
+
+---
+
+## 7. Admin Dashboard (Beheer)
+
+Admin gebruikers beheren assets, quarantaine en kiosk-lockers via het Admin Dashboard.
+
+[Bekijk het sequence diagram: Admin App Flow](./diagrams/sequence_admin_app.mmd)

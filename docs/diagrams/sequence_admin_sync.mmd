@@ -1,0 +1,25 @@
+sequenceDiagram
+    actor Admin as Beheerder
+    participant App as Kiosk App (Virtueel of Fysiek)
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+    participant VB as Vision Box (Kiosk A)
+
+    Note over App,API: Scenario A: Kiosk Boot Sequence
+    App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [Met M2M Token]
+    API->>DB: Haal fysieke status van kluisjes op
+    DB-->>API: Statussen (bijv. AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, OCCUPIED)
+    API-->>App: 200 OK (Kiosk UI tekent actuele kluisjes)
+
+    Note over Admin,VB: Scenario B: Admin Remote Control
+    Admin->>App: Logt in en opent Kiosk Beheer [Met JWT Admin Token]
+    App->>API: GET /api/v1/kiosks
+    API-->>App: 200 OK (Lijst van alle kiosken)
+
+    Admin->>App: Selecteert Kiosk A -> Kluisje 1 -> "Forceer Open"
+    App->>API: POST /api/v1/lockers/1/open
+    Note over API: Valideert of de token de Admin rol heeft
+    API->>VB: WSS: open_slot {locker_id: 1}
+    VB-->>API: WSS: slot_opened
+    API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
+    API-->>App: 200 OK (Kluisje succesvol geopend)

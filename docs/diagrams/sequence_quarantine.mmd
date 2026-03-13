@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+    participant VB as Vision Box (RPi 4)
+    participant Admin as Beheerder
+
+    Note over API,VB: Systeem bevindt zich in PENDING_INSPECTION (oranje LED brandt)
+
+    Admin->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION [JWT admin]
+    API-->>Admin: Lijst van loans in quarantaine
+
+    Admin->>API: GET /api/v1/admin/evaluations/{evaluation_id}
+    API-->>Admin: Foto, AI rapport, damage details
+
+    alt Beheerder keurt schade goed (Echte schade of Fraude)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: true}
+        API->>DB: UPDATE loans SET loan_status = 'DISPUTED'
+        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
+        API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_CONFIRMED'}
+        API-->>Admin: 200 OK (Schade bevestigd, gebruiker gemarkeerd)
+    else Beheerder verwerpt AI rapport (Fout-positief)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: false}
+        API->>DB: UPDATE loans SET loan_status = 'COMPLETED'
+        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = return_locker_id
+        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED'
+        API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_REJECTED_FALSE_POSITIVE'}
+        API->>VB: WSS: set_led {locker_id, color: green}
+        API-->>Admin: 200 OK (Quarantaine opgeheven)
+    end

@@ -1,0 +1,77 @@
+sequenceDiagram
+    actor User as Gebruiker
+    participant App as Kiosk App (Flutter)
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+    participant VB as Vision Box (RPi 4)
+    participant AI as YOLO26 AI Service (VM2)
+
+    User->>App: Kiest "Item inleveren"
+    App-->>User: Toon Aztec code scanner (Tablet Camera)
+    User->>App: Scant Aztec code van item
+    App->>API: POST /api/v1/loans/return/initiate {aztec_code} [JWT, Idempotency-Key]
+    API->>DB: SELECT * FROM assets WHERE aztec_code = ?
+    DB-->>API: asset info (asset_id)
+    API->>DB: SELECT * FROM loans WHERE asset_id = <asset_id> AND loan_status = 'ACTIVE'
+    DB-->>API: loan info
+
+    alt Geen actieve lening gevonden
+        API-->>App: 404 Not Found
+        App-->>User: "Geen actieve lening voor dit item"
+    else Lening behoort tot andere gebruiker
+        API->>DB: Check of loan.user_id == jwt.sub
+        API-->>App: 403 Forbidden
+        App-->>User: "Dit item is niet door jou uitgeleend"
+    else Lening gevonden & Eigenaar klopt
+        API->>VB: Controleer WSS verbinding
+        alt Vision Box offline
+            API-->>App: 503 Service Unavailable
+            App-->>User: "Kluisjes momenteel buiten gebruik"
+        else Vision Box online
+            API->>DB: BEGIN transactie
+            API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' FOR UPDATE SKIP LOCKED
+            DB-->>API: Vrije locker (LIMIT 1)
+            API->>DB: UPDATE lockers SET locker_status = 'RESERVED'
+            API->>DB: COMMIT
+            API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
+            App-->>User: Toon lader: "Breng item naar locker #N"
+
+            API->>VB: WSS: open_slot {return_locker_id, loan_id}
+            VB->>VB: GPIO: slot openen + LED groen
+            User->>VB: Plaatst item in locker, sluit deur
+            VB->>API: WSS: slot_closed event
+
+            VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
+            API->>AI: POST /predict {image}
+            AI-->>API: {is_empty, has_damage, damage_details}
+
+            alt Kluisje is leeg (Fraude!) of Schade gedetecteerd
+                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
+                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE'
+                API->>VB: WSS: set_led {return_locker_id, color: orange}
+            else AI timeout (Model crash)
+                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
+                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE'
+                API->>VB: WSS: set_led {return_locker_id, color: orange}
+                Note over API,DB: Handmatige controle vereist wegens systeemfout
+            else Item aanwezig en Geen schade
+                API->>DB: UPDATE loans SET loan_status = 'COMPLETED'
+                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = return_locker_id
+                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED'
+                API->>VB: WSS: set_led {return_locker_id, color: green}
+            end
+
+            Note over App,API: App vraagt de API elke 3 sec om een statusupdate (Polling)
+            App->>API: GET /api/v1/loans/{loan_id}/status
+            
+            alt Status is PENDING_INSPECTION
+                API-->>App: 200 OK {status: PENDING_INSPECTION}
+                App-->>User: "Schade gedetecteerd. Beheerder is verwittigd."
+            else Status is COMPLETED
+                API-->>App: 200 OK {status: COMPLETED}
+                App-->>User: "Item succesvol ingeleverd!"
+            end
+        end
+    end

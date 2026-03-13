@@ -199,7 +199,8 @@ erDiagram
         uuid locker_id FK "Nullable: NULL als uitgeleend"
         varchar name
         varchar aztec_code UK
-        enum asset_status "AVAILABLE, BORROWED, RESERVED, MAINTENANCE, LOST"
+        enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
+        boolean is_deleted
     }
     
     LOANS {
