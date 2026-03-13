@@ -3,12 +3,15 @@
 > Dit document beschrijft de definitieve systeemworkflows via sequence diagrammen.
 > Architectuur: De Kiosk App communiceert via REST (met Polling voor asynchrone hardware-acties). De Vision Box luistert naar commando's via WebSockets (WSS).
 
-De vier kernflows zijn:
+De zeven kernflows zijn:
 
 1. Login
 2. Checkout (Uitlenen)
 3. Return (Inleveren)
 4. Quarantaine (Schade-afhandeling)
+5. Catalogus en Autorisatie Flow (RBAC)
+6. Kiosk Boot & Admin Remote Control
+7. Admin Dashboard (Beheer)
 
 ---
 
