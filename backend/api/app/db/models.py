@@ -159,7 +159,7 @@ class Asset(Base):
         Enum(AssetStatus), default=AssetStatus.AVAILABLE
     )
     is_deleted: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false")
+        Boolean, default=False, server_default=text("false"), nullable=False
     )
 
     category: Mapped["Category"] = relationship("Category", back_populates="assets")
