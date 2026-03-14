@@ -73,7 +73,7 @@ sequenceDiagram
             Admin->>App: Deblokkeert account
             App->>API: PATCH /api/v1/users/{user_id} {failed_login_attempts: 0, locked_until: null}
             Note over API,DB: Reset failed attempts & lock timer
-            API->>DB: UPDATE users SET failed_login_attempts = 0, locked_until = NULL
+            API->>DB: UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = {user_id}
             API-->>App: 200 OK
         end
         
