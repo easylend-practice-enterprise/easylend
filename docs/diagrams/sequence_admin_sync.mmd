@@ -17,9 +17,9 @@ sequenceDiagram
     API-->>App: 200 OK (Lijst van alle kiosken)
 
     Admin->>App: Selecteert Kiosk A -> Kluisje 1 -> "Forceer Open"
-    App->>API: POST /api/v1/lockers/1/open
+    App->>API: POST /api/v1/lockers/{locker_id}/open
     Note over API: Valideert of de token de Admin rol heeft
-    API->>VB: WSS: open_slot {locker_id: 1}
+    API->>VB: WSS: open_slot {locker_id: "<uuid>"}
     VB-->>API: WSS: slot_opened
     API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
     API-->>App: 200 OK (Kluisje succesvol geopend)
