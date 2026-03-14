@@ -32,7 +32,7 @@ sequenceDiagram
             API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' FOR UPDATE SKIP LOCKED
             DB-->>API: Vrije locker (locker_id, locker_number)
             API->>DB: UPDATE loans SET return_locker_id = locker_id WHERE loan_id = <loan_id>
-            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = locker_id
+            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = return_locker_id
             API->>DB: COMMIT
             API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
             App-->>User: Toon lader: "Breng item naar locker #N"
