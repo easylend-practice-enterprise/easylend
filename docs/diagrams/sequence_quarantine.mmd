@@ -10,9 +10,9 @@ sequenceDiagram
     API-->>Admin: Lijst van loans in quarantaine
 
     Admin->>API: GET /api/v1/admin/evaluations/{evaluation_id}
-    API->>DB: SELECT loan_id, asset_id, foto, ai_report, damage_details FROM ai_evaluations WHERE evaluation_id = {evaluation_id}
-    DB-->>API: loan_id, asset_id, foto, ai_report, damage_details
-    API-->>Admin: Foto, AI rapport, damage details (incl. loan_id, asset_id)
+    API->>DB: SELECT loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence FROM ai_evaluations WHERE evaluation_id = {evaluation_id}
+    DB-->>API: loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence
+    API-->>Admin: Foto (photo_url), gedetecteerde objecten (detected_objects), schade-indicator (has_damage_detected), AI confidence (ai_confidence) (incl. loan_id, asset_id)
 
     alt Beheerder keurt schade goed (Echte schade of Fraude)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: true}
