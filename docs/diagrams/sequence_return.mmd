@@ -29,7 +29,7 @@ sequenceDiagram
             App-->>User: "Kluisjes momenteel buiten gebruik"
         else Vision Box online
             API->>DB: BEGIN transactie
-            API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' ORDER BY RANDOM() FOR UPDATE SKIP LOCKED LIMIT 1
+            API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' ORDER BY logical_number FOR UPDATE SKIP LOCKED LIMIT 1
             DB-->>API: Vrije locker (locker_id, locker_number)
             API->>DB: UPDATE loans SET return_locker_id = locker_id WHERE loan_id = <loan_id>
             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
