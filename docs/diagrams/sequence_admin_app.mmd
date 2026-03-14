@@ -81,7 +81,7 @@ sequenceDiagram
             Admin->>App: Koppelt nieuwe NFC tag
             App->>API: PATCH /api/v1/users/{user_id}/nfc {nfc_tag_id}
             Note over API,DB: Update kolom in users tabel
-            API->>DB: UPDATE users SET nfc_tag_id = ?
+            API->>DB: UPDATE users SET nfc_tag_id = {nfc_tag_id} WHERE user_id = {user_id}
             API-->>App: 200 OK
         end
     end
