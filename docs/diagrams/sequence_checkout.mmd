@@ -44,13 +44,13 @@ sequenceDiagram
         AI-->>API: {locker_empty, confidence}
 
         alt Kluisje niet leeg (Fraude/Fout: item niet meegenomen)
-            API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED'
+            API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>VB: WSS: set_led {locker_id, color: red}
         else Kluisje leeg (Succes)
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
-            API->>DB: UPDATE loans SET loan_status = 'ACTIVE'
+            API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
             API->>VB: WSS: set_led {locker_id, color: green}
         end
 
