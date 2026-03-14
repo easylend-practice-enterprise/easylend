@@ -23,7 +23,7 @@ sequenceDiagram
             App-->>User: "Item is momenteel niet beschikbaar"
         else Asset beschikbaar
             API->>DB: INSERT INTO loans {loan_status: 'RESERVED'}
-            API->>DB: UPDATE assets SET asset_status = 'BORROWED'
+            API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
             API->>DB: COMMIT
             API-->>App: 202 Accepted {loan_id, locker_number}
@@ -45,7 +45,7 @@ sequenceDiagram
 
         alt Kluisje niet leeg (Fraude/Fout: item niet meegenomen)
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED'
-            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE'
+            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>VB: WSS: set_led {locker_id, color: red}
         else Kluisje leeg (Succes)
