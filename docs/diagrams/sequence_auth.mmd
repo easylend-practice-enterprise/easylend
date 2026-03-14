@@ -21,9 +21,9 @@ sequenceDiagram
         DB-->>API: pin_hash
 
         alt PIN incorrect
-            API->>DB: UPDATE users SET failed_login_attempts = failed_login_attempts + 1
+            API->>DB: UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE user_id = <user_id>
             alt Limiet bereikt (5 pogingen)
-                API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes'
+                API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes' WHERE user_id = <user_id>
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
                 API-->>App: 403 Account geblokkeerd
             else Nog pogingen over
@@ -32,7 +32,7 @@ sequenceDiagram
             end
             App-->>User: Foutmelding
         else PIN correct
-            API->>DB: UPDATE users SET failed_login_attempts = 0
+            API->>DB: UPDATE users SET failed_login_attempts = 0 WHERE user_id = <user_id>
             API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_SUCCESS'}
             API-->>App: 200 OK {access_token: JWT}
             App-->>User: Ingelogd: toon asset catalogus
