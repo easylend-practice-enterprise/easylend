@@ -33,8 +33,6 @@ sequenceDiagram
         Note over API,VB: API stuurt Vision Box realtime aan
         API->>VB: WSS: open_slot {locker_id, loan_id}
 
-        Note over API,VB: API stuurt Vision Box realtime aan
-        API->>VB: WSS: open_slot {locker_id, loan_id}
         VB->>VB: GPIO: slot openen + LED groen
 
         User->>VB: Neemt item uit locker, sluit deur
