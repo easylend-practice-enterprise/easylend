@@ -106,6 +106,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `GET /api/v1/users/me`
 - `GET /api/v1/users/{id}` (admin only)
 - `POST /api/v1/users` (admin: nieuw gebruiker aanmaken)
+- `PATCH /api/v1/users/{id}` (admin: gebruiker updaten, bijv. account deblokkeren via `failed_login_attempts: 0` en `locked_until: null`)
 - Role-based access control dependency
 - Permissions model (RBAC: admin / medewerker / kiosk)
 
@@ -140,7 +141,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `GET /api/v1/lockers` (admin: overzicht + status)
 - `GET /api/v1/lockers/{id}`
 - `POST /api/v1/lockers` (admin: kluisje aan kiosk koppelen)
-- `PUT /api/v1/lockers/{id}/status` (admin: bijv. naar MAINTENANCE)
+- `PATCH /api/v1/lockers/{id}/status` (admin: status updaten, bijv. naar MAINTENANCE)
 
 **Assets** *(requires category_id + locker_id)*
 
@@ -149,6 +150,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `POST /api/v1/assets` (admin: inclusief `aztec_code` en `category_id`)
 - `PUT /api/v1/assets/{id}` (admin)
 - `DELETE /api/v1/assets/{id}` (admin, soft-delete)
+  - Implementation: set `is_deleted = true` on the `assets` row (preserve `asset_status` and history). Use DB-level default `FALSE` for `is_deleted`.
 
 ---
 
