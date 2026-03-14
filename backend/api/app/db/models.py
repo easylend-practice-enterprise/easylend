@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -158,7 +158,9 @@ class Asset(Base):
     asset_status: Mapped[AssetStatus] = mapped_column(
         Enum(AssetStatus), default=AssetStatus.AVAILABLE
     )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
 
     category: Mapped["Category"] = relationship("Category", back_populates="assets")
     locker: Mapped["Locker"] = relationship("Locker", back_populates="assets")

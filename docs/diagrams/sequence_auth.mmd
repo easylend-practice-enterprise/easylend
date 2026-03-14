@@ -22,11 +22,11 @@ sequenceDiagram
 
         alt PIN incorrect
             API->>DB: UPDATE users SET failed_login_attempts = failed_login_attempts + 1
-                alt Limiet bereikt (5 pogingen)
-                    API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes'
-                    API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
+            alt Limiet bereikt (5 pogingen)
+                API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes'
+                API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
                 API-->>App: 403 Account geblokkeerd
-                else Nog pogingen over
+            else Nog pogingen over
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED'}
                 API-->>App: 401 Onjuiste PIN (N pogingen over)
             end

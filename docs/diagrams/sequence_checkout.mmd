@@ -28,6 +28,10 @@ sequenceDiagram
             API->>DB: COMMIT
             API-->>App: 202 Accepted {loan_id, locker_number}
             App-->>User: Toon lader: "Ga naar locker #N"
+        end
+        
+        Note over API,VB: API stuurt Vision Box realtime aan
+        API->>VB: WSS: open_slot {locker_id, loan_id}
 
         Note over API,VB: API stuurt Vision Box realtime aan
         API->>VB: WSS: open_slot {locker_id, loan_id}
@@ -63,4 +67,3 @@ sequenceDiagram
             App-->>User: "Veel succes! Breng het item tijdig terug."
         end
     end
-end
