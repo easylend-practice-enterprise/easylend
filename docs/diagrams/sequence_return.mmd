@@ -47,20 +47,20 @@ sequenceDiagram
             AI-->>API: {is_empty, has_damage, damage_details}
 
             alt Kluisje is leeg (Fraude!) of Schade gedetecteerd
-                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = return_locker_id
+                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
+                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
                 API->>VB: WSS: set_led {return_locker_id, color: orange}
             else AI timeout (Model crash)
-                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION'
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = return_locker_id
+                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
+                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
+                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
                 API->>VB: WSS: set_led {return_locker_id, color: orange}
                 Note over API,DB: Handmatige controle vereist wegens systeemfout
             else Item aanwezig en Geen schade
-                API->>DB: UPDATE loans SET loan_status = 'COMPLETED'
-                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = return_locker_id
-                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = return_locker_id
+                API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = <loan_id>
+                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = <asset_id>
+                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
                 API->>VB: WSS: set_led {return_locker_id, color: green}
             end
 
