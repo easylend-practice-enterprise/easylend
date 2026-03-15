@@ -1,0 +1,18 @@
+sequenceDiagram
+    actor Client as Kiosk App
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+
+    Client->>API: GET /api/v1/catalog [Met JWT Token]
+    Note over API: Valideert JWT en checkt de rol
+
+    alt Rol == USER
+        API->>DB: SELECT category_id, COUNT(asset_id) FROM assets WHERE asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id
+        DB-->>API: Gecategoriseerde pool (bijv. Laptops: 3)
+        API-->>Client: 200 OK (Standaard weergave)
+    else Rol == ADMIN
+        Note over API,DB: Admin heeft 2 joins nodig voor de actuele status
+        API->>DB: SELECT a.*, l.loan_status, u.first_name, u.last_name FROM assets a LEFT JOIN loans l ON a.asset_id = l.asset_id AND l.loan_status IN ('ACTIVE', 'RESERVED') LEFT JOIN users u ON l.user_id = u.user_id WHERE a.is_deleted = FALSE
+        DB-->>API: Volledige lijst (Asset + Locker info + Eventuele Lener)
+        API-->>Client: 200 OK (Beheerdersweergave)
+    end

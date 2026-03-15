@@ -75,7 +75,7 @@ flowchart TD
         direction TB
         API["FastAPI & WebSockets"]:::soft
         AIService["YOLO26 AI Service"]:::soft
-        PXE["PXE Live Boot Service"]:::soft
+        PXE["PXE Live Boot Service<br/>(Post-MVP (V2) - Buiten de huidige scope)"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
         
@@ -199,7 +199,8 @@ erDiagram
         uuid locker_id FK "Nullable: NULL als uitgeleend"
         varchar name
         varchar aztec_code UK
-        enum asset_status "AVAILABLE, BORROWED, RESERVED, MAINTENANCE, LOST"
+        enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
+        boolean is_deleted
     }
     
     LOANS {
