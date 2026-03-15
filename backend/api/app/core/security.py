@@ -38,17 +38,32 @@ def verify_access_token(token: str) -> TokenPayload:
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
+            options={"require": ["sub", "role", "exp", "jti"]},
         )
     except ExpiredSignatureError as e:
         raise ValueError("Token is verlopen.") from e
     except InvalidTokenError as e:
+        # Alle decode-/validatieproblemen van de token (incl. ontbrekende claims)
+        # worden vertaald naar een generieke ValueError, zodat de caller een 401 kan sturen.
+        raise ValueError("Ongeldige token.") from e
+
+    try:
+        sub = uuid.UUID(raw["sub"])
+        role = raw["role"]
+        exp_claim = raw["exp"]
+        jti = uuid.UUID(raw["jti"])
+
+        # exp wordt door PyJWT normaal gesproken als UNIX timestamp (int) teruggegeven.
+        exp = datetime.fromtimestamp(exp_claim, tz=UTC)
+    except (KeyError, TypeError, ValueError) as e:
+        # Onverwachte of malforme claimwaarden worden ook als ongeldig beschouwd.
         raise ValueError("Ongeldige token.") from e
 
     return TokenPayload(
-        sub=uuid.UUID(raw["sub"]),
-        role=raw["role"],
-        exp=datetime.fromtimestamp(raw["exp"], tz=UTC),
-        jti=uuid.UUID(raw["jti"]),
+        sub=sub,
+        role=role,
+        exp=exp,
+        jti=jti,
     )
 
 
