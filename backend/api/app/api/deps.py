@@ -7,11 +7,11 @@ from app.schemas.token import TokenPayload
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_current_user(
+def get_current_token_payload(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> TokenPayload:
     """
-    FastAPI dependency: valideert de Bearer token en geeft de TokenPayload terug.
+    FastAPI dependency: valideert de Bearer token en geeft de TokenPayload (JWT claims) terug.
     Gooit een 401 bij een verlopen of ongeldige token.
     """
     if credentials is None:
