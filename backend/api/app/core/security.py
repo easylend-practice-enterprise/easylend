@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import bcrypt
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas.token import TokenPayload
@@ -59,12 +60,16 @@ def verify_access_token(token: str) -> TokenPayload:
         # Onverwachte of malforme claimwaarden worden ook als ongeldig beschouwd.
         raise ValueError("Ongeldige token.") from e
 
-    return TokenPayload(
-        sub=sub,
-        role=role,
-        exp=exp,
-        jti=jti,
-    )
+    try:
+        return TokenPayload(
+            sub=sub,
+            role=role,
+            exp=exp,
+            jti=jti,
+        )
+    except ValidationError as e:
+        # Zorg dat ook Pydantic-validatiefouten als ongeldige token worden behandeld.
+        raise ValueError("Ongeldige token.") from e
 
 
 def get_pin_hash(pin: str) -> str:
