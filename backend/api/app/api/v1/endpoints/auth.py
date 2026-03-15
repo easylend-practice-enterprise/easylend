@@ -110,7 +110,6 @@ async def pin_login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ongeldige PIN.",
-            headers={"WWW-Authenticate": "Bearer"},
         )
 
     # Succesvolle inlog: reset brute-force tellers
