@@ -20,6 +20,7 @@ env/
 .venv/
 .pytest_cache/
 .ruff_cache/
+.dev_jwt_secret
 
 # Flutter / Dart (Kiosk App)
 .dart_tool/
@@ -48,6 +49,10 @@ uptime-kuma/data/
 *.log
 tmp/
 temp/
+diff.patch
+*.bak
+*.backup
+*.bup
 
 # AI
 .venv/
