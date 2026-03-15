@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.v1.router import router as v1_router
+
 # Redis imports
 from app.db.redis import (
     check_redis_connection,
@@ -34,3 +36,6 @@ async def read_root():
 @app.get("/api/v1/health")
 async def health_check():
     return {"status": "healthy", "components": {"api": "ok"}}
+
+
+app.include_router(v1_router)
