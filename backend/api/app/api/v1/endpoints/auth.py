@@ -110,6 +110,9 @@ async def pin_login(
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
+            # Reset teller bij het instellen van een lockout zodat na de lockout
+            # periode opnieuw _MAX_ATTEMPTS pogingen beschikbaar zijn.
+            user.failed_login_attempts = 0
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
