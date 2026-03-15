@@ -46,6 +46,7 @@ async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
     """
     result = await db.execute(
         select(User)
+        .with_for_update()
         .options(selectinload(User.role))
         .where(User.nfc_tag_id == nfc_tag_id)
     )

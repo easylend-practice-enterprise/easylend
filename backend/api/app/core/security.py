@@ -30,7 +30,7 @@ def create_access_token(user_id: uuid.UUID, role: str) -> str:
 
 def verify_access_token(token: str) -> TokenPayload:
     """
-    Valideert een JWT access token en geeft de gedecrypteerde payload terug.
+    Valideert een JWT access token en geeft de gedecodeerde en gevalideerde payload terug.
     Raises ValueError bij een verlopen of ongeldige token.
     """
     try:
