@@ -40,8 +40,9 @@ class AccessTokenResponse(BaseModel):
 async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
     """
     Haalt de user op via nfc_tag_id inclusief eager-loaded role.
-    Gooit de gepaste HTTPException als de user niet bestaat, inactief is,
-    of nog geblokkeerd is.
+    Gooit een generieke HTTPException voor alle mislukte login-pogingen
+    (onbekende badge, gedeactiveerd account of geblokkeerd account) zonder
+    details over de exacte reden of lockout-timing te lekken.
     """
     result = await db.execute(
         select(User)
@@ -50,20 +51,17 @@ async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
     )
     user = result.scalar_one_or_none()
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Gebruiker niet gevonden.",
+    if (
+        user is None
+        or not user.is_active
+        or (
+            user.locked_until is not None
+            and user.locked_until > datetime.now(UTC)
         )
-    if not user.is_active:
+    ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is gedeactiveerd.",
-        )
-    if user.locked_until is not None and user.locked_until > datetime.now(UTC):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account is geblokkeerd tot {user.locked_until.isoformat()}.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ongeldige NFC badge of accountstatus.",
         )
 
     return user
