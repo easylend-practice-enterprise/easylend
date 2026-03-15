@@ -48,6 +48,7 @@ uptime-kuma/data/
 *.log
 tmp/
 temp/
+diff.patch
 
 # AI
 .venv/

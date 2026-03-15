@@ -54,10 +54,7 @@ async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
     if (
         user is None
         or not user.is_active
-        or (
-            user.locked_until is not None
-            and user.locked_until > datetime.now(UTC)
-        )
+        or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

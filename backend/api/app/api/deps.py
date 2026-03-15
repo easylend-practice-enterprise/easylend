@@ -1,6 +1,5 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from typing import Optional
 
 from app.core import security
 from app.schemas.token import TokenPayload
@@ -9,7 +8,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> TokenPayload:
     """
     FastAPI dependency: valideert de Bearer token en geeft de TokenPayload terug.
