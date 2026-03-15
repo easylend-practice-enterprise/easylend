@@ -26,7 +26,7 @@ flowchart TD
         Redis[(Redis Cache)]:::data
         
         API <-->|"Query / Log"| DB
-        API <-->|"Pub/Sub"| Redis
+        API <-->|"Pub/Sub + Token Whitelist"| Redis
         API <-->|"Analyze Image"| AIService
         API <-->|"Hardware Status"| PXE
     end
