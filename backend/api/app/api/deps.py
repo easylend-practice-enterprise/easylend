@@ -1,19 +1,26 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from typing import Optional
 
 from app.core import security
 from app.schemas.token import TokenPayload
 
-_bearer_scheme = HTTPBearer()
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> TokenPayload:
     """
     FastAPI dependency: valideert de Bearer token en geeft de TokenPayload terug.
     Gooit een 401 bij een verlopen of ongeldige token.
     """
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         return security.verify_access_token(credentials.credentials)
     except ValueError as e:
