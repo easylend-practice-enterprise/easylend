@@ -9,13 +9,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# --- NIEUW 1: Voeg de root van het project toe aan het Python pad ---
+# NIEUW 1: Voeg de root van het project toe aan het Python pad
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
 from app.db.models import Base
-
-# --------------------------------------------------------------------
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -31,9 +29,8 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 
-# --- NIEUW 2: Koppel de metadata ---
+# NIEUW 2: Koppel de metadata
 target_metadata = Base.metadata
-# -----------------------------------
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -77,7 +74,7 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
-    # --- NIEUW 3: Injecteer jouw database URL uit de settings ---
+    # NIEUW 3: Injecteer jouw database URL uit de settings
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
 
@@ -86,7 +83,6 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    # -------------------------------------------------------------
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

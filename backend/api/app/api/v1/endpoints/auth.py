@@ -12,12 +12,12 @@ from app.db.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# --- Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout) ---
+# Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout)
 _MAX_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
 
 
-# --- Request / Response schemas (auth-specifiek, inline) ---
+# Request / Response schemas (auth-specifiek, inline)
 
 
 class NfcLoginRequest(BaseModel):
@@ -34,22 +34,28 @@ class AccessTokenResponse(BaseModel):
     token_type: str = "Bearer"  # noqa: S105
 
 
-# --- Gedeelde helper ---
+# Gedeelde helper
 
 
-async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
+async def _get_active_user_by_nfc(
+    nfc_tag_id: str, db: AsyncSession, lock_row: bool = False
+) -> User:
     """
     Haalt de user op via nfc_tag_id inclusief eager-loaded role.
     Gooit een generieke HTTPException voor alle mislukte login-pogingen
     (onbekende badge, gedeactiveerd account of geblokkeerd account) zonder
     details over de exacte reden of lockout-timing te lekken.
     """
-    result = await db.execute(
+    query = (
         select(User)
-        .with_for_update()
         .options(selectinload(User.role))
         .where(User.nfc_tag_id == nfc_tag_id)
     )
+
+    if lock_row:
+        query = query.with_for_update()
+
+    result = await db.execute(query)
     user = result.scalar_one_or_none()
 
     if (
@@ -65,7 +71,7 @@ async def _get_active_user_by_nfc(nfc_tag_id: str, db: AsyncSession) -> User:
     return user
 
 
-# --- Endpoints ---
+# Endpoints
 
 
 @router.post("/nfc", status_code=status.HTTP_200_OK)
@@ -98,7 +104,7 @@ async def pin_login(
     - TODO (ELP-24): refresh token aanmaken en opslaan in Redis.
     - TODO (ELP-29): INSERT audit_log LOGIN_SUCCESS / LOGIN_FAILED.
     """
-    user = await _get_active_user_by_nfc(body.nfc_tag_id, db)
+    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
 
     if not security.verify_pin(body.pin, user.pin_hash):
         user.failed_login_attempts += 1
