@@ -17,7 +17,7 @@ def get_current_user(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
+            detail="Niet geauthenticeerd",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
