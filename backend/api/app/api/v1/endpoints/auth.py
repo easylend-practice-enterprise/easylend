@@ -31,7 +31,7 @@ class PinLoginRequest(BaseModel):
 
 class AccessTokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"  # noqa: S105
+    token_type: str = "Bearer"  # noqa: S105
 
 
 # --- Gedeelde helper ---
