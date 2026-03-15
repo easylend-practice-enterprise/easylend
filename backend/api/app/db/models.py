@@ -240,7 +240,7 @@ class AIEvaluation(Base):
     has_damage_detected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
-    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analyzed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)

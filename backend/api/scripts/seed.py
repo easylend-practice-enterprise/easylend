@@ -59,7 +59,7 @@ async def seed_database():
     async with AsyncSessionLocal() as session:
         try:
             async with session.begin():
-                roles_to_create = ["Admin", "Kiosk", "User"]
+                roles_to_create = ["ADMIN", "USER", "KIOSK"]
                 admin_role = None
                 for role_name in roles_to_create:
                     role, created = await get_or_create(
@@ -67,7 +67,7 @@ async def seed_database():
                     )
                     if created:
                         logger.info(f"Rol aangemaakt: {role_name}")
-                    if role_name == "Admin":
+                    if role_name == "ADMIN":
                         admin_role = role
 
                 cats_to_create = ["Laptops", "Tablets"]

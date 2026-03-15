@@ -75,7 +75,7 @@ flowchart TD
         direction TB
         API["FastAPI & WebSockets"]:::soft
         AIService["YOLO26 AI Service"]:::soft
-        PXE["PXE Live Boot Service"]:::soft
+        PXE["PXE Live Boot Service<br/>(Post-MVP (V2) - Buiten de huidige scope)"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
         

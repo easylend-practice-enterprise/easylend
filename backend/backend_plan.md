@@ -271,6 +271,18 @@ Rate limiting gebeurt in 3 strategische lagen (hybride aanpak):
 
 ---
 
+## Stap 14: Overdue Worker
+
+- Overdue Worker: Implement a background task (APScheduler or Celery) that runs every hour. It must execute: `UPDATE loans SET loan_status = 'OVERDUE' WHERE loan_status = 'ACTIVE' AND due_date < NOW();` and automatically log this in the audit_logs.
+
+---
+
+## Scope Note (PXE)
+
+- PXE functionality is moved to V2 (Post-MVP) and is out of the current implementation scope.
+
+---
+
 ## Overzicht
 
 ```text
