@@ -7,7 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def _get_fallback_secret() -> str:
     """Genereert of leest een lokale fallback secret voor multi-worker consistentie."""
-    fallback_file = ".dev_jwt_secret"
+    config_dir = os.path.dirname(os.path.abspath(__file__))
+    fallback_file = os.path.join(config_dir, ".dev_jwt_secret")
     if os.path.exists(fallback_file):
         with open(fallback_file) as f:
             return f.read().strip()
