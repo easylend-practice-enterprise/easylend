@@ -2,6 +2,7 @@ sequenceDiagram
     actor User as Gebruiker
     participant App as Kiosk App (Flutter)
     participant API as FastAPI Backend
+    participant Redis as Redis Cache
     participant DB as PostgreSQL
 
     User->>App: Houdt NFC-badge voor lezer
@@ -34,7 +35,17 @@ sequenceDiagram
         else PIN correct
             API->>DB: UPDATE users SET failed_login_attempts = 0 WHERE user_id = <user_id>
             API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_SUCCESS'}
-            API-->>App: 200 OK {access_token: JWT}
+            API->>Redis: SETEX refresh:<user_id>:<jti> (Store Refresh Token)
+            API-->>App: 200 OK {access_token, refresh_token}
             App-->>User: Ingelogd: toon asset catalogus
         end
+    end
+
+    opt Auto-Logout (Inactivity) of Handmatige Logout
+        User-->>App: Stopt met interacteren of klikt op Logout
+        App-->>User: Toon pop-up / laadscherm
+        App->>API: POST /api/v1/auth/logout {refresh_token}
+        API->>Redis: DEL refresh:<user_id>:<jti> (Revoke Token)
+        API-->>App: 200 OK (Succesvol uitgelogd)
+        App-->>User: Keer terug naar NFC startscherm
     end

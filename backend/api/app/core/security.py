@@ -4,10 +4,30 @@ from datetime import UTC, datetime, timedelta
 import bcrypt
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 from app.schemas.token import TokenPayload
+
+
+class RefreshTokenPayload(BaseModel):
+    sub: uuid.UUID
+    exp: datetime
+    jti: uuid.UUID
+
+
+def _decode_token(token: str, required_claims: list[str]) -> dict:
+    try:
+        return jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+            options={"require": required_claims},
+        )
+    except ExpiredSignatureError as e:
+        raise ValueError("Token is verlopen.") from e
+    except InvalidTokenError as e:
+        raise ValueError("Ongeldige token.") from e
 
 
 def create_access_token(user_id: uuid.UUID, role: str) -> str:
@@ -29,24 +49,28 @@ def create_access_token(user_id: uuid.UUID, role: str) -> str:
     )
 
 
+def create_refresh_token(user_id: uuid.UUID) -> str:
+    """
+    Maakt een ondertekende JWT refresh token aan voor de opgegeven gebruiker.
+    Payload bevat sub (user_id), exp (verloopdatum) en jti (unieke token ID).
+    """
+    expire = datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {
+        "sub": str(user_id),
+        "exp": expire,
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(
+        payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
+
+
 def verify_access_token(token: str) -> TokenPayload:
     """
     Valideert een JWT access token en geeft de gedecodeerde en gevalideerde payload terug.
     Raises ValueError bij een verlopen of ongeldige token.
     """
-    try:
-        raw = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-            options={"require": ["sub", "role", "exp", "jti"]},
-        )
-    except ExpiredSignatureError as e:
-        raise ValueError("Token is verlopen.") from e
-    except InvalidTokenError as e:
-        # Alle decode-/validatieproblemen van de token (incl. ontbrekende claims)
-        # worden vertaald naar een generieke ValueError, zodat de caller een 401 kan sturen.
-        raise ValueError("Ongeldige token.") from e
+    raw = _decode_token(token, ["sub", "role", "exp", "jti"])
 
     try:
         sub = uuid.UUID(raw["sub"])
@@ -69,6 +93,27 @@ def verify_access_token(token: str) -> TokenPayload:
         )
     except ValidationError as e:
         # Zorg dat ook Pydantic-validatiefouten als ongeldige token worden behandeld.
+        raise ValueError("Ongeldige token.") from e
+
+
+def verify_refresh_token(token: str) -> RefreshTokenPayload:
+    """
+    Valideert een JWT refresh token en geeft de gedecodeerde en gevalideerde payload terug.
+    Raises ValueError bij een verlopen of ongeldige token.
+    """
+    raw = _decode_token(token, ["sub", "exp", "jti"])
+
+    try:
+        sub = uuid.UUID(raw["sub"])
+        exp_claim = raw["exp"]
+        jti = uuid.UUID(raw["jti"])
+        exp = datetime.fromtimestamp(exp_claim, tz=UTC)
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError("Ongeldige token.") from e
+
+    try:
+        return RefreshTokenPayload(sub=sub, exp=exp, jti=jti)
+    except ValidationError as e:
         raise ValueError("Ongeldige token.") from e
 
 

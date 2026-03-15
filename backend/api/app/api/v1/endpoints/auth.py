@@ -7,14 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User
+from app.db.redis import (
+    is_refresh_token_valid,
+    revoke_refresh_token,
+    store_refresh_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout)
 _MAX_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
+_REFRESH_TOKEN_TTL_SECONDS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
 
 
 # Request / Response schemas (auth-specifiek, inline)
@@ -29,8 +36,13 @@ class PinLoginRequest(BaseModel):
     pin: str
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class AccessTokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "Bearer"  # noqa: S105
 
 
@@ -71,6 +83,17 @@ async def _get_active_user_by_nfc(
     return user
 
 
+async def _create_and_store_refresh_token(user_id) -> str:
+    refresh_token = security.create_refresh_token(user_id)
+    refresh_payload = security.verify_refresh_token(refresh_token)
+    await store_refresh_token(
+        user_id=str(refresh_payload.sub),
+        jti=str(refresh_payload.jti),
+        expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
+    )
+    return refresh_token
+
+
 # Endpoints
 
 
@@ -101,7 +124,6 @@ async def pin_login(
 
     - Blokkeert het account voor _LOCKOUT_MINUTES na _MAX_ATTEMPTS mislukte pogingen.
     - Reset de teller en de lockout bij een succesvolle inlog.
-    - TODO (ELP-24): refresh token aanmaken en opslaan in Redis.
     - TODO (ELP-29): INSERT audit_log LOGIN_SUCCESS / LOGIN_FAILED.
     """
     user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
@@ -128,4 +150,81 @@ async def pin_login(
         user_id=user.user_id,
         role=user.role.role_name,
     )
-    return AccessTokenResponse(access_token=access_token)
+    refresh_token = await _create_and_store_refresh_token(user.user_id)
+
+    return AccessTokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=AccessTokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def refresh_access_token(
+    body: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AccessTokenResponse:
+    try:
+        refresh_payload = security.verify_refresh_token(body.refresh_token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        ) from e
+
+    if not await is_refresh_token_valid(
+        user_id=str(refresh_payload.sub),
+        jti=str(refresh_payload.jti),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ongeldige refresh token.",
+        )
+
+    await revoke_refresh_token(
+        user_id=str(refresh_payload.sub),
+        jti=str(refresh_payload.jti),
+    )
+
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.role))
+        .where(User.user_id == refresh_payload.sub)
+    )
+    user = result.scalar_one_or_none()
+
+    if (
+        user is None
+        or not user.is_active
+        or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ongeldige refresh token.",
+        )
+
+    access_token = security.create_access_token(
+        user_id=user.user_id,
+        role=user.role.role_name,
+    )
+    refresh_token = await _create_and_store_refresh_token(user.user_id)
+
+    return AccessTokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(body: RefreshTokenRequest) -> dict:
+    try:
+        payload = security.verify_refresh_token(body.refresh_token)
+    except ValueError:
+        # Idempotent logout: verlopen of ongeldige tokens geven nog steeds succes terug.
+        return {"detail": "Succesvol uitgelogd."}
+
+    await revoke_refresh_token(user_id=str(payload.sub), jti=str(payload.jti))
+    return {"detail": "Succesvol uitgelogd."}

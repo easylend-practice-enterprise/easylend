@@ -13,24 +13,23 @@ async def check_redis_connection():
         print(f"Kan niet verbinden met Redis: {e}")
 
 
-async def set_refresh_token(user_id: str, jti: str, expires_in: int = 604800):
+async def store_refresh_token(user_id: str, jti: str, expires_in_seconds: int):
     """
-    Markeert een sessie als actief in Redis op basis van user_id en jti (multi-session).
+    Slaat een geldige refresh token op in de Redis whitelist.
     """
-    await redis_client.set(f"refresh:{user_id}:{jti}", "active", ex=expires_in)
+    await redis_client.setex(f"refresh:{user_id}:{jti}", expires_in_seconds, "valid")
 
 
-async def verify_refresh_token_exists(user_id: str, jti: str) -> bool:
+async def is_refresh_token_valid(user_id: str, jti: str) -> bool:
     """
-    Controleert of een specifieke sessie nog actief is.
+    Controleert of een refresh token nog in de Redis whitelist staat.
     """
-    result = await redis_client.exists(f"refresh:{user_id}:{jti}")
-    return result > 0
+    return await redis_client.exists(f"refresh:{user_id}:{jti}") > 0
 
 
 async def revoke_refresh_token(user_id: str, jti: str):
     """
-    Verwijdert één specifieke sessie (logout van één apparaat).
+    Trekt één specifieke refresh token in.
     """
     await redis_client.delete(f"refresh:{user_id}:{jti}")
 
