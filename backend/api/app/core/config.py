@@ -1,41 +1,39 @@
-import os
-import secrets
-
-from pydantic import Field
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-def _get_fallback_secret() -> str:
-    """Genereert of leest een lokale fallback secret voor multi-worker consistentie."""
-    config_dir = os.path.dirname(os.path.abspath(__file__))
-    fallback_file = os.path.join(config_dir, ".dev_jwt_secret")
-    if os.path.exists(fallback_file):
-        with open(fallback_file) as f:
-            return f.read().strip()
-
-    new_secret = secrets.token_urlsafe(32)
-    try:
-        with open(fallback_file, "w") as f:
-            f.write(new_secret)
-    except OSError:
-        pass  # Als we niet kunnen schrijven (bijv. in CI), gebruik gewoon de secret in memory
-    return new_secret
+# Definieer de dummy secret 1 keer bovenaan
+_DUMMY_SECRET = "insecure-local-dev-secret-key-123!"  # noqa: S105
 
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "EasyLend API"
-    # Fallback URLs voor lokale tests/CI. Gebruik in productie ALTIJD een .env bestand!
+    ENVIRONMENT: str = "dev"
+
     REDIS_URL: str = "redis://localhost:6379/0"
     DATABASE_URL: str = (
         "postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
     )
 
-    # JWT Configuration (ELP-22, ELP-82)
-    # Als deze niet via env (.env of docker) wordt meegegeven, genereren we een veilige willekeurige sleutel.
-    JWT_SECRET_KEY: str = Field(default_factory=_get_fallback_secret)
+    # Gebruik de constante hier
+    JWT_SECRET_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    @model_validator(mode="after")
+    def _validate_production_secrets(self) -> "Settings":
+        """
+        Zorgt ervoor dat de applicatie HARD crasht als we in productie draaien
+        zonder een veilige JWT_SECRET_KEY mee te geven in de .env file.
+        """
+        if self.ENVIRONMENT.lower() in ("prod", "production"):
+            # En gebruik de constante hier, Ruff zal nu zwijgen!
+            if self.JWT_SECRET_KEY == _DUMMY_SECRET:
+                raise ValueError(
+                    "CRITICAL: JWT_SECRET_KEY ontbreekt in productie! "
+                    "Start de server niet met de onveilige dev-fallback."
+                )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

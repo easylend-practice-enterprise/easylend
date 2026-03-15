@@ -10,7 +10,7 @@ sequenceDiagram
     DB-->>API: User record
 
     alt Account geblokkeerd (locked_until > NOW)
-        API-->>App: 403 Account geblokkeerd
+        API-->>App: 401 Unauthorized (Account geblokkeerd)
         App-->>User: "Account tijdelijk geblokkeerd"
     else Account actief
         API-->>App: 200 OK (Vraag PIN)
@@ -25,7 +25,7 @@ sequenceDiagram
             alt Limiet bereikt (5 pogingen)
                 API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes' WHERE user_id = <user_id>
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
-                API-->>App: 403 Account geblokkeerd
+                API-->>App: 401 Unauthorized (Account geblokkeerd)
             else Nog pogingen over
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED'}
                 API-->>App: 401 Onjuiste PIN (N pogingen over)
