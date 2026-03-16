@@ -42,7 +42,7 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
-class AccessTokenResponse(BaseModel):
+class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "Bearer"  # noqa: S105
@@ -116,11 +116,11 @@ async def nfc_login(
     return {"detail": "NFC badge herkend. Voer PIN in."}
 
 
-@router.post("/pin", response_model=AccessTokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/pin", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def pin_login(
     body: PinLoginRequest,
     db: AsyncSession = Depends(get_db),
-) -> AccessTokenResponse:
+) -> TokenResponse:
     """
     Stap 2 van de login flow: verifieer PIN en geef een JWT access token terug.
 
@@ -154,7 +154,7 @@ async def pin_login(
     )
     refresh_token = await _create_and_store_refresh_token(user.user_id)
 
-    return AccessTokenResponse(
+    return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
     )
@@ -162,13 +162,13 @@ async def pin_login(
 
 @router.post(
     "/refresh",
-    response_model=AccessTokenResponse,
+    response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
 )
 async def refresh_access_token(
     body: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
-) -> AccessTokenResponse:
+) -> TokenResponse:
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
     except ValueError as e:
@@ -213,7 +213,7 @@ async def refresh_access_token(
     )
     refresh_token = await _create_and_store_refresh_token(user.user_id)
 
-    return AccessTokenResponse(
+    return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
     )

@@ -52,12 +52,11 @@ sequenceDiagram
 
     opt Token Refresh (Access Token verlopen)
         App->>API: POST /api/v1/auth/refresh {refresh_token}
-        API->>Redis: EXISTS refresh:<user_id>:<old_jti> (Validate Token)
+        API->>Redis: DEL refresh:<user_id>:<old_jti> (Atomisch Valideer & Revoke)
 
-        alt Refresh token ongeldig/verlopen of niet in whitelist
+        alt Refresh token bestond niet in whitelist
             API-->>App: 401 Unauthorized
-        else Refresh token geldig
-            API->>Redis: DEL refresh:<user_id>:<old_jti> (Revoke oude token)
+        else Refresh token was geldig
             API->>DB: SELECT user + role WHERE user_id = <sub>
             API->>Redis: SETEX refresh:<user_id>:<new_jti> (Store nieuwe refresh token)
             API-->>App: 200 OK {access_token, refresh_token}
