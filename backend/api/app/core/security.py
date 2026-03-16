@@ -25,9 +25,7 @@ def _decode_token(token: str, required_claims: list[str]) -> dict:
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
-            options={
-                "require": claims_to_check
-            },  # <-- FIX: Gebruik hier de nieuwe lijst!
+            options={"require": claims_to_check},
         )
     except ExpiredSignatureError as e:
         raise ValueError("Token is verlopen.") from e
