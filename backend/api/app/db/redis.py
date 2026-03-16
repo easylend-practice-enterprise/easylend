@@ -27,11 +27,13 @@ async def is_refresh_token_valid(user_id: str, jti: str) -> bool:
     return await redis_client.exists(f"refresh:{user_id}:{jti}") > 0
 
 
-async def revoke_refresh_token(user_id: str, jti: str):
+async def revoke_refresh_token(user_id: str, jti: str) -> bool:
     """
     Trekt één specifieke refresh token in.
+    Geeft True terug als de token daadwerkelijk bestond en is verwijderd.
     """
-    await redis_client.delete(f"refresh:{user_id}:{jti}")
+    result = await redis_client.delete(f"refresh:{user_id}:{jti}")
+    return result > 0
 
 
 async def revoke_all_refresh_tokens(user_id: str):

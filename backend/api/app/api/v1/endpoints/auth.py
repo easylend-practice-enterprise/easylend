@@ -11,7 +11,6 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User
 from app.db.redis import (
-    is_refresh_token_valid,
     revoke_refresh_token,
     store_refresh_token,
 )
@@ -21,7 +20,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout)
 _MAX_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
-_REFRESH_TOKEN_TTL_SECONDS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 86400
+# Bereken exact het aantal seconden op basis van de dagen in de settings
+_REFRESH_TOKEN_TTL_SECONDS = int(
+    timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()
+)
 
 
 # Request / Response schemas (auth-specifiek, inline)
@@ -175,19 +177,18 @@ async def refresh_access_token(
             detail=str(e),
         ) from e
 
-    if not await is_refresh_token_valid(
+    # Atomisch de token consumeren: we proberen hem te verwijderen.
+    # Als resultaat False is, bestond hij niet (of was een andere request ons voor).
+    token_consumed = await revoke_refresh_token(
         user_id=str(refresh_payload.sub),
         jti=str(refresh_payload.jti),
-    ):
+    )
+
+    if not token_consumed:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ongeldige refresh token.",
         )
-
-    await revoke_refresh_token(
-        user_id=str(refresh_payload.sub),
-        jti=str(refresh_payload.jti),
-    )
 
     result = await db.execute(
         select(User)
