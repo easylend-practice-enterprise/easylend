@@ -112,7 +112,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 ## Stap 7: CRUD: Users & Permissions
 
-**Ticket:** ELP-27 · **Status:** 📋 Queued · *Requires: stap 4 (auth middleware)*
+**Ticket:** ELP-27 · **Status:** 📋 In Progress · *Requires: stap 4 (auth middleware)*
 
 - `GET /api/v1/users` (admin: lijst van alle gebruikers, paginatie via `skip`/`limit`)
 - `GET /api/v1/users/me`
