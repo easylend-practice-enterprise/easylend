@@ -43,7 +43,7 @@ flowchart TD
     S <-->|"HTTP / WSS"| API
     
     API <-->|"Read / Write"| DB
-    API <-->|"Pub / Sub"| REDIS
+    API <-->|"Pub / Sub + Token Whitelist"| REDIS
     API <-->|"POST Image / Get JSON"| YOLO
     API <-->|"Health / Metrics"| MONITOR
 
@@ -80,7 +80,7 @@ flowchart TD
         Redis[(Redis Cache)]:::data
         
         API <-->|"Query / Log"| DB
-        API <-->|"Pub/Sub"| Redis
+        API <-->|"Pub/Sub + Token Whitelist"| Redis
         API <-->|"Analyze Image"| AIService
         API <-->|"Hardware Status"| PXE
     end

@@ -17,7 +17,7 @@ De zeven kernflows zijn:
 
 ## 1. Login Flow (NFC + PIN)
 
-De gebruiker scant zijn NFC-badge en voert zijn PIN in om een JWT-token te ontvangen. Ingebouwd anti-brute-force mechanisme blokkeert het account na 5 mislukte pogingen.
+De gebruiker scant zijn NFC-badge en voert zijn PIN in om een access token en refresh token te ontvangen. Het refresh token wordt in Redis opgeslagen als token whitelist entry en bij logout/revocation verwijderd. Ingebouwd anti-brute-force mechanisme blokkeert het account na 5 mislukte pogingen.
 
 [Bekijk het sequence diagram: Login Flow](./diagrams/sequence_auth.mmd)
 

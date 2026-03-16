@@ -42,7 +42,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 ## Stap 3: JWT Model opstellen
 
-**Ticket:** ELP-21 · **Status:** 📋 Queued · *Requires: stap 2*
+**Ticket:** ELP-21 · **Status:** ✅ Done · *Requires: stap 2*
 
 - Pydantic model voor JWT payload:
 
@@ -56,11 +56,13 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 - Aparte `schemas/token.py`
 
+- [x] Geimplementeerd in `backend/api/app/schemas/token.py`
+
 ---
 
 ## Stap 4: JWT Tokens maken
 
-**Ticket:** ELP-22 · **Status:** 📋 Queued · *Requires: stap 3*
+**Ticket:** ELP-22 · **Status:** ✅ Done · *Requires: stap 3*
 
 - `create_access_token()` en `verify_access_token()` functies
 - FastAPI dependency `get_current_user` via `Authorization: Bearer`
@@ -69,23 +71,27 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
   - `POST /api/v1/auth/pin` --> verifieert PIN en geeft access + refresh token
   - `POST /api/v1/auth/logout`
 
+  - [x] Geimplementeerd in `backend/api/app/core/security.py`, `backend/api/app/api/deps.py` en `backend/api/app/api/v1/endpoints/auth.py`
+
 > **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.
 
 ---
 
 ## Stap 5: Refresh Token Mechanisme
 
-**Ticket:** ELP-24 · **Status:** 📋 Queued · *Requires: stap 4*
+**Ticket:** ELP-24 · **Status:** ✅ Done · *Requires: stap 4*
 
 - `POST /api/v1/auth/refresh` endpoint
 - Refresh token valideren --> nieuw access token uitschrijven
 - Refresh token na gebruik invalideren (rotation)
 
+- [x] Endpoint + rotatie geimplementeerd in `backend/api/app/api/v1/endpoints/auth.py`
+
 ---
 
 ## Stap 6: Redis Integratie (refresh tokens)
 
-**Ticket:** ELP-25 · **Status:** 📋 Queued · *Requires: stap 5*
+**Ticket:** ELP-25 · **Status:** ✅ Done · *Requires: stap 5*
 
 - Redis config is al klaar (ELP-17 ✅ Done)
 - Refresh tokens opslaan in Redis met TTL (Multi-session):
@@ -96,6 +102,8 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 - Revocation check bij elke refresh aanvraag
 - Bij logout: DEL key (of `revoke_all` bij account compromittatie)
+
+- [x] Geimplementeerd in `backend/api/app/db/redis.py` en gebruikt in auth endpoints
 
 ---
 
@@ -257,6 +265,38 @@ Rate limiting gebeurt in 3 strategische lagen (hybride aanpak):
 3. **Laag 3: Authenticated Endpoints (Spam/Glitch preventie)**
    - Zodra een client een JWT of M2M token heeft, rate-limiten we op **Token ID (`sub` / `kiosk_id`)**.
    - Dit voorkomt dat een gecompromitteerd account of haperende app de server overbelast (bijv. 60 req/min per user), zonder andere gebruikers op hetzelfde netwerk te straffen.
+
+> Huidige stand: brute-force lockout op accountniveau is al aanwezig in `POST /api/v1/auth/pin`; expliciete rate limiting (IP/token) staat nog open.
+
+---
+
+## Testmomenten (wanneer tests schrijven)
+
+Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimale testset per fase.
+
+1. **Na stap 4-6 (auth + refresh + Redis): verplicht nu**
+
+   - Unit tests voor token-helpers (`create/verify` + token type checks)
+   - API test: `POST /auth/refresh` is single-use (2e keer 401)
+   - API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
+   - API test: `POST /auth/pin` lockout na 5 foute pogingen
+
+2. **Na stap 7-8 (CRUD + RBAC)**
+
+   - Autorisatietests per rol (admin/medewerker/kiosk)
+   - Happy-path + forbidden-path per endpoint
+
+3. **Na stap 10a-10c (transacties + hardware + AI)**
+
+   - Concurrency test voor checkout (geen dubbele toewijzing)
+   - Idempotency test voor checkout/return
+   - Fallback tests (AI timeout, geen actieve Vision Box websocket)
+
+4. **Na stap 11-13 (sanitization/rate-limit/audit)**
+
+   - Input-validatie tests (grenzen/regex)
+   - Rate-limit tests (IP en token gebaseerd)
+   - Audit-chain integriteitstest
 
 ---
 

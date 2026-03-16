@@ -1,20 +1,33 @@
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User
+from app.db.redis import (
+    revoke_refresh_token,
+    store_refresh_token,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout)
 _MAX_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
+# Bereken exact het aantal seconden op basis van de dagen in de settings
+_REFRESH_TOKEN_TTL_SECONDS = int(
+    timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()
+)
 
 
 # Request / Response schemas (auth-specifiek, inline)
@@ -29,8 +42,13 @@ class PinLoginRequest(BaseModel):
     pin: str
 
 
-class AccessTokenResponse(BaseModel):
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "Bearer"  # noqa: S105
 
 
@@ -71,6 +89,23 @@ async def _get_active_user_by_nfc(
     return user
 
 
+async def _create_and_store_refresh_token(user_id) -> str:
+    refresh_token = security.create_refresh_token(user_id)
+    refresh_payload = security.verify_refresh_token(refresh_token)
+    try:
+        await store_refresh_token(
+            user_id=str(refresh_payload.sub),
+            jti=str(refresh_payload.jti),
+            expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
+        )
+    except RedisError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw.",
+        ) from exc
+    return refresh_token
+
+
 # Endpoints
 
 
@@ -91,17 +126,16 @@ async def nfc_login(
     return {"detail": "NFC badge herkend. Voer PIN in."}
 
 
-@router.post("/pin", response_model=AccessTokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/pin", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def pin_login(
     body: PinLoginRequest,
     db: AsyncSession = Depends(get_db),
-) -> AccessTokenResponse:
+) -> TokenResponse:
     """
     Stap 2 van de login flow: verifieer PIN en geef een JWT access token terug.
 
     - Blokkeert het account voor _LOCKOUT_MINUTES na _MAX_ATTEMPTS mislukte pogingen.
     - Reset de teller en de lockout bij een succesvolle inlog.
-    - TODO (ELP-24): refresh token aanmaken en opslaan in Redis.
     - TODO (ELP-29): INSERT audit_log LOGIN_SUCCESS / LOGIN_FAILED.
     """
     user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
@@ -128,4 +162,109 @@ async def pin_login(
         user_id=user.user_id,
         role=user.role.role_name,
     )
-    return AccessTokenResponse(access_token=access_token)
+    refresh_token = await _create_and_store_refresh_token(user.user_id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def refresh_access_token(
+    body: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    # 1. Decode en valideer de signature en type
+    try:
+        refresh_payload = security.verify_refresh_token(body.refresh_token)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(e),
+        ) from e
+
+    # 2. Atomisch de token consumeren (Voorkomt Token Replay / Race Conditions)
+    try:
+        token_consumed = await revoke_refresh_token(
+            user_id=str(refresh_payload.sub),
+            jti=str(refresh_payload.jti),
+        )
+    except RedisError as e:
+        logger.exception(
+            "Failed to revoke refresh token during refresh.",
+            extra={
+                "user_id": str(refresh_payload.sub),
+                "jti": str(refresh_payload.jti),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Tijdelijke storing. Probeer het later opnieuw.",
+        ) from e
+
+    if not token_consumed:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ongeldige refresh token.",
+        )
+
+    # 3. Haal de user op uit de DB
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.role))
+        .where(User.user_id == refresh_payload.sub)
+    )
+    user = result.scalar_one_or_none()
+
+    if (
+        user is None
+        or not user.is_active
+        or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ongeldige refresh token.",
+        )
+
+    # 4. Maak nieuwe tokens aan
+    access_token = security.create_access_token(
+        user_id=user.user_id,
+        role=user.role.role_name,
+    )
+    refresh_token = await _create_and_store_refresh_token(user.user_id)
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(body: RefreshTokenRequest) -> dict:
+    try:
+        payload = security.verify_refresh_token(body.refresh_token)
+    except ValueError:
+        # Idempotent logout: verlopen of ongeldige tokens geven nog steeds succes terug.
+        return {"detail": "Succesvol uitgelogd."}
+
+    try:
+        await revoke_refresh_token(user_id=str(payload.sub), jti=str(payload.jti))
+    except RedisError as e:
+        logger.exception(
+            "Failed to revoke refresh token during logout.",
+            extra={
+                "user_id": str(payload.sub),
+                "jti": str(payload.jti),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Tijdelijke storing. Probeer het later opnieuw.",
+        ) from e
+
+    return {"detail": "Succesvol uitgelogd."}
