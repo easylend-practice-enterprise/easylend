@@ -115,10 +115,11 @@ flowchart TD
 
 ## 2. Security & Core Principles
 
-* **Zero-Trust Authenticatie:** Geen enkel endpoint is openbaar. Apparaten (Vision Box, Simulatie) gebruiken Static M2M API Keys (`X-Device-Token`). Kiosk-gebruikers gebruiken NFC-tags (UID) gecombineerd met een PIN (JWT).
-* **Cryptografische Audit Trail:** Alle kritieke transacties (`LOGIN`, `DOOR_OPENED`, `PXE_CHECK`, `SELF_DECLARATION`) worden opgeslagen in `AUDIT_LOGS`. Elke rij bevat een `current_hash` gebaseerd op de payload én de `previous_hash` van de vorige rij, wat de database *tamper-proof* maakt.
+* **Zero-Trust Authenticatie:** Bijna geen enkel endpoint is openbaar. De enige gecontroleerde publieke eindpunten zijn `POST /api/v1/auth/nfc` en `POST /api/v1/auth/pin` — vereist voor de user-loginflow en strikt rate-limited (zie Stap 12). Alle overige endpoints vereisen een geldig Bearer JWT (ingelogde gebruikers) of een statische `X-Device-Token` header (hardware). Apparaten (Vision Box, Simulatie) gebruiken Static API Keys beheerd via `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`). Kiosk-gebruikers gebruiken NFC-tags (UID) gecombineerd met een PIN (JWT).
+* **Cryptografische Audit Trail:** Alle kritieke transacties (`LOGIN`, `DOOR_OPENED`, `SELF_DECLARATION`) worden opgeslagen in `AUDIT_LOGS`. Elke rij bevat een `current_hash` gebaseerd op de payload én de `previous_hash` van de vorige rij, wat de database *tamper-proof* maakt. **Implementatiestatus:** het `AUDIT_LOGS` schema is beschikbaar vanaf Stap 1; het hash-chaining mechanisme en de tamper-detection endpoint (`GET /api/v1/audit`) worden geïmplementeerd in Stap 13 (Phase 2, na de transactielogica).
 * **No Hardcoding:** Hardcoded IP-adressen of secrets zijn verboden. Alles loopt via een `.env` bestand, strikt gevalideerd door FastAPI `pydantic-settings`.
 * **Database Isolatie:** De database is niet blootgesteld aan het internet (`0.0.0.0` is verboden) en wordt door developers benaderd via een SSH Tunnel naar `127.0.0.1`.
+* **PXE Live Boot Service:** Deze component is zichtbaar in de logische topologie maar valt **buiten de scope van de huidige implementatie (V1/MVP)**. PXE is gepland voor V2 (Post-MVP). Referenties naar `PXE_CHECK` audit-acties en PXE-boot hardware tests zijn gereserveerd voor die release.
 
 ## 3. Database Architectuur & Datamodel (ERD)
 
@@ -130,7 +131,7 @@ Het datamodel (PostgreSQL) is strikt genormaliseerd (3NF) en specifiek ontworpen
 2. **Geavanceerd State Management (Edge Cases):** Om real-world problemen (zoals verborgen defecten of gebruikers die elkaar beschuldigen) op te vangen, werken de enums nauw samen. Een verdachte inlevering triggert `loan_status = DISPUTED` of `PENDING_INSPECTION`. Het corresponderende kluisje wordt direct hardwarematig geblokkeerd via `locker_status = MAINTENANCE` (De Quarantaine-flow).
 3. **JSONB voor Flexibiliteit (NoSQL in SQL):** Omdat hardware checks en AI-modellen onvoorspelbare of wisselende datastructuren genereren, gebruiken we het krachtige `JSONB` datatype van PostgreSQL.
    * `AI_EVALUATIONS.detected_objects` slaat de ruwe bounding-box data op.
-   * `AUDIT_LOGS.payload` vangt alles op van PXE-boot hardware tests (`{"ram_ok": true}`) tot self-declarations (`{"has_damage": false}`).
+   * `AUDIT_LOGS.payload` vangt alles op van hardware-events tot self-declarations (`{"has_damage": false}`). PXE-boot hardware tests (`{"ram_ok": true}`) zijn gereserveerd voor V2 (Post-MVP).
 
 ### Entity Relationship Diagram
 
