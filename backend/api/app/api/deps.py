@@ -34,21 +34,21 @@ async def get_current_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gebruiker niet gevonden.",
+            detail="User not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gebruikersaccount is niet actief.",
+            detail="User account is not active.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if user.locked_until is not None and user.locked_until > datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gebruikersaccount is tijdelijk vergrendeld.",
+            detail="User account is temporarily locked.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -59,6 +59,6 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role is None or current_user.role.role_name != "Admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Onvoldoende rechten.",
+            detail="Insufficient permissions.",
         )
     return current_user

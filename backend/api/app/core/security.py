@@ -26,9 +26,9 @@ def _decode_token(token: str, required_claims: list[str]) -> dict:
             options={"require": claims_to_check},
         )
     except ExpiredSignatureError as e:
-        raise ValueError("Token is verlopen.") from e
+        raise ValueError("Token has expired.") from e
     except InvalidTokenError as e:
-        raise ValueError("Ongeldige token.") from e
+        raise ValueError("Invalid token.") from e
 
 
 def create_access_token(user_id: uuid.UUID, role: str) -> str:
@@ -76,7 +76,7 @@ def verify_access_token(token: str) -> TokenPayload:
     raw = _decode_token(token, ["sub", "role", "exp", "jti"])
 
     if raw.get("type") != "access":
-        raise ValueError("Ongeldige token.")
+        raise ValueError("Invalid token.")
 
     try:
         sub = uuid.UUID(raw["sub"])
@@ -86,7 +86,7 @@ def verify_access_token(token: str) -> TokenPayload:
 
         exp = datetime.fromtimestamp(exp_claim, tz=UTC)
     except (KeyError, TypeError, ValueError) as e:
-        raise ValueError("Ongeldige token.") from e
+        raise ValueError("Invalid token.") from e
 
     try:
         return TokenPayload(
@@ -96,7 +96,7 @@ def verify_access_token(token: str) -> TokenPayload:
             jti=jti,
         )
     except ValidationError as e:
-        raise ValueError("Ongeldige token.") from e
+        raise ValueError("Invalid token.") from e
 
 
 def verify_refresh_token(token: str) -> RefreshTokenPayload:
@@ -107,7 +107,7 @@ def verify_refresh_token(token: str) -> RefreshTokenPayload:
     raw = _decode_token(token, ["sub", "exp", "jti"])
 
     if raw.get("type") != "refresh":
-        raise ValueError("Ongeldige token.")
+        raise ValueError("Invalid token.")
 
     try:
         sub = uuid.UUID(raw["sub"])
@@ -115,12 +115,12 @@ def verify_refresh_token(token: str) -> RefreshTokenPayload:
         jti = uuid.UUID(raw["jti"])
         exp = datetime.fromtimestamp(exp_claim, tz=UTC)
     except (KeyError, TypeError, ValueError) as e:
-        raise ValueError("Ongeldige token.") from e
+        raise ValueError("Invalid token.") from e
 
     try:
         return RefreshTokenPayload(sub=sub, exp=exp, jti=jti)
     except ValidationError as e:
-        raise ValueError("Ongeldige token.") from e
+        raise ValueError("Invalid token.") from e
 
 
 def get_pin_hash(pin: str) -> str:

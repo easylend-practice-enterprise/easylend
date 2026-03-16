@@ -270,7 +270,7 @@ def test_get_user_by_id_returns_404_for_unknown_user(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.get(f"/api/v1/users/{uuid.uuid4()}", headers=_bearer(admin))
     assert response.status_code == 404
-    assert response.json()["detail"] == "Gebruiker niet gevonden."
+    assert response.json()["detail"] == "User not found."
 
 
 # ─────────────────────────── 6. Admin: POST / ────────────────────────────────
@@ -330,7 +330,7 @@ def test_create_user_returns_400_on_duplicate_email(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users/", json=payload, headers=_bearer(admin))
     assert response.status_code == 400
-    assert response.json()["detail"] == "E-mailadres bestaat al."
+    assert response.json()["detail"] == "Email address already exists."
 
 
 def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
@@ -350,7 +350,7 @@ def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users/", json=payload, headers=_bearer(admin))
     assert response.status_code == 400
-    assert response.json()["detail"] == "Ongeldige role_id."
+    assert response.json()["detail"] == "Invalid role_id."
 
 
 # ─────────────────────────── 7. Admin: PATCH /{user_id} ──────────────────────
@@ -470,4 +470,4 @@ def test_update_user_nfc_returns_400_on_duplicate_tag(client_with_overrides):
             headers=_bearer(admin),
         )
     assert response.status_code == 400
-    assert response.json()["detail"] == "NFC tag is al gekoppeld aan een gebruiker."
+    assert response.json()["detail"] == "NFC tag is already linked to another user."

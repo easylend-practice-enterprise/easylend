@@ -38,7 +38,7 @@ def test_access_token_not_accepted_as_refresh():
     user_id = uuid.uuid4()
     access_token = create_access_token(user_id=user_id, role="Admin")
 
-    with pytest.raises(ValueError, match=r"Ongeldige token\."):
+    with pytest.raises(ValueError, match=r"Invalid token\."):
         verify_refresh_token(access_token)
 
 
@@ -46,7 +46,7 @@ def test_refresh_token_not_accepted_as_access():
     user_id = uuid.uuid4()
     refresh_token = create_refresh_token(user_id=user_id)
 
-    with pytest.raises(ValueError, match=r"Ongeldige token\."):
+    with pytest.raises(ValueError, match=r"Invalid token\."):
         verify_access_token(refresh_token)
 
 

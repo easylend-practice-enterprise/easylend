@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,15 +22,15 @@ async def _get_user_with_role_or_404(db: AsyncSession, user_id: UUID) -> User:
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Gebruiker niet gevonden.",
+            detail="User not found.",
         )
     return user
 
 
 @router.get("/", response_model=list[UserResponse], status_code=status.HTTP_200_OK)
 async def list_users(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> list[User]:
@@ -66,7 +66,7 @@ async def create_user(
     if existing_email.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="E-mailadres bestaat al.",
+            detail="Email address already exists.",
         )
 
     role_exists = await db.execute(
@@ -75,7 +75,7 @@ async def create_user(
     if role_exists.scalar_one_or_none() is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ongeldige role_id.",
+            detail="Invalid role_id.",
         )
 
     if payload.nfc_tag_id is not None:
@@ -85,7 +85,7 @@ async def create_user(
         if existing_nfc.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NFC tag is al gekoppeld aan een gebruiker.",
+                detail="NFC tag is already linked to another user.",
             )
 
     user = User(
@@ -116,6 +116,12 @@ async def update_user(
 
     update_data = payload.model_dump(exclude_unset=True)
 
+    # Voorkom dat niet-nullable kolommen per ongeluk op None worden gezet
+    non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
+    for field in non_nullable_fields:
+        if field in update_data and update_data[field] is None:
+            update_data.pop(field)
+
     if "email" in update_data and update_data["email"] is not None:
         new_email = str(update_data["email"])
         existing_email = await db.execute(
@@ -124,7 +130,7 @@ async def update_user(
         if existing_email.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="E-mailadres bestaat al.",
+                detail="Email address already exists.",
             )
         update_data["email"] = new_email
 
@@ -138,7 +144,7 @@ async def update_user(
         if existing_nfc.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NFC tag is al gekoppeld aan een gebruiker.",
+                detail="NFC tag is already linked to another user.",
             )
 
     if "role_id" in update_data and update_data["role_id"] is not None:
@@ -148,7 +154,7 @@ async def update_user(
         if role_exists.scalar_one_or_none() is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ongeldige role_id.",
+                detail="Invalid role_id.",
             )
 
     if "pin" in update_data and update_data["pin"] is not None:
@@ -182,7 +188,7 @@ async def update_user_nfc(
     if existing_nfc.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="NFC tag is al gekoppeld aan een gebruiker.",
+            detail="NFC tag is already linked to another user.",
         )
 
     user.nfc_tag_id = payload.nfc_tag_id
