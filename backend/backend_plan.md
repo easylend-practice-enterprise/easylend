@@ -295,18 +295,18 @@ Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimal
 - [x] API test: `POST /auth/pin` lockout na 5 foute pogingen
 - [x] API tests voor `POST /auth/nfc` en Redis-failure paden (`503`)
 
-1. **Na stap 7-8 (CRUD + RBAC)**
+2. **Na stap 7-8 (CRUD + RBAC)**
 
    - Autorisatietests per rol (admin/medewerker/kiosk)
    - Happy-path + forbidden-path per endpoint
 
-2. **Na stap 10a-10c (transacties + hardware + AI)**
+3. **Na stap 10a-10c (transacties + hardware + AI)**
 
    - Concurrency test voor checkout (geen dubbele toewijzing)
    - Idempotency test voor checkout/return
    - Fallback tests (AI timeout, geen actieve Vision Box websocket)
 
-3. **Na stap 11-13 (sanitization/rate-limit/audit)**
+4. **Na stap 11-13 (sanitization/rate-limit/audit)**
 
    - Input-validatie tests (grenzen/regex)
    - Rate-limit tests (IP en token gebaseerd)
