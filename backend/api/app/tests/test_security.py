@@ -1,4 +1,15 @@
-from app.core.security import get_pin_hash, verify_pin
+import uuid
+
+import pytest
+
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    get_pin_hash,
+    verify_access_token,
+    verify_pin,
+    verify_refresh_token,
+)
 
 
 def test_pin_hashing_and_verification():
@@ -21,3 +32,34 @@ def test_pin_hashing_and_verification():
     # 3. Verifieer met een FOUTE PIN
     assert verify_pin("654321", hashed_pin) is False
     assert verify_pin("12345", hashed_pin) is False
+
+
+def test_access_token_not_accepted_as_refresh():
+    user_id = uuid.uuid4()
+    access_token = create_access_token(user_id=user_id, role="Admin")
+
+    with pytest.raises(ValueError, match=r"Ongeldige token\."):
+        verify_refresh_token(access_token)
+
+
+def test_refresh_token_not_accepted_as_access():
+    user_id = uuid.uuid4()
+    refresh_token = create_refresh_token(user_id=user_id)
+
+    with pytest.raises(ValueError, match=r"Ongeldige token\."):
+        verify_access_token(refresh_token)
+
+
+def test_token_type_validation_success():
+    user_id = uuid.uuid4()
+    role = "Admin"
+
+    access_token = create_access_token(user_id=user_id, role=role)
+    refresh_token = create_refresh_token(user_id=user_id)
+
+    access_payload = verify_access_token(access_token)
+    refresh_payload = verify_refresh_token(refresh_token)
+
+    assert access_payload.sub == user_id
+    assert access_payload.role == role
+    assert refresh_payload.sub == user_id
