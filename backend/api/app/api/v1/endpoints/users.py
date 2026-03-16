@@ -35,7 +35,11 @@ async def list_users(
     _: User = Depends(get_current_admin),
 ) -> list[User]:
     result = await db.execute(
-        select(User).options(selectinload(User.role)).offset(skip).limit(limit)
+        select(User)
+        .options(selectinload(User.role))
+        .order_by(User.user_id)
+        .offset(skip)
+        .limit(limit)
     )
     return list(result.scalars().all())
 
