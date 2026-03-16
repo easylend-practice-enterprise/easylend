@@ -1,10 +1,12 @@
 from datetime import UTC, datetime, timedelta
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from redis.exceptions import RedisError
 
 import redis
 from app.core import security
@@ -15,6 +17,8 @@ from app.db.redis import (
     revoke_refresh_token,
     store_refresh_token,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -188,10 +192,23 @@ async def refresh_access_token(
         ) from e
 
     # 2. Atomisch de token consumeren (Voorkomt Token Replay / Race Conditions)
-    token_consumed = await revoke_refresh_token(
-        user_id=str(refresh_payload.sub),
-        jti=str(refresh_payload.jti),
-    )
+    try:
+        token_consumed = await revoke_refresh_token(
+            user_id=str(refresh_payload.sub),
+            jti=str(refresh_payload.jti),
+        )
+    except RedisError as e:
+        logger.exception(
+            "Failed to revoke refresh token during refresh.",
+            extra={
+                "user_id": str(refresh_payload.sub),
+                "jti": str(refresh_payload.jti),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Tijdelijke storing. Probeer het later opnieuw.",
+        ) from e
 
     if not token_consumed:
         raise HTTPException(
@@ -238,5 +255,19 @@ async def logout(body: RefreshTokenRequest) -> dict:
         # Idempotent logout: verlopen of ongeldige tokens geven nog steeds succes terug.
         return {"detail": "Succesvol uitgelogd."}
 
-    await revoke_refresh_token(user_id=str(payload.sub), jti=str(payload.jti))
+    try:
+        await revoke_refresh_token(user_id=str(payload.sub), jti=str(payload.jti))
+    except RedisError as e:
+        logger.exception(
+            "Failed to revoke refresh token during logout.",
+            extra={
+                "user_id": str(payload.sub),
+                "jti": str(payload.jti),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Tijdelijke storing. Probeer het later opnieuw.",
+        ) from e
+
     return {"detail": "Succesvol uitgelogd."}
