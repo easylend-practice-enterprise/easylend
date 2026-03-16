@@ -116,11 +116,17 @@ async def update_user(
 
     update_data = payload.model_dump(exclude_unset=True)
 
-    # Voorkom dat niet-nullable kolommen per ongeluk op None worden gezet
+    # Voorkom dat niet-nullable kolommen expliciet op None worden gezet
     non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
-    for field in non_nullable_fields:
-        if field in update_data and update_data[field] is None:
-            update_data.pop(field)
+    invalid_null_fields = [
+        field for field in non_nullable_fields
+        if field in update_data and update_data[field] is None
+    ]
+    if invalid_null_fields:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Fields {', '.join(sorted(invalid_null_fields))} cannot be null.",
+        )
 
     if "email" in update_data and update_data["email"] is not None:
         new_email = str(update_data["email"])
