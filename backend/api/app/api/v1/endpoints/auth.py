@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+import redis
 from app.core import security
 from app.core.config import settings
 from app.db.database import get_db
@@ -88,11 +89,19 @@ async def _get_active_user_by_nfc(
 async def _create_and_store_refresh_token(user_id) -> str:
     refresh_token = security.create_refresh_token(user_id)
     refresh_payload = security.verify_refresh_token(refresh_token)
-    await store_refresh_token(
-        user_id=str(refresh_payload.sub),
-        jti=str(refresh_payload.jti),
-        expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
-    )
+    try:
+        await store_refresh_token(
+            user_id=str(refresh_payload.sub),
+            jti=str(refresh_payload.jti),
+            expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
+        )
+    except redis.exceptions.RedisError as exc:
+        # Externe dependency (Redis) tijdelijk niet beschikbaar: maak dit
+        # deterministisch en uitlegbaar voor de client.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw.",
+        ) from exc
     return refresh_token
 
 
