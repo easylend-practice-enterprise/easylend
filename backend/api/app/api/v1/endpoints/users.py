@@ -2,9 +2,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core import security
@@ -131,7 +131,8 @@ async def update_user(
     # Voorkom dat niet-nullable kolommen expliciet op None worden gezet
     non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
     invalid_null_fields = [
-        field for field in non_nullable_fields
+        field
+        for field in non_nullable_fields
         if field in update_data and update_data[field] is None
     ]
     if invalid_null_fields:
@@ -183,7 +184,15 @@ async def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email address or NFC tag already exists.",
+        )
+
     return await _get_user_with_role_or_404(db, user_id)
 
 
