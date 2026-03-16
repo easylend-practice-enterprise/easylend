@@ -72,6 +72,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
   - `POST /api/v1/auth/logout`
 
   - [x] Geimplementeerd in `backend/api/app/core/security.py`, `backend/api/app/api/deps.py` en `backend/api/app/api/v1/endpoints/auth.py`
+    - [x] API tests aanwezig in `backend/api/app/tests/test_auth_api.py`
 
 > **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.
 
@@ -86,6 +87,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - Refresh token na gebruik invalideren (rotation)
 
 - [x] Endpoint + rotatie geimplementeerd in `backend/api/app/api/v1/endpoints/auth.py`
+- [x] Single-use en logout revocation getest in `backend/api/app/tests/test_auth_api.py`
 
 ---
 
@@ -104,6 +106,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - Bij logout: DEL key (of `revoke_all` bij account compromittatie)
 
 - [x] Geimplementeerd in `backend/api/app/db/redis.py` en gebruikt in auth endpoints
+- [x] Redis-failure paden (`503`) getest in `backend/api/app/tests/test_auth_api.py`
 
 ---
 
@@ -274,25 +277,26 @@ Rate limiting gebeurt in 3 strategische lagen (hybride aanpak):
 
 Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimale testset per fase.
 
-1. **Na stap 4-6 (auth + refresh + Redis): verplicht nu**
+1. **Na stap 4-6 (auth + refresh + Redis): afgerond**
 
-   - Unit tests voor token-helpers (`create/verify` + token type checks)
-   - API test: `POST /auth/refresh` is single-use (2e keer 401)
-   - API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
-   - API test: `POST /auth/pin` lockout na 5 foute pogingen
+- [x] Unit tests voor token-helpers (`create/verify` + token type checks)
+- [x] API test: `POST /auth/refresh` is single-use (2e keer 401)
+- [x] API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
+- [x] API test: `POST /auth/pin` lockout na 5 foute pogingen
+- [x] API tests voor `POST /auth/nfc` en Redis-failure paden (`503`)
 
-2. **Na stap 7-8 (CRUD + RBAC)**
+1. **Na stap 7-8 (CRUD + RBAC)**
 
    - Autorisatietests per rol (admin/medewerker/kiosk)
    - Happy-path + forbidden-path per endpoint
 
-3. **Na stap 10a-10c (transacties + hardware + AI)**
+2. **Na stap 10a-10c (transacties + hardware + AI)**
 
    - Concurrency test voor checkout (geen dubbele toewijzing)
    - Idempotency test voor checkout/return
    - Fallback tests (AI timeout, geen actieve Vision Box websocket)
 
-4. **Na stap 11-13 (sanitization/rate-limit/audit)**
+3. **Na stap 11-13 (sanitization/rate-limit/audit)**
 
    - Input-validatie tests (grenzen/regex)
    - Rate-limit tests (IP en token gebaseerd)
