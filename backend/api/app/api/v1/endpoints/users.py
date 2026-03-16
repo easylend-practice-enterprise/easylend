@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core import security
@@ -104,7 +105,14 @@ async def create_user(
     )
 
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email address or NFC tag already exists.",
+        )
 
     return await _get_user_with_role_or_404(db, user.user_id)
 
@@ -202,5 +210,12 @@ async def update_user_nfc(
         )
 
     user.nfc_tag_id = payload.nfc_tag_id
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="NFC tag is already linked to another user.",
+        )
     return await _get_user_with_role_or_404(db, user_id)
