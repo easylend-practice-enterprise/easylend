@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+from redis.exceptions import RedisError
+
 from app.api.v1.endpoints import auth as auth_endpoints
 from app.core import security
 from app.tests.conftest import FakeAsyncSession
@@ -150,3 +152,77 @@ def test_nfc_endpoint_returns_401_for_unknown_badge(client_with_overrides):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "Ongeldige NFC badge of accountstatus."
+
+
+def test_pin_endpoint_returns_503_when_redis_store_fails(
+    monkeypatch, build_user, client_with_overrides
+):
+    async def _mock_store_refresh_token(
+        user_id: str, jti: str, expires_in_seconds: int
+    ):  # noqa: ARG001
+        raise RedisError("redis down")
+
+    monkeypatch.setattr(
+        auth_endpoints, "store_refresh_token", _mock_store_refresh_token
+    )
+
+    user = build_user(pin="123456")
+    fake_db = FakeAsyncSession(user)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/auth/pin",
+            json={"nfc_tag_id": user.nfc_tag_id, "pin": "123456"},
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw."
+    )
+
+
+def test_refresh_endpoint_returns_503_when_redis_revoke_fails(
+    monkeypatch, build_user, client_with_overrides
+):
+    async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:  # noqa: ARG001
+        raise RedisError("redis down")
+
+    monkeypatch.setattr(
+        auth_endpoints, "revoke_refresh_token", _mock_revoke_refresh_token
+    )
+
+    user = build_user()
+    fake_db = FakeAsyncSession(user)
+    refresh_token = security.create_refresh_token(user.user_id)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Tijdelijke storing. Probeer het later opnieuw."
+
+
+def test_logout_endpoint_returns_503_when_redis_revoke_fails(
+    monkeypatch, build_user, client_with_overrides
+):
+    async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:  # noqa: ARG001
+        raise RedisError("redis down")
+
+    monkeypatch.setattr(
+        auth_endpoints, "revoke_refresh_token", _mock_revoke_refresh_token
+    )
+
+    user = build_user()
+    fake_db = FakeAsyncSession(user)
+    refresh_token = security.create_refresh_token(user.user_id)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/auth/logout", json={"refresh_token": refresh_token}
+        )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Tijdelijke storing. Probeer het later opnieuw."

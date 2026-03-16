@@ -17,8 +17,6 @@ class RefreshTokenPayload(BaseModel):
 
 
 def _decode_token(token: str, required_claims: list[str]) -> dict:
-    # We maken "type" nu ALTIJD verplicht in de vereiste claims.
-    # Als een oude token dit niet heeft, gooit jwt.decode direct een InvalidTokenError.
     claims_to_check = required_claims + ["type"]
     try:
         return jwt.decode(
@@ -46,7 +44,7 @@ def create_access_token(user_id: uuid.UUID, role: str) -> str:
         "role": role,
         "exp": expire,
         "jti": str(uuid.uuid4()),
-        "type": "access",  # <--- Expliciete token type
+        "type": "access",
     }
     return jwt.encode(
         payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
@@ -63,7 +61,7 @@ def create_refresh_token(user_id: uuid.UUID) -> str:
         "sub": str(user_id),
         "exp": expire,
         "jti": str(uuid.uuid4()),
-        "type": "refresh",  # <--- Expliciete token type
+        "type": "refresh",
     }
     return jwt.encode(
         payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
@@ -77,7 +75,6 @@ def verify_access_token(token: str) -> TokenPayload:
     """
     raw = _decode_token(token, ["sub", "role", "exp", "jti"])
 
-    # Harde check: moet "access" zijn. Generieke foutmelding.
     if raw.get("type") != "access":
         raise ValueError("Ongeldige token.")
 
@@ -87,10 +84,8 @@ def verify_access_token(token: str) -> TokenPayload:
         exp_claim = raw["exp"]
         jti = uuid.UUID(raw["jti"])
 
-        # exp wordt door PyJWT normaal gesproken als UNIX timestamp (int) teruggegeven.
         exp = datetime.fromtimestamp(exp_claim, tz=UTC)
     except (KeyError, TypeError, ValueError) as e:
-        # Onverwachte of malforme claimwaarden worden ook als ongeldig beschouwd.
         raise ValueError("Ongeldige token.") from e
 
     try:
@@ -101,7 +96,6 @@ def verify_access_token(token: str) -> TokenPayload:
             jti=jti,
         )
     except ValidationError as e:
-        # Zorg dat ook Pydantic-validatiefouten als ongeldige token worden behandeld.
         raise ValueError("Ongeldige token.") from e
 
 
@@ -112,7 +106,6 @@ def verify_refresh_token(token: str) -> RefreshTokenPayload:
     """
     raw = _decode_token(token, ["sub", "exp", "jti"])
 
-    # Harde check: moet "refresh" zijn. Generieke foutmelding.
     if raw.get("type") != "refresh":
         raise ValueError("Ongeldige token.")
 

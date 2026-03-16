@@ -1,14 +1,13 @@
-from datetime import UTC, datetime, timedelta
 import logging
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from redis.exceptions import RedisError
 
-import redis
 from app.core import security
 from app.core.config import settings
 from app.db.database import get_db
@@ -99,9 +98,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
             jti=str(refresh_payload.jti),
             expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
         )
-    except redis.exceptions.RedisError as exc:
-        # Externe dependency (Redis) tijdelijk niet beschikbaar: maak dit
-        # deterministisch en uitlegbaar voor de client.
+    except RedisError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw.",
