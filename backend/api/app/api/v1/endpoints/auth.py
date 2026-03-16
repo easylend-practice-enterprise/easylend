@@ -169,6 +169,7 @@ async def refresh_access_token(
     body: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
+    # 1. Decode en valideer de signature en type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
     except ValueError as e:
@@ -177,8 +178,7 @@ async def refresh_access_token(
             detail=str(e),
         ) from e
 
-    # Atomisch de token consumeren: we proberen hem te verwijderen.
-    # Als resultaat False is, bestond hij niet (of was een andere request ons voor).
+    # 2. Atomisch de token consumeren (Voorkomt Token Replay / Race Conditions)
     token_consumed = await revoke_refresh_token(
         user_id=str(refresh_payload.sub),
         jti=str(refresh_payload.jti),
@@ -190,6 +190,7 @@ async def refresh_access_token(
             detail="Ongeldige refresh token.",
         )
 
+    # 3. Haal de user op uit de DB
     result = await db.execute(
         select(User)
         .options(selectinload(User.role))
@@ -207,6 +208,7 @@ async def refresh_access_token(
             detail="Ongeldige refresh token.",
         )
 
+    # 4. Maak nieuwe tokens aan
     access_token = security.create_access_token(
         user_id=user.user_id,
         role=user.role.role_name,
