@@ -72,6 +72,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
   - `POST /api/v1/auth/logout`
 
   - [x] Geimplementeerd in `backend/api/app/core/security.py`, `backend/api/app/api/deps.py` en `backend/api/app/api/v1/endpoints/auth.py`
+    - [x] API tests aanwezig in `backend/api/app/tests/test_auth_api.py`
 
 > **Test met seed data (stap 1)**: geen User CRUD nodig om dit te testen.
 
@@ -86,6 +87,7 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - Refresh token na gebruik invalideren (rotation)
 
 - [x] Endpoint + rotatie geimplementeerd in `backend/api/app/api/v1/endpoints/auth.py`
+- [x] Single-use en logout revocation getest in `backend/api/app/tests/test_auth_api.py`
 
 ---
 
@@ -104,13 +106,15 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - Bij logout: DEL key (of `revoke_all` bij account compromittatie)
 
 - [x] Geimplementeerd in `backend/api/app/db/redis.py` en gebruikt in auth endpoints
+- [x] Redis-failure paden (`503`) getest in `backend/api/app/tests/test_auth_api.py`
 
 ---
 
 ## Stap 7: CRUD: Users & Permissions
 
-**Ticket:** ELP-27 · **Status:** 📋 Queued · *Requires: stap 4 (auth middleware)*
+**Ticket:** ELP-27 · **Status:** 📋 In Progress · *Requires: stap 4 (auth middleware)*
 
+- `GET /api/v1/users` (admin: lijst van alle gebruikers, paginatie via `skip`/`limit`)
 - `GET /api/v1/users/me`
 - `GET /api/v1/users/{id}` (admin only)
 - `POST /api/v1/users` (admin: nieuw gebruiker aanmaken)
@@ -160,18 +164,27 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 - `DELETE /api/v1/assets/{id}` (admin, soft-delete)
   - Implementation: set `is_deleted = true` on the `assets` row (preserve `asset_status` and history). Use DB-level default `FALSE` for `is_deleted`.
 
+**Catalog** *(requires assets + categories: buildable in same ticket)*
+
+- `GET /api/v1/catalog` (alle ingelogde gebruikers)
+  - **Rol == medewerker/student:** gecategoriseerde pool — aantal beschikbare assets per categorie (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
+  - **Rol == Admin:** beheerdersweergave — alle assets met actuele `loan_status` en lenerinfo via JOIN op `loans` en `users`.
+
 ---
 
-## Stap 9: M2M API Tokens
+## Stap 9: M2M Authenticatie (Static Device Tokens)
 
 **Ticket:** ELP-90 · **Status:** ❌ Open · *Requires: stap 4*
 
-> ⚠️ **Omhoog geschoven.** De Vision Box heeft een M2M token nodig om `POST /api/v1/vision/analyze` (Stap 10b) te mogen aanroepen. Klaar zijn vóór de hardware-integratie.
+> ⚠️ **Omhoog geschoven.** De Vision Box heeft een Static Device Token nodig om `POST /api/v1/vision/analyze` (Stap 10b) te mogen aanroepen. Klaar zijn vóór de hardware-integratie.
 
-- Aparte token flow voor machine-clients (Vision Box, Kiosk)
-- `POST /api/v1/auth/token` met `client_credentials` grant
-- Statische API-key of signed JWT zonder refresh
-- Scope beperken (bijv. kiosk mag enkel checkout/return, vision-box enkel analyze)
+**Beslissing: Statische API Keys via `X-Device-Token` header (geen OAuth `client_credentials`).**
+Hardware-clients (Vision Box, Simulatie) authenticeren met een vooraf geconfigureerde, langlevende sleutel per device, beheerd via `.env`. Dit houdt de hardware-integratie eenvoudig en vermijdt token rotation op embedded hardware.
+
+- Nieuwe FastAPI dependency: `verify_device_token(x_device_token: str = Header(...))` die de waarde vergelijkt met de geconfigureerde secrets.
+- Scope per device via aparte dependency-varianten (bijv. `verify_vision_box_token`).
+- Sleutels in `.env` als `VISION_BOX_API_KEY` en `SIMULATION_API_KEY`.
+- **Geen** `POST /api/v1/auth/token` endpoint of `client_credentials` grant.
 
 ---
 
@@ -195,7 +208,7 @@ De basis business-logica zonder hardware-koppeling: testbaar via Swagger/Postman
 
 ## Stap 10b: Hardware & AI Integratie
 
-**Status:** ❌ Open · *Requires: stap 9 (M2M tokens) + stap 10a*
+**Status:** ❌ Open · *Requires: stap 9 (Static Device Tokens) + stap 10a*
 
 Veruit het complexste deel. Koppelt de transactielogica met de fysieke hardware.
 
@@ -274,12 +287,13 @@ Rate limiting gebeurt in 3 strategische lagen (hybride aanpak):
 
 Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimale testset per fase.
 
-1. **Na stap 4-6 (auth + refresh + Redis): verplicht nu**
+1. **Na stap 4-6 (auth + refresh + Redis): afgerond**
 
-   - Unit tests voor token-helpers (`create/verify` + token type checks)
-   - API test: `POST /auth/refresh` is single-use (2e keer 401)
-   - API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
-   - API test: `POST /auth/pin` lockout na 5 foute pogingen
+- [x] Unit tests voor token-helpers (`create/verify` + token type checks)
+- [x] API test: `POST /auth/refresh` is single-use (2e keer 401)
+- [x] API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
+- [x] API test: `POST /auth/pin` lockout na 5 foute pogingen
+- [x] API tests voor `POST /auth/nfc` en Redis-failure paden (`503`)
 
 2. **Na stap 7-8 (CRUD + RBAC)**
 
@@ -338,7 +352,7 @@ Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimal
                   --> [10b] Hardware & AI  <-- beslissing: Lokaal Docker Volume
                           WebSockets + fallback + /vision/analyze
                     --> [10c] Admin Quarantaine Dashboard
-        --> [9] M2M tokens  <-- vóór 10b, Vision Box auth
+        --> [9] M2M Static Device Tokens  <-- vóór 10b, Vision Box auth (X-Device-Token header)
 [11] Input sanitization (parallel, vanaf stap 10+)
 [12] Rate limiting (requires Redis: stap 6)
 [13] Hash-chaining audit logs (requires stap 10a)

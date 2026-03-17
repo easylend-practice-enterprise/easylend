@@ -48,7 +48,7 @@ def test_refresh_endpoint_is_single_use(monkeypatch, build_user, client_with_ove
             "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
         )
         assert second_response.status_code == 401
-        assert second_response.json()["detail"] == "Ongeldige refresh token."
+        assert second_response.json()["detail"] == "Invalid refresh token."
 
 
 def test_logout_revokes_refresh_token(monkeypatch, build_user, client_with_overrides):
@@ -85,13 +85,13 @@ def test_logout_revokes_refresh_token(monkeypatch, build_user, client_with_overr
             "/api/v1/auth/logout", json={"refresh_token": refresh_token}
         )
         assert logout_response.status_code == 200
-        assert logout_response.json()["detail"] == "Succesvol uitgelogd."
+        assert logout_response.json()["detail"] == "Successfully logged out."
 
         refresh_response = client.post(
             "/api/v1/auth/refresh", json={"refresh_token": refresh_token}
         )
         assert refresh_response.status_code == 401
-        assert refresh_response.json()["detail"] == "Ongeldige refresh token."
+        assert refresh_response.json()["detail"] == "Invalid refresh token."
 
 
 def test_pin_endpoint_lockout_after_five_failed_attempts(
@@ -121,13 +121,13 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
         for _ in range(5):
             response = client.post("/api/v1/auth/pin", json=payload)
             assert response.status_code == 401
-            assert response.json()["detail"] == "Ongeldige PIN."
+            assert response.json()["detail"] == "Invalid PIN."
 
         # Na 5 fouten wordt het account gelockt; de volgende poging faalt op accountstatus.
         locked_response = client.post("/api/v1/auth/pin", json=payload)
         assert locked_response.status_code == 401
         assert (
-            locked_response.json()["detail"] == "Ongeldige NFC badge of accountstatus."
+            locked_response.json()["detail"] == "Invalid NFC badge or account status."
         )
         assert user.locked_until is not None
         assert user.locked_until > datetime.now(UTC)
@@ -141,7 +141,7 @@ def test_nfc_endpoint_returns_200_for_known_badge(build_user, client_with_overri
         response = client.post("/api/v1/auth/nfc", json={"nfc_tag_id": user.nfc_tag_id})
 
     assert response.status_code == 200
-    assert response.json()["detail"] == "NFC badge herkend. Voer PIN in."
+    assert response.json()["detail"] == "NFC badge recognized. Enter PIN."
 
 
 def test_nfc_endpoint_returns_401_for_unknown_badge(client_with_overrides):
@@ -151,7 +151,7 @@ def test_nfc_endpoint_returns_401_for_unknown_badge(client_with_overrides):
         response = client.post("/api/v1/auth/nfc", json={"nfc_tag_id": "UNKNOWN"})
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Ongeldige NFC badge of accountstatus."
+    assert response.json()["detail"] == "Invalid NFC badge or account status."
 
 
 def test_pin_endpoint_returns_503_when_redis_store_fails(
@@ -178,7 +178,7 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     assert response.status_code == 503
     assert (
         response.json()["detail"]
-        == "Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw."
+        == "Authentication service is temporarily unavailable. Please try again later."
     )
 
 
@@ -202,7 +202,9 @@ def test_refresh_endpoint_returns_503_when_redis_revoke_fails(
         )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Tijdelijke storing. Probeer het later opnieuw."
+    assert (
+        response.json()["detail"] == "Temporary service issue. Please try again later."
+    )
 
 
 def test_logout_endpoint_returns_503_when_redis_revoke_fails(
@@ -225,4 +227,6 @@ def test_logout_endpoint_returns_503_when_redis_revoke_fails(
         )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Tijdelijke storing. Probeer het later opnieuw."
+    assert (
+        response.json()["detail"] == "Temporary service issue. Please try again later."
+    )

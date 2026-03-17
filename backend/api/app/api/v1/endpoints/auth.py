@@ -83,7 +83,7 @@ async def _get_active_user_by_nfc(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ongeldige NFC badge of accountstatus.",
+            detail="Invalid NFC badge or account status.",
         )
 
     return user
@@ -101,7 +101,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
     except RedisError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authenticatiedienst tijdelijk niet beschikbaar. Probeer het later opnieuw.",
+            detail="Authentication service is temporarily unavailable. Please try again later.",
         ) from exc
     return refresh_token
 
@@ -123,7 +123,7 @@ async def nfc_login(
     is geen directe NFC-only login.
     """
     await _get_active_user_by_nfc(body.nfc_tag_id, db)
-    return {"detail": "NFC badge herkend. Voer PIN in."}
+    return {"detail": "NFC badge recognized. Enter PIN."}
 
 
 @router.post("/pin", response_model=TokenResponse, status_code=status.HTTP_200_OK)
@@ -150,7 +150,7 @@ async def pin_login(
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ongeldige PIN.",
+            detail="Invalid PIN.",
         )
 
     # Succesvolle inlog: reset brute-force tellers
@@ -204,13 +204,13 @@ async def refresh_access_token(
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Tijdelijke storing. Probeer het later opnieuw.",
+            detail="Temporary service issue. Please try again later.",
         ) from e
 
     if not token_consumed:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ongeldige refresh token.",
+            detail="Invalid refresh token.",
         )
 
     # 3. Haal de user op uit de DB
@@ -228,7 +228,7 @@ async def refresh_access_token(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ongeldige refresh token.",
+            detail="Invalid refresh token.",
         )
 
     # 4. Maak nieuwe tokens aan
@@ -250,7 +250,7 @@ async def logout(body: RefreshTokenRequest) -> dict:
         payload = security.verify_refresh_token(body.refresh_token)
     except ValueError:
         # Idempotent logout: verlopen of ongeldige tokens geven nog steeds succes terug.
-        return {"detail": "Succesvol uitgelogd."}
+        return {"detail": "Successfully logged out."}
 
     try:
         await revoke_refresh_token(user_id=str(payload.sub), jti=str(payload.jti))
@@ -264,7 +264,7 @@ async def logout(body: RefreshTokenRequest) -> dict:
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Tijdelijke storing. Probeer het later opnieuw.",
+            detail="Temporary service issue. Please try again later.",
         ) from e
 
-    return {"detail": "Succesvol uitgelogd."}
+    return {"detail": "Successfully logged out."}
