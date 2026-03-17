@@ -115,12 +115,9 @@ async def nfc_login(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
-    Stap 1 van de login flow: valideer NFC-badge.
+    Validate an NFC badge before PIN verification.
 
-    Controleert of de badge gekend, het account actief en ontgrendeld is.
-    Geeft 200 terug zodat de Kiosk App het PIN-scherm kan tonen.
-    Alle gebruikers hebben een PIN (pin_hash is NOT NULL in de DB), dus er
-    is geen directe NFC-only login.
+    Public endpoint for the kiosk sign-in flow.
     """
     await _get_active_user_by_nfc(body.nfc_tag_id, db)
     return {"detail": "NFC badge recognized. Enter PIN."}
@@ -132,11 +129,9 @@ async def pin_login(
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     """
-    Stap 2 van de login flow: verifieer PIN en geef een JWT access token terug.
+    Verify the PIN and issue access and refresh tokens.
 
-    - Blokkeert het account voor _LOCKOUT_MINUTES na _MAX_ATTEMPTS mislukte pogingen.
-    - Reset de teller en de lockout bij een succesvolle inlog.
-    - TODO (ELP-29): INSERT audit_log LOGIN_SUCCESS / LOGIN_FAILED.
+    Public endpoint for the kiosk sign-in flow.
     """
     user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
 
@@ -179,6 +174,11 @@ async def refresh_access_token(
     body: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
+    """
+    Rotate a valid refresh token and return a new token pair.
+
+    Public endpoint for authenticated kiosk sessions.
+    """
     # 1. Decode en valideer de signature en type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
@@ -246,6 +246,11 @@ async def refresh_access_token(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(body: RefreshTokenRequest) -> dict:
+    """
+    Revoke the provided refresh token and end the active session.
+
+    Public endpoint and idempotent by design.
+    """
     try:
         payload = security.verify_refresh_token(body.refresh_token)
     except ValueError:

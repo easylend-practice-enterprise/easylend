@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,7 +10,13 @@ from app.api.deps import get_current_admin, get_current_user
 from app.core import security
 from app.db.database import get_db
 from app.db.models import Role, User
-from app.schemas.user import UserCreate, UserNfcUpdate, UserResponse, UserUpdate
+from app.schemas.user import (
+    UserCreate,
+    UserListResponse,
+    UserNfcUpdate,
+    UserResponse,
+    UserUpdate,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -28,13 +34,35 @@ async def _get_user_with_role_or_404(db: AsyncSession, user_id: UUID) -> User:
     return user
 
 
-@router.get("/", response_model=list[UserResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "",
+    response_model=UserListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+    },
+)
 async def list_users(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    skip: int = Query(
+        0,
+        ge=0,
+        description="Number of users to skip before returning results (pagination offset).",
+    ),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=1000,
+        description="Maximum number of users to return in a single response (pagination page size).",
+    ),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
-) -> list[User]:
+) -> UserListResponse:
+    """
+    List users with pagination.
+
+    Requires Admin role.
+    """
     result = await db.execute(
         select(User)
         .options(selectinload(User.role))
@@ -42,29 +70,74 @@ async def list_users(
         .offset(skip)
         .limit(limit)
     )
-    return list(result.scalars().all())
+    users_data = [UserResponse.model_validate(u) for u in result.scalars().all()]
+
+    total_result = await db.execute(select(func.count()).select_from(User))
+    total = total_result.scalar_one_or_none() or 0
+
+    return UserListResponse(items=users_data, total=total)
 
 
-@router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
 async def get_me(current_user: User = Depends(get_current_user)) -> User:
+    """
+    Return the profile of the currently authenticated user.
+
+    Requires authentication.
+    """
     return current_user
 
 
-@router.get("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK)
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not found"},
+    },
+)
 async def get_user_by_id(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> User:
+    """
+    Return a user by unique identifier.
+
+    Requires Admin role.
+    """
     return await _get_user_with_role_or_404(db, user_id)
 
 
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Bad request"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+    },
+)
 async def create_user(
     payload: UserCreate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> User:
+    """
+    Create a new user account.
+
+    Requires Admin role.
+    """
     existing_email = await db.execute(
         select(User).where(User.email == str(payload.email))
     )
@@ -100,8 +173,6 @@ async def create_user(
         email=str(payload.email),
         nfc_tag_id=payload.nfc_tag_id,
         pin_hash=security.get_pin_hash(payload.pin),
-        is_active=payload.is_active,
-        ban_reason=payload.ban_reason,
     )
 
     db.add(user)
@@ -117,13 +188,28 @@ async def create_user(
     return await _get_user_with_role_or_404(db, user.user_id)
 
 
-@router.patch("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK)
+@router.patch(
+    "/{user_id}",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Bad request"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not found"},
+    },
+)
 async def update_user(
     user_id: UUID,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> User:
+    """
+    Partially update an existing user.
+
+    Requires Admin role.
+    """
     user = await _get_user_with_role_or_404(db, user_id)
 
     update_data = payload.model_dump(exclude_unset=True)
@@ -197,7 +283,15 @@ async def update_user(
 
 
 @router.patch(
-    "/{user_id}/nfc", response_model=UserResponse, status_code=status.HTTP_200_OK
+    "/{user_id}/nfc",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Bad request"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Not found"},
+    },
 )
 async def update_user_nfc(
     user_id: UUID,
@@ -205,6 +299,11 @@ async def update_user_nfc(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> User:
+    """
+    Update the NFC tag linked to a user account.
+
+    Requires Admin role.
+    """
     user = await _get_user_with_role_or_404(db, user_id)
 
     existing_nfc = await db.execute(
