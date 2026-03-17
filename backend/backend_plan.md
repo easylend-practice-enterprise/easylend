@@ -112,27 +112,26 @@ ELP-82 is research: niet implementatie. Vink dit af zodra je een beslissing hebt
 
 ## Stap 7: CRUD: Users & Permissions
 
-**Ticket:** ELP-27 · **Status:** 📋 In Progress · *Requires: stap 4 (auth middleware)*
+**Ticket:** ELP-27 · **Status:** ✅ Done · *Requires: stap 4 (auth middleware)*
 
-- `GET /api/v1/users` (admin: lijst van alle gebruikers, paginatie via `skip`/`limit`)
-- `GET /api/v1/users/me`
-- `GET /api/v1/users/{id}` (admin only)
-- `POST /api/v1/users` (admin: nieuw gebruiker aanmaken)
-- `PATCH /api/v1/users/{id}` (admin: gebruiker updaten, bijv. account deblokkeren via `failed_login_attempts: 0` en `locked_until: null`)
-- Role-based access control dependency
-- Permissions model (RBAC: admin / medewerker / kiosk)
+- [x] `GET /api/v1/users` (admin: lijst van alle gebruikers, paginatie via `skip`/`limit`)
+- [x] `GET /api/v1/users/me`
+- [x] `GET /api/v1/users/{id}` (admin only)
+- [x] `POST /api/v1/users` (admin: nieuw gebruiker aanmaken)
+- [x] `PATCH /api/v1/users/{id}` (admin: gebruiker updaten, bijv. account deblokkeren via `failed_login_attempts: 0` en `locked_until: null`)
+- [x] Role-based access control dependency
+- [x] Permissions model (RBAC: admin / medewerker / kiosk)
+- [x] `GET /api/v1/roles` (admin: ophalen van alle beschikbare rollen)
 
-> **NFC tag registratie (kip-en-ei fix):** De Login Flow werkt enkel als `nfc_tag_id` gekoppeld is aan een user. Voeg toe:
+> **NFC tag registratie (kip-en-ei fix):** De Login Flow werkt enkel als `nfc_tag_id` gekoppeld is aan een user. Toegevoegd:
 >
-> `PATCH /api/v1/users/{id}/nfc  { nfc_tag_id }` (admin only)
->
-> Zonder dit endpoint kan je NFC-login nooit testen buiten de seed data om.
+> - [x] `PATCH /api/v1/users/{id}/nfc  { nfc_tag_id }` (admin only)
 
 ---
 
 ## Stap 8: CRUD: Kiosks --> Categories --> Lockers --> Assets
 
-**Ticket:** ELP-26 · **Status:** ❌ Open · *Requires: stap 7 (permissions)*
+**Ticket:** ELP-26 · **Status:** 📋 In Progress · *Requires: stap 7 (permissions)*
 
 > **FK-volgorde verplicht:** Elke entiteit heeft een FK naar de vorige. Bouw in deze volgorde.
 
@@ -289,11 +288,11 @@ Schrijf tests direct in dezelfde PR als de feature. Gebruik hieronder de minimal
 
 1. **Na stap 4-6 (auth + refresh + Redis): afgerond**
 
-- [x] Unit tests voor token-helpers (`create/verify` + token type checks)
-- [x] API test: `POST /auth/refresh` is single-use (2e keer 401)
-- [x] API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
-- [x] API test: `POST /auth/pin` lockout na 5 foute pogingen
-- [x] API tests voor `POST /auth/nfc` en Redis-failure paden (`503`)
+   - [x] Unit tests voor token-helpers (`create/verify` + token type checks)
+   - [x] API test: `POST /auth/refresh` is single-use (2e keer 401)
+   - [x] API test: `POST /auth/logout` maakt refresh token ongeldig voor daarna
+   - [x] API test: `POST /auth/pin` lockout na 5 foute pogingen
+   - [x] API tests voor `POST /auth/nfc` en Redis-failure paden (`503`)
 
 2. **Na stap 7-8 (CRUD + RBAC)**
 
