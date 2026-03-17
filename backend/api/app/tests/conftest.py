@@ -48,6 +48,7 @@ class _QueuedSession:
         self._queue = list(results)
         self.added: list = []
         self.commit_calls: int = 0
+        self.rollback_calls: int = 0
 
     async def execute(self, _query):  # noqa: ARG002
         value = self._queue.pop(0) if self._queue else None
@@ -55,6 +56,9 @@ class _QueuedSession:
 
     async def commit(self):
         self.commit_calls += 1
+
+    async def rollback(self):
+        self.rollback_calls += 1
 
     def add(self, obj):
         self.added.append(obj)
