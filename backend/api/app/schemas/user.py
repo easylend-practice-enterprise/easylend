@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserBase(BaseModel):
@@ -9,8 +9,6 @@ class UserBase(BaseModel):
     last_name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr = Field(..., max_length=255)
     nfc_tag_id: str | None = Field(default=None, max_length=100)
-    is_active: bool = True
-    ban_reason: str | None = Field(default=None, max_length=255)
 
 
 class UserCreate(UserBase):
@@ -35,11 +33,19 @@ class UserNfcUpdate(BaseModel):
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
 
 
+class RoleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    role_id: UUID
+    role_name: str
+
+
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: UUID
     role_id: UUID
+    role_name: str = Field(validation_alias=AliasPath("role", "role_name"))
     first_name: str
     last_name: str
     email: str
@@ -48,3 +54,8 @@ class UserResponse(BaseModel):
     locked_until: datetime | None
     is_active: bool
     ban_reason: str | None
+
+
+class UserListResponse(BaseModel):
+    items: list[UserResponse]
+    total: int

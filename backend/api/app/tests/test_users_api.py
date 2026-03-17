@@ -102,7 +102,7 @@ def _bearer(user: SimpleNamespace) -> dict:
 
 
 # ─────────────────────────── 1. Unauthenticated → 401 ────────────────────────
-# No Authorization header → OAuth2PasswordBearer raises 401 before any DB call.
+# No Authorization header -> auth dependency raises 401 before any DB call.
 
 
 def test_get_me_unauthenticated(client_with_overrides):
@@ -113,7 +113,7 @@ def test_get_me_unauthenticated(client_with_overrides):
 
 def test_list_users_unauthenticated(client_with_overrides):
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.get("/api/v1/users/")
+        response = client.get("/api/v1/users")
     assert response.status_code == 401
 
 
@@ -125,7 +125,7 @@ def test_get_user_by_id_unauthenticated(client_with_overrides):
 
 def test_create_user_unauthenticated(client_with_overrides):
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.post("/api/v1/users/", json={})
+        response = client.post("/api/v1/users", json={})
     assert response.status_code == 401
 
 
@@ -153,7 +153,7 @@ def test_list_users_forbidden_for_non_admin(client_with_overrides):
     medewerker = _make_medewerker()
     fake_db = _QueuedSession(medewerker)
     with client_with_overrides(fake_db) as client:
-        response = client.get("/api/v1/users/", headers=_bearer(medewerker))
+        response = client.get("/api/v1/users", headers=_bearer(medewerker))
     assert response.status_code == 403
 
 
@@ -171,7 +171,7 @@ def test_create_user_forbidden_for_non_admin(client_with_overrides):
     medewerker = _make_medewerker()
     fake_db = _QueuedSession(medewerker)
     with client_with_overrides(fake_db) as client:
-        response = client.post("/api/v1/users/", json={}, headers=_bearer(medewerker))
+        response = client.post("/api/v1/users", json={}, headers=_bearer(medewerker))
     assert response.status_code == 403
 
 
@@ -226,11 +226,14 @@ def test_list_users_returns_list_for_admin(client_with_overrides):
     # DB execute order:
     # [1] get_current_user       → admin          (scalar_one_or_none)
     # [2] list_users body query  → [admin, other] (scalars().all())
-    fake_db = _QueuedSession(admin, [admin, other])
+    # [3] list_users total query → 2
+    fake_db = _QueuedSession(admin, [admin, other], 2)
     with client_with_overrides(fake_db) as client:
-        response = client.get("/api/v1/users/", headers=_bearer(admin))
+        response = client.get("/api/v1/users", headers=_bearer(admin))
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    data = response.json()
+    assert data["total"] == 2
+    assert len(data["items"]) == 2
 
 
 def test_list_users_respects_skip_and_limit_params(client_with_overrides):
@@ -238,11 +241,14 @@ def test_list_users_respects_skip_and_limit_params(client_with_overrides):
     # DB execute order:
     # [1] get_current_user  → admin
     # [2] list_users query  → single user (simulating skip/limit result)
-    fake_db = _QueuedSession(admin, [_make_medewerker()])
+    # [3] list_users total  → 1
+    fake_db = _QueuedSession(admin, [_make_medewerker()], 1)
     with client_with_overrides(fake_db) as client:
-        response = client.get("/api/v1/users/?skip=0&limit=1", headers=_bearer(admin))
+        response = client.get("/api/v1/users?skip=0&limit=1", headers=_bearer(admin))
     assert response.status_code == 200
-    assert len(response.json()) == 1
+    data = response.json()
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
 
 
 # ─────────────────────────── 5. Admin: GET /{user_id} ────────────────────────
@@ -306,7 +312,7 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
         "pin": "securepin123",
     }
     with client_with_overrides(fake_db) as client:
-        response = client.post("/api/v1/users/", json=payload, headers=_bearer(admin))
+        response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
     assert response.status_code == 201
     assert response.json()["email"] == "nieuw@easylend.be"
     assert fake_db.commit_calls == 1
@@ -328,7 +334,7 @@ def test_create_user_returns_400_on_duplicate_email(client_with_overrides):
         "pin": "securepin123",
     }
     with client_with_overrides(fake_db) as client:
-        response = client.post("/api/v1/users/", json=payload, headers=_bearer(admin))
+        response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
     assert response.status_code == 400
     assert response.json()["detail"] == "Email address already exists."
 
@@ -348,7 +354,7 @@ def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
         "pin": "securepin123",
     }
     with client_with_overrides(fake_db) as client:
-        response = client.post("/api/v1/users/", json=payload, headers=_bearer(admin))
+        response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid role_id."
 
