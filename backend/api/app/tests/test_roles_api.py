@@ -1,7 +1,7 @@
 import uuid
 
 from app.db.models import Role
-from app.tests.test_users_api import (
+from app.tests.conftest import (
     _bearer,
     _make_admin,
     _make_medewerker,
@@ -25,6 +25,7 @@ def test_list_roles_forbidden_for_non_admin(client_with_overrides):
 
 def test_list_roles_returns_list_for_admin(client_with_overrides):
     admin = _make_admin()
+    admin.role.role_name = "ADMIN"
     role_admin = Role(role_id=uuid.uuid4(), role_name="ADMIN")
 
     # DB execute order:
