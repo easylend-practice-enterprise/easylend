@@ -4,24 +4,25 @@ class AppColors {
   AppColors._();
 
   static const Color primary = Color.fromARGB(255, 87, 87, 87);
-  // used for buttons and major ui elements
+  // Primary brand/action color, used for main buttons and prominent UI elements.
 
   static const Color accent = Color.fromARGB(255, 14, 115, 209);
-  // used for smaller ui elements and
+  // Accent/secondary color, used for smaller interactive elements and visual highlights.
 
   static const Color background = Color.fromARGB(255, 0, 0, 0);
-  // used as background color
+  // App background color for the scaffold and full-screen areas.
 
   static const Color surface = Color.fromARGB(255, 90, 90, 90);
-  //used as a transition between screen transitions
+  // Surface color used for cards, panels, app bars, and other elevated surfaces.
 
   static const Color text = Color.fromARGB(255, 255, 255, 255);
-  // secondary/utility text color, used for subtitles and exit buttons
+  // Primary text color on dark surfaces, used for headings, labels, and key text.
 
   static const Color onPrimary = Color.fromARGB(255, 255, 0, 200);
-  // thin divider/separator used across the UI
+  // Foreground color (text/icons) used on primary-colored components like buttons.
 
   static const Color divider = Color.fromARGB(255, 255, 0, 0);
+  // Divider/border color used for outlines and thin separators in the UI.
 }
 
 class AppTheme {
