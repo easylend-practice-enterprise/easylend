@@ -101,7 +101,7 @@ class EvaluationType(enum.StrEnum):
     RETURN = "RETURN"
 
 
-# FYSIEKE INFTRASTRUCTUUR: KIOSKS & LOCKERS
+# PHYSICAL INFRASTRUCTURE: KIOSKS & LOCKERS
 class Kiosk(Base):
     __tablename__ = "kiosks"
 
@@ -140,7 +140,7 @@ class Locker(Base):
     assets: Mapped[list["Asset"]] = relationship("Asset", back_populates="locker")
 
 
-# CATEGORIEËN
+# CATEGORIES
 class Category(Base):
     __tablename__ = "categories"
 
@@ -180,7 +180,7 @@ class Asset(Base):
     locker: Mapped["Locker"] = relationship("Locker", back_populates="assets")
 
 
-# LOANS (TRANSACTIES)
+# LOANS (TRANSACTIONS)
 class Loan(Base):
     __tablename__ = "loans"
 
@@ -231,7 +231,7 @@ class Loan(Base):
     )
 
 
-# AI EVALUATIES
+# AI EVALUATIONS
 class AIEvaluation(Base):
     __tablename__ = "ai_evaluations"
 
@@ -250,7 +250,7 @@ class AIEvaluation(Base):
 
     detected_objects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    # Performance denormalisatie voor snelle queries zonder joins
+    # Performance denormalization for fast queries without joins
     has_damage_detected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -266,7 +266,7 @@ class AIEvaluation(Base):
     )
 
 
-# SCHADERAPPORTEN
+# DAMAGE REPORTS
 class DamageReport(Base):
     __tablename__ = "damage_reports"
 

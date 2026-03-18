@@ -61,11 +61,11 @@ class _QueuedSession:
         self.rollback_calls += 1
 
     async def refresh(self, obj):
-        # Simuleer de database: genereer een UUID voor lege Primary Keys
+        # Simulate the database: generate a UUID for empty Primary Keys
         for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id"]:
             if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:
                 setattr(obj, pk_field, uuid.uuid4())
-        # Simuleer de database: vul default waardes in voor Assets
+        # Simulate the database: set default values for Assets
         if hasattr(obj, "is_deleted") and getattr(obj, "is_deleted") is None:
             setattr(obj, "is_deleted", False)
 
@@ -78,7 +78,7 @@ def _make_admin() -> SimpleNamespace:
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
         first_name="Admin",
-        last_name="Gebruiker",
+        last_name="User",
         email="admin@easylend.be",
         nfc_tag_id="NFC-ADMIN-001",
         pin_hash=security.get_pin_hash("1234"),
@@ -95,7 +95,7 @@ def _make_medewerker() -> SimpleNamespace:
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
         first_name="Jan",
-        last_name="Medewerker",
+        last_name="Staff",
         email="jan@easylend.be",
         nfc_tag_id="NFC-MEW-001",
         pin_hash=security.get_pin_hash("1234"),
@@ -103,7 +103,7 @@ def _make_medewerker() -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
-        role=SimpleNamespace(role_name="Medewerker"),
+        role=SimpleNamespace(role_name="Staff"),
     )
 
 

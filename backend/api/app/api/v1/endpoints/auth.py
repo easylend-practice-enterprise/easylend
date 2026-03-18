@@ -21,16 +21,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# Brute-force constanten (architecture spec: 5 pogingen, 15 min lockout)
+# Brute-force constants (architecture spec: 5 attempts, 15-minute lockout)
 _MAX_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
-# Bereken exact het aantal seconden op basis van de dagen in de settings
+# Compute the exact TTL in seconds from the days setting
 _REFRESH_TOKEN_TTL_SECONDS = int(
     timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()
 )
 
 
-# Request / Response schemas (auth-specifiek, inline)
+# Request / Response schemas (auth-specific, defined inline)
 
 
 class NfcLoginRequest(BaseModel):
@@ -52,17 +52,17 @@ class TokenResponse(BaseModel):
     token_type: str = "Bearer"  # noqa: S105
 
 
-# Gedeelde helper
+# Shared helper
 
 
 async def _get_active_user_by_nfc(
     nfc_tag_id: str, db: AsyncSession, lock_row: bool = False
 ) -> User:
     """
-    Haalt de user op via nfc_tag_id inclusief eager-loaded role.
-    Gooit een generieke HTTPException voor alle mislukte login-pogingen
-    (onbekende badge, gedeactiveerd account of geblokkeerd account) zonder
-    details over de exacte reden of lockout-timing te lekken.
+    Fetches a user by nfc_tag_id with the role eagerly loaded.
+    Raises a generic HTTPException for all failed login attempts
+    (unknown badge, deactivated account, or locked account) without
+    leaking details about the exact reason or lockout timing.
     """
     query = (
         select(User)
@@ -139,8 +139,8 @@ async def pin_login(
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
-            # Reset teller bij het instellen van een lockout zodat na de lockout
-            # periode opnieuw _MAX_ATTEMPTS pogingen beschikbaar zijn.
+            # Reset the counter when applying a lockout so that after the lockout
+            # period, the user gets a fresh set of _MAX_ATTEMPTS attempts.
             user.failed_login_attempts = 0
         await db.commit()
         raise HTTPException(
@@ -148,7 +148,7 @@ async def pin_login(
             detail="Invalid PIN.",
         )
 
-    # Succesvolle inlog: reset brute-force tellers
+    # Successful login: reset brute-force counters
     user.failed_login_attempts = 0
     user.locked_until = None
     await db.commit()
@@ -179,7 +179,7 @@ async def refresh_access_token(
 
     Public endpoint for authenticated kiosk sessions.
     """
-    # 1. Decode en valideer de signature en type
+    # 1. Decode and validate the signature and token type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
     except ValueError as e:
@@ -188,7 +188,7 @@ async def refresh_access_token(
             detail=str(e),
         ) from e
 
-    # 2. Atomisch de token consumeren (Voorkomt Token Replay / Race Conditions)
+    # 2. Atomically consume the token (prevents token replay / race conditions)
     try:
         token_consumed = await revoke_refresh_token(
             user_id=str(refresh_payload.sub),
@@ -213,7 +213,7 @@ async def refresh_access_token(
             detail="Invalid refresh token.",
         )
 
-    # 3. Haal de user op uit de DB
+    # 3. Fetch the user from the database
     result = await db.execute(
         select(User)
         .options(selectinload(User.role))
@@ -231,7 +231,7 @@ async def refresh_access_token(
             detail="Invalid refresh token.",
         )
 
-    # 4. Maak nieuwe tokens aan
+    # 4. Issue a new token pair
     access_token = security.create_access_token(
         user_id=user.user_id,
         role=user.role.role_name,
@@ -254,7 +254,7 @@ async def logout(body: RefreshTokenRequest) -> dict:
     try:
         payload = security.verify_refresh_token(body.refresh_token)
     except ValueError:
-        # Idempotent logout: verlopen of ongeldige tokens geven nog steeds succes terug.
+        # Idempotent logout: expired or invalid tokens still return a successful response.
         return {"detail": "Successfully logged out."}
 
     try:

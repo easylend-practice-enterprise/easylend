@@ -6,36 +6,33 @@ from pydantic import BaseModel, Field
 
 class TokenPayload(BaseModel):
     """
-    Payload structuur van de JWT token (wat er ín de token gesigned en base64url-gecodeerd zit).
-    Dit gebruiken we intern in de applicatie om permissies te checken.
+    Payload structure of the JWT token (the data that is signed and base64url-encoded inside the token).
+    Used internally by the application to verify permissions.
     """
 
-    sub: UUID = Field(..., description="Subject: De unieke user_id van de gebruiker")
-    role: str = Field(
-        ..., description="De rol van de gebruiker (bijv. Admin, User, Kiosk)"
-    )
+    sub: UUID = Field(..., description="Subject: The unique user_id of the user")
+    role: str = Field(..., description="Role of the user (e.g. Admin, User, Kiosk)")
     exp: datetime = Field(
-        ..., description="Expiration: De verloopdatum en tijd van de token"
+        ..., description="Expiration: The expiry date and time of the token"
     )
     jti: UUID = Field(
         ...,
-        description="JWT ID: Unieke identifier voor deze specifieke token (voor revocation)",
+        description="JWT ID: Unique identifier for this specific token (used for revocation)",
     )
 
 
 class Token(BaseModel):
     """
-    Response model dat naar de client (app/frontend/kiosk) wordt gestuurd
-    na een succesvolle login.
+    Response model sent to the client (app/frontend/kiosk) after a successful login.
     """
 
     access_token: str = Field(
-        ..., description="De JWT access token (geldig voor bijv. 15 min)"
+        ..., description="The JWT access token (valid for e.g. 15 minutes)"
     )
     refresh_token: str = Field(
         ...,
-        description="De string om een nieuwe access token aan te vragen (geldig voor bijv. 7 dagen)",
+        description="The string used to request a new access token (valid for e.g. 7 days)",
     )
     token_type: str = Field(
-        default="Bearer", description="Het type token (standaard 'Bearer')"
+        default="Bearer", description="Token type (standard 'Bearer')"
     )

@@ -4,11 +4,11 @@ from app.core.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,  # Zet op True om SQL in de terminal te zien
+    echo=False,  # Set to True to print SQL statements to the terminal
     future=True,
 )
 
-# 2. De Sessie Fabriek
+# 2. Session Factory
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )

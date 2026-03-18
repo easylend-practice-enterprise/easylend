@@ -1,12 +1,12 @@
 def test_environment_setup():
-    """Simpele check of Pytest succesvol is geconfigureerd in de Vision map."""
+    """Simple check that Pytest is successfully configured in the Vision module."""
     assert True
 
 
 def test_ultralytics_import():
-    """Controleer of Ultralytics (YOLO) succesvol geladen kan worden."""
+    """Verify that Ultralytics (YOLO) can be successfully imported."""
     from ultralytics import YOLO
 
-    # We instantiëren nog geen model om de CI-pipeline snel te houden,
-    # maar we checken of de class beschikbaar is in de virtuele omgeving.
+    # We do not instantiate a model here to keep the CI pipeline fast,
+    # but we verify that the class is available in the virtual environment.
     assert YOLO is not None

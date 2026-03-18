@@ -1,18 +1,18 @@
-# Veelgebruikte Git-commando's in deze repo
+# Frequently Used Git Commands in This Repo
 
 | **#** | **command** | **definition** |
 | --- | --- | --- |
-| **1** | git checkout main | Ga terug naar de hoofdbranch. |
-| **2** | git pull origin main | Download de laatste code van github naar je lokale machine. |
-| **3** | git checkout -b \<branch-naam\> | Maak een nieuwe branch aan én switch er direct naartoe. |
-| **4** | git status | Bekijk welke bestanden zijn gewijzigd, toegevoegd of klaargezet (altijd doen voor een commit!). |
-| **5** | git add \<bestand/map\> | Zet specifieke bestanden klaar om te committen. |
-| **6** | git add . | Zet alle gewijzigde bestanden in de huidige map klaar. |
-| **7** | git commit -m "\<bericht\>" | Commit met een message. |
-| **8** | git push origin \<branch-naam\> | Stuur je lokale branch naar GitHub (bijv. om een Pull Request aan te maken). |
-| **9** | git reset HEAD~1 | Verwijder de laatste commit, maar behoud al je getypte code lokaal. |
-| **10** | git reset --hard HEAD~1 | GEVAARLIJK: Verwijder de laatste commit én vernietig de bijbehorende code definitief. |
-| **11** | git restore \<bestand\> | Wis alle niet-opgeslagen wijzigingen in een bestand en zet het terug naar de originele staat. |
-| **12** | git diff | Laat exact regel voor regel zien wat je hebt aangepast sinds je laatste save. |
-| **13** | git branch -d \<branch-naam\> | Verwijder een lokale branch VEILIG (Git blokkeert dit als de branch nog niet is gemerged). |
-| **14** | git branch -D \<branch-naam\> | Verwijder een lokale branch GEFORCEERD (Gooit de branch weg, ongeacht of de code is gemerged of niet). |
+| **1** | git checkout main | Switch back to the main branch. |
+| **2** | git pull origin main | Download the latest code from GitHub to your local machine. |
+| **3** | git checkout -b \<branch-name\> | Create a new branch and switch to it immediately. |
+| **4** | git status | View which files have been changed, added, or staged (always do this before committing!). |
+| **5** | git add \<file/folder\> | Stage specific files for commit. |
+| **6** | git add . | Stage all changed files in the current directory. |
+| **7** | git commit -m "\<message\>" | Commit with a message. |
+| **8** | git push origin \<branch-name\> | Push your local branch to GitHub (e.g. to open a Pull Request). |
+| **9** | git reset HEAD~1 | Remove the last commit but keep all your code changes locally. |
+| **10** | git reset --hard HEAD~1 | DANGEROUS: Remove the last commit and permanently destroy the associated code. |
+| **11** | git restore \<file\> | Discard all unsaved changes in a file and restore it to its original state. |
+| **12** | git diff | Show exactly line by line what you have changed since your last save. |
+| **13** | git branch -d \<branch-name\> | Delete a local branch SAFELY (Git blocks this if the branch is not yet merged). |
+| **14** | git branch -D \<branch-name\> | Delete a local branch FORCEFULLY (discards the branch regardless of whether the code is merged or not). |

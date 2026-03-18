@@ -1,11 +1,11 @@
 flowchart TD
-    %% STIJLEN (Corporate & Clean)
+    %% STYLES (Corporate & Clean)
     classDef soft fill:#E1F5FE,stroke:#0277BD,stroke-width:2px,color:#000;
     classDef hard fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#000;
     classDef data fill:#FFF9C4,stroke:#FBC02d,stroke-width:2px,color:#000;
     classDef sim  fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray: 5 5,color:#000;
 
-    %% DOMEIN 1: KIOSK (LINKS)
+    %% DOMAIN 1: KIOSK (LEFT)
     subgraph Kiosk ["Kiosk (Frontend)"]
         direction TB
         NFC[NFC Reader]:::hard
@@ -16,7 +16,7 @@ flowchart TD
         CamTab -->|Aztec code| App
     end
 
-    %% DOMEIN 2: BACKEND (MIDDEN)
+    %% DOMAIN 2: BACKEND (CENTRE)
     subgraph Backend ["Backend (Proxmox Server)"]
         direction TB
         API["FastAPI & WebSockets"]:::soft
@@ -31,29 +31,29 @@ flowchart TD
         API <-->|"Hardware Status"| PXE
     end
 
-    %% DOMEIN 3: VISION BOX (RECHTS)
+    %% DOMAIN 3: VISION BOX (RIGHT)
     subgraph Box ["Vision Box (Thin Client)"]
         direction TB
         RPi["Raspberry Pi 4"]:::hard
         CamBox[Camera]:::hard
-        Lock["Elektronisch slot"]:::hard
+        Lock["Electronic lock"]:::hard
         LED["LED Strip"]:::hard
         
         CamBox -->|Photo| RPi
         RPi -->|"Open/Close"| Lock
-        RPi -->|"Status signaal"| LED
+        RPi -->|"Status signal"| LED
     end
 
-    %% SIMULATIE (ONDER)
+    %% SIMULATION (BOTTOM)
     Sim["Digital Twin WebUI"]:::sim
 
-    %% HOOFD VERBINDINGEN
+    %% MAIN CONNECTIONS
     
-    %% Kiosk praat met API
+    %% Kiosk communicates with API
     App <-->|"HTTPS REST + Polling<br/>(JWT Auth)"| API
 
-    %% API praat met Box
+    %% API communicates with Box
     RPi <-->|"WSS & POST Image<br/>(Static API Key)"| API
 
-    %% Simulatie test de API
-    Sim -.->|"WSS (Virtuele Lockers)<br/>(Static API Key)"| API
+    %% Simulation tests the API
+    Sim -.->|"WSS (Virtual Lockers)<br/>(Static API Key)"| API

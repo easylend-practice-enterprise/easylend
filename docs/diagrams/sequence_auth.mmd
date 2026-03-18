@@ -1,64 +1,64 @@
 sequenceDiagram
-    actor User as Gebruiker
+    actor User as User
     participant App as Kiosk App (Flutter)
     participant API as FastAPI Backend
     participant Redis as Redis Cache
     participant DB as PostgreSQL
 
-    User->>App: Houdt NFC-badge voor lezer
+    User->>App: Holds NFC badge in front of reader
     App->>API: POST /api/v1/auth/nfc {nfc_tag_id}
     API->>DB: SELECT * FROM users WHERE nfc_tag_id = ?
     DB-->>API: User record
 
-    alt Account geblokkeerd (locked_until > NOW)
-        API-->>App: 401 Unauthorized (Account geblokkeerd)
-        App-->>User: "Account tijdelijk geblokkeerd"
-    else Account actief
-        API-->>App: 200 OK (Vraag PIN)
-        App-->>User: Toon PIN-invoer scherm
-        User->>App: Voert PIN in
+    alt Account locked (locked_until > NOW)
+        API-->>App: 401 Unauthorized (Account locked)
+        App-->>User: "Account temporarily locked"
+    else Account active
+        API-->>App: 200 OK (Enter PIN)
+        App-->>User: Show PIN entry screen
+        User->>App: Enters PIN
         App->>API: POST /api/v1/auth/pin {nfc_tag_id, pin}
         API->>DB: SELECT pin_hash FROM users WHERE nfc_tag_id = ?
         DB-->>API: pin_hash
 
         alt PIN incorrect
             API->>DB: UPDATE users SET failed_login_attempts = failed_login_attempts + 1 WHERE user_id = <user_id>
-            alt Limiet bereikt (5 pogingen)
+            alt Limit reached (5 attempts)
                 API->>DB: UPDATE users SET locked_until = NOW() + interval '15 minutes' WHERE user_id = <user_id>
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED', payload: {reason: 'ACCOUNT_LOCKED'}}
-                API-->>App: 401 Unauthorized (Account geblokkeerd)
-            else Nog pogingen over
+                API-->>App: 401 Unauthorized (Account locked)
+            else Attempts remaining
                 API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_FAILED'}
-                API-->>App: 401 Onjuiste PIN (N pogingen over)
+                API-->>App: 401 Incorrect PIN (N attempts remaining)
             end
-            App-->>User: Foutmelding
+            App-->>User: Error message
         else PIN correct
             API->>DB: UPDATE users SET failed_login_attempts = 0 WHERE user_id = <user_id>
             API->>DB: INSERT INTO audit_logs {action_type: 'LOGIN_SUCCESS'}
             API->>Redis: SETEX refresh:<user_id>:<jti> (Store Refresh Token)
             API-->>App: 200 OK {access_token, refresh_token}
-            App-->>User: Ingelogd: toon asset catalogus
+            App-->>User: Logged in: show asset catalog
         end
     end
 
-    opt Auto-Logout (Inactivity) of Handmatige Logout
-        User-->>App: Stopt met interacteren of klikt op Logout
-        App-->>User: Toon pop-up / laadscherm
+    opt Auto-Logout (Inactivity) or Manual Logout
+        User-->>App: Stops interacting or clicks Logout
+        App-->>User: Show popup / loading screen
         App->>API: POST /api/v1/auth/logout {refresh_token}
         API->>Redis: DEL refresh:<user_id>:<jti> (Revoke Token)
-        API-->>App: 200 OK (Succesvol uitgelogd)
-        App-->>User: Keer terug naar NFC startscherm
+        API-->>App: 200 OK (Successfully logged out)
+        App-->>User: Return to NFC start screen
     end
 
-    opt Token Refresh (Access Token verlopen)
+    opt Token Refresh (Access Token expired)
         App->>API: POST /api/v1/auth/refresh {refresh_token}
-        API->>Redis: DEL refresh:<user_id>:<old_jti> (Atomisch Valideer & Revoke)
+        API->>Redis: DEL refresh:<user_id>:<old_jti> (Atomically Validate & Revoke)
 
-        alt Refresh token bestond niet in whitelist
+        alt Refresh token not found in whitelist
             API-->>App: 401 Unauthorized
-        else Refresh token was geldig
+        else Refresh token was valid
             API->>DB: SELECT user + role WHERE user_id = <sub>
-            API->>Redis: SETEX refresh:<user_id>:<new_jti> (Store nieuwe refresh token)
+            API->>Redis: SETEX refresh:<user_id>:<new_jti> (Store new refresh token)
             API-->>App: 200 OK {access_token, refresh_token}
         end
     end

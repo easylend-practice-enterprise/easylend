@@ -41,8 +41,8 @@ def discover_models(current_dir: Path) -> list:
 
 class YOLOModelTester:
     """
-    Een robuuste utility class om YOLO modellen lokaal te testen via de webcam.
-    Perfect voor MLOps debugging voordat het model aan FastAPI gekoppeld wordt.
+    A robust utility class for testing YOLO models locally via webcam.
+    Ideal for MLOps debugging before coupling the model to FastAPI.
     """
 
     def __init__(
@@ -86,15 +86,13 @@ class YOLOModelTester:
                         break
 
         if selected_path is None:
-            logger.error(
-                "Geen model geselecteerd of model niet gevonden. Beschikbare modellen:"
-            )
+            logger.error("No model selected or model not found. Available models:")
             for i, (display, cand) in enumerate(self._available_models):
                 logger.error(f"  [{i}] {display} -> {cand}")
-            raise FileNotFoundError("Train eerst het model of check het pad!")
+            raise FileNotFoundError("Train the model first or verify the path!")
 
         self.model_path = selected_path
-        logger.info(f"Model geselecteerd: {self.model_path}")
+        logger.info(f"Model selected: {self.model_path}")
         self.model = YOLO(str(self.model_path))
 
         # state for threaded inference
@@ -104,14 +102,14 @@ class YOLOModelTester:
         self._stop_event = threading.Event()
 
     def run(self) -> None:
-        """Start de webcam loop met error handling en nette afsluiting."""
+        """Start the webcam loop with error handling and clean shutdown."""
         cap = cv2.VideoCapture(self.camera_id)
 
         if not cap.isOpened():
-            logger.error("Kon de webcam niet initialiseren. Wordt deze al gebruikt?")
+            logger.error("Could not open webcam. Is it already in use?")
             return
 
-        logger.info("Webcam actief. Druk op 'q' in het venster om te stoppen.")
+        logger.info("Webcam active. Press 'q' in the window to stop.")
 
         window_name = "EasyLend AI Debugger"
 
@@ -130,7 +128,7 @@ class YOLOModelTester:
                     with self._annot_lock:
                         self._annotated_frame = annotated
                 except Exception:
-                    logger.exception("Fout tijdens inferentie")
+                    logger.exception("Error during inference")
 
         th = threading.Thread(target=infer_loop, daemon=True)
         th.start()
@@ -139,7 +137,7 @@ class YOLOModelTester:
             while True:
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Leeg frame ontvangen; wachten...")
+                    logger.warning("Empty frame received; waiting...")
                     time.sleep(0.05)
                     continue
 
@@ -160,15 +158,15 @@ class YOLOModelTester:
                     cv2.imshow(window_name, frame)
 
                 if cv2.waitKey(1) & 0xFF == ord("q"):
-                    logger.info("Afsluit-commando ontvangen (q).")
+                    logger.info("Shutdown command received (q).")
                     break
 
         except KeyboardInterrupt:
-            logger.info("Script handmatig gestopt (Ctrl+C in terminal).")
+            logger.info("Script stopped manually (Ctrl+C in terminal).")
         except Exception as e:
-            logger.exception(f"Er is een onverwachte fout opgetreden: {e}")
+            logger.exception(f"An unexpected error occurred: {e}")
         finally:
-            logger.info("Webcam en vensters netjes afsluiten...")
+            logger.info("Releasing webcam and closing windows...")
             self._stop_event.set()
             th.join(timeout=1.0)
             cap.release()

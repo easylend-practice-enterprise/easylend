@@ -33,8 +33,8 @@ def _decode_token(token: str, required_claims: list[str]) -> dict:
 
 def create_access_token(user_id: uuid.UUID, role: str) -> str:
     """
-    Maakt een ondertekende JWT access token aan voor de opgegeven gebruiker.
-    Payload bevat sub (user_id), role, exp (verloopdatum), jti (unieke token ID) en type.
+    Creates a signed JWT access token for the specified user.
+    Payload contains sub (user_id), role, exp (expiry), jti (unique token ID), and type.
     """
     expire = datetime.now(UTC) + timedelta(
         minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
@@ -53,8 +53,8 @@ def create_access_token(user_id: uuid.UUID, role: str) -> str:
 
 def create_refresh_token(user_id: uuid.UUID) -> str:
     """
-    Maakt een ondertekende JWT refresh token aan voor de opgegeven gebruiker.
-    Payload bevat sub (user_id), exp (verloopdatum), jti (unieke token ID) en type.
+    Creates a signed JWT refresh token for the specified user.
+    Payload contains sub (user_id), exp (expiry), jti (unique token ID), and type.
     """
     expire = datetime.now(UTC) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
@@ -70,8 +70,8 @@ def create_refresh_token(user_id: uuid.UUID) -> str:
 
 def verify_access_token(token: str) -> TokenPayload:
     """
-    Valideert een JWT access token en geeft de gedecodeerde en gevalideerde payload terug.
-    Raises ValueError bij een verlopen of ongeldige token.
+    Validates a JWT access token and returns the decoded, validated payload.
+    Raises ValueError for an expired or invalid token.
     """
     raw = _decode_token(token, ["sub", "role", "exp", "jti"])
 
@@ -101,8 +101,8 @@ def verify_access_token(token: str) -> TokenPayload:
 
 def verify_refresh_token(token: str) -> RefreshTokenPayload:
     """
-    Valideert een JWT refresh token en geeft de gedecodeerde en gevalideerde payload terug.
-    Raises ValueError bij een verlopen of ongeldige token.
+    Validates a JWT refresh token and returns the decoded, validated payload.
+    Raises ValueError for an expired or invalid token.
     """
     raw = _decode_token(token, ["sub", "exp", "jti"])
 
@@ -125,7 +125,7 @@ def verify_refresh_token(token: str) -> RefreshTokenPayload:
 
 def get_pin_hash(pin: str) -> str:
     """
-    Zet een plain-text PIN om naar een veilige bcrypt hash.
+    Converts a plain-text PIN into a secure bcrypt hash.
     """
     salt = bcrypt.gensalt()
     hashed_bytes = bcrypt.hashpw(pin.encode("utf-8"), salt)
@@ -134,6 +134,6 @@ def get_pin_hash(pin: str) -> str:
 
 def verify_pin(plain_pin: str, hashed_pin: str) -> bool:
     """
-    Verifieert of een plain-text PIN overeenkomt met de hash uit de database.
+    Verifies whether a plain-text PIN matches the hash stored in the database.
     """
     return bcrypt.checkpw(plain_pin.encode("utf-8"), hashed_pin.encode("utf-8"))
