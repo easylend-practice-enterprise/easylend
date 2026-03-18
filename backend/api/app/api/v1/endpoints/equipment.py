@@ -171,7 +171,7 @@ async def update_category(
     """
     category = await _get_category_or_404(db, category_id)
 
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in update_data.items():
         setattr(category, field, value)
 
@@ -298,7 +298,7 @@ async def update_kiosk(
     """
     kiosk = await _get_kiosk_or_404(db, kiosk_id)
 
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in update_data.items():
         setattr(kiosk, field, value)
 
@@ -460,7 +460,7 @@ async def update_locker_status(
     """
     locker = await _get_locker_or_404(db, locker_id)
 
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if "kiosk_id" in update_data and update_data["kiosk_id"] is not None:
         kiosk_exists = await db.execute(
@@ -681,7 +681,7 @@ async def update_asset(
     """
     asset = await _get_asset_or_404(db, asset_id)
 
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if "category_id" in update_data and update_data["category_id"] is not None:
         cat_exists = await db.execute(
