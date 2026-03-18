@@ -190,7 +190,7 @@ erDiagram
     LOCKERS {
         uuid locker_id PK
         uuid kiosk_id FK
-        int logical_number "Fysiek nummer 1, 2, 3..."
+        int logical_number "Fysiek nummer 1, 2, 3... (UK per kiosk: uq_kiosk_logical_number)"
         enum locker_status "AVAILABLE, OCCUPIED, MAINTENANCE, ERROR_OPEN"
     }
     
