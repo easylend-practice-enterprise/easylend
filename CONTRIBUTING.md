@@ -71,7 +71,7 @@ Note: If you need help, a `.gitattributes` file can be added to the repository.
 - Follow team conventions for scope names (e.g. `api`, `kiosk`, `infra`, `auth`).
 
 ---
-A `.gitattributes` file can be added and/or `docs/workflow.md` updated with a reference to this contribution guide if needed.
+A `.gitattributes` file can be added and/or `docs/workflows.md` updated with a reference to this contribution guide if needed.
 
 ## 6. Recommended local `git config` settings
 
