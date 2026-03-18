@@ -268,13 +268,18 @@ async def checkout(
         ) from exc
     locker = locker_result.scalar_one_or_none()
 
+    if locker is None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Locker not found.",
+        )
+
     # --- 4. Apply state mutations ---
     # Asset leaves the locker → locker becomes available again
     asset.asset_status = AssetStatus.BORROWED
     asset.locker_id = None
-
-    if locker is not None:
-        locker.locker_status = LockerStatus.AVAILABLE
+    locker.locker_status = LockerStatus.AVAILABLE
 
     # --- 5. Create loan record ---
     loan = Loan(

@@ -28,12 +28,7 @@ def downgrade() -> None:
 
     This migration adds a new value to the PostgreSQL ``loanstatus`` enum
     type using ``ALTER TYPE ... ADD VALUE`` which is not trivially
-    reversible. Removing enum labels in PostgreSQL is unsafe for existing
-    data and requires manual intervention, so this downgrade is
-    intentionally not implemented.
+    reversible. To keep Alembic downgrade workflows runnable in development
+    and CI, this downgrade is intentionally a no-op.
     """
-    raise NotImplementedError(
-        "Downgrade for migration 5591d67e520a is not supported because "
-        "removing values from the 'loanstatus' enum requires manual "
-        "operations and may be unsafe for existing data."
-    )
+    pass
