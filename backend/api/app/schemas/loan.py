@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import LoanStatus
 
@@ -65,7 +65,7 @@ class CheckoutRequest(BaseModel):
     locker, and creates the loan record.
     """
 
-    aztec_code: str
+    aztec_code: str = Field(..., min_length=1, max_length=255)
 
 
 class ReturnInitiateRequest(BaseModel):

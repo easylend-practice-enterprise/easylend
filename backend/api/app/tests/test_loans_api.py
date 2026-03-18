@@ -103,7 +103,11 @@ class _LockingSession(_QueuedSession):
     async def execute(self, query):
         self._call_count += 1
         if self._call_count == 2:  # 1st is get_current_user, 2nd is FOR UPDATE NOWAIT
-            raise OperationalError("could not obtain lock", params=None, orig=None)
+            raise OperationalError(
+                "could not obtain lock",
+                params=None,
+                orig=Exception("could not obtain lock"),
+            )
         return await super().execute(query)
 
 
@@ -352,13 +356,14 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
     DB execute order:
     [1] get_current_user   → student
     [2] _get_loan_or_404   → active loan (same user)
-    [3] free locker query  → available locker
+    [3] lock loan row      → active loan (locked)
+    [4] free locker query  → available locker
     """
     student = _make_student()
     loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    fake_db = _QueuedSession(student, loan, free_locker)
+    fake_db = _QueuedSession(student, loan, loan, free_locker)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -450,12 +455,13 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
     DB execute order:
     [1] get_current_user   → student
     [2] loan query         → active loan
-    [3] free locker query  → None (no available locker)
+    [3] lock loan row      → active loan (locked)
+    [4] free locker query  → None (no available locker)
     """
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, active_loan, None)
+    fake_db = _QueuedSession(student, active_loan, active_loan, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",

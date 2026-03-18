@@ -201,18 +201,21 @@ async def checkout(
 
     # --- 2. Validate asset ---
     if asset is None or asset.is_deleted:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Asset not found.",
         )
 
     if asset.asset_status != AssetStatus.AVAILABLE:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Asset is not available for checkout.",
         )
 
     if asset.locker_id is None:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Asset has no assigned locker and cannot be checked out.",
@@ -221,11 +224,18 @@ async def checkout(
     checkout_locker_id: UUID = asset.locker_id
 
     # --- 3. Lock the locker row so we can safely mutate its status ---
-    locker_result = await db.execute(
-        select(Locker)
-        .where(Locker.locker_id == checkout_locker_id)
-        .with_for_update(nowait=True)
-    )
+    try:
+        locker_result = await db.execute(
+            select(Locker)
+            .where(Locker.locker_id == checkout_locker_id)
+            .with_for_update(nowait=True)
+        )
+    except OperationalError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Locker is currently being processed. Please try again.",
+        )
     locker = locker_result.scalar_one_or_none()
 
     # --- 4. Apply state mutations ---
@@ -288,6 +298,7 @@ async def return_initiate(
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
     # --- 1. Fetch and validate the loan ---
+    # --- 1. Fetch and validate the loan (non-locking) ---
     loan = await _get_loan_or_404(db, payload.loan_id)
 
     if not _is_admin(current_user) and loan.user_id != current_user.user_id:
@@ -301,6 +312,33 @@ async def return_initiate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Loan is not active and cannot be returned.",
         )
+
+    # --- 1b. Lock the loan row and enforce atomic state transition ---
+    try:
+        locked_loan_result = await db.execute(
+            select(Loan)
+            .where(
+                Loan.loan_id == payload.loan_id,
+                Loan.loan_status == LoanStatus.ACTIVE,
+                Loan.return_locker_id.is_(None),
+            )
+            .with_for_update(nowait=True)
+        )
+    except OperationalError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A return is already in progress for this loan. Please try again shortly.",
+        )
+
+    locked_loan = locked_loan_result.scalar_one_or_none()
+    if locked_loan is None:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Loan is no longer in a state that can be returned.",
+        )
+    loan = locked_loan
 
     # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
     locker_result = await db.execute(
