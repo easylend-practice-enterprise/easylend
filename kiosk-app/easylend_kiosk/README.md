@@ -1,17 +1,32 @@
-# easylend_kiosk
+# Easylend kiosk app
 
-A new Flutter project.
+## Project File Structure
 
-## Getting Started
+- `app/`  Core app setup (themes, routing).
 
-This project is a starting point for a Flutter application.
+- `models/`  Data models and enums.
+  - `api/`: API response models.
+  - `assets/`: Asset-related models.
+  - `auth/`: Authentication-related models.
 
-A few resources to get you started if this is your first Flutter project:
+- `providers/`  Riverpod providers for state management.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- `screens/`  Top-level screens of the app.
+  - `auth/`: Login and authentication screens.
+  - `dashboard/`: Main dashboard and asset management screens.
+  - `modals/`: Modal dialogs and overlays.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- `services/`  Business logic and service classes.
+  - `api/`: API communication services.
+  - `auth/`: Authentication services.
+  - `local/`: Local storage and device-specific services.
+
+- `utils/`  Utility classes, constants, and helpers.
+  - `constants/`: Global constants (colors, strings, dimensions).
+  - `extensions/`: Extension methods for Dart/Flutter classes.
+  - `helpers/`: Helper classes for common tasks.
+
+- `widgets/`  Reusable UI components.
+  - `buttons/`: Reusable button widgets.
+  - `cards/`: Reusable card widgets.
+  - `shared/`: Utility widgets (e.g., timers, animations).
