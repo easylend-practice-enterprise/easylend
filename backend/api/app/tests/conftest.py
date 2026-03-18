@@ -60,6 +60,15 @@ class _QueuedSession:
     async def rollback(self):
         self.rollback_calls += 1
 
+    async def refresh(self, obj):
+        # Simuleer de database: genereer een UUID voor lege Primary Keys
+        for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id"]:
+            if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:
+                setattr(obj, pk_field, uuid.uuid4())
+        # Simuleer de database: vul default waardes in voor Assets
+        if hasattr(obj, "is_deleted") and getattr(obj, "is_deleted") is None:
+            setattr(obj, "is_deleted", False)
+
     def add(self, obj):
         self.added.append(obj)
 
