@@ -1,0 +1,332 @@
+"""
+Loan Transaction endpoints — ELP-28
+
+APIRouter: prefix="/loans", tags=["loans"]
+
+Business rules (Step 10a, hardware-free path):
+  - Any authenticated user may list their own loans and poll status.
+  - Admins see all loans.
+  - Checkout uses SELECT … FOR UPDATE NOWAIT to prevent concurrent
+    double-assignment of the same asset (409 on lock contention).
+  - Return/initiate uses SELECT … FOR UPDATE SKIP LOCKED to find the
+    first available locker at the user's kiosk without blocking peers.
+"""
+
+from datetime import UTC, datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_current_user
+from app.db.database import get_db
+from app.db.models import (
+    Asset,
+    AssetStatus,
+    Loan,
+    LoanStatus,
+    Locker,
+    LockerStatus,
+    User,
+)
+from app.schemas.loan import (
+    CheckoutRequest,
+    LoanListResponse,
+    LoanResponse,
+    LoanStatusResponse,
+    ReturnInitiateRequest,
+)
+
+router = APIRouter(prefix="/loans", tags=["loans"])
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+_PAGINATION_SKIP = Query(0, ge=0, description="Number of records to skip (offset).")
+_PAGINATION_LIMIT = Query(
+    100, ge=1, le=1000, description="Maximum number of records to return."
+)
+
+_IS_ADMIN_ROLE = "ADMIN"
+
+
+def _is_admin(user: User) -> bool:
+    return user.role is not None and user.role.role_name.upper() == _IS_ADMIN_ROLE
+
+
+async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
+    result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
+    loan = result.scalar_one_or_none()
+    if loan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Loan not found.",
+        )
+    return loan
+
+
+# ---------------------------------------------------------------------------
+# GET /loans — List loans (paginated, role-scoped)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "",
+    response_model=LoanListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def list_loans(
+    skip: int = _PAGINATION_SKIP,
+    limit: int = _PAGINATION_LIMIT,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LoanListResponse:
+    """
+    List loans with pagination.
+
+    - **Admin**: all loans in the system.
+    - **Any other role**: only the caller's own loans.
+    """
+    query = select(Loan)
+    count_query = select(func.count()).select_from(Loan)
+
+    if not _is_admin(current_user):
+        query = query.where(Loan.user_id == current_user.user_id)
+        count_query = count_query.where(Loan.user_id == current_user.user_id)
+
+    result = await db.execute(
+        query.order_by(Loan.borrowed_at.desc().nulls_last()).offset(skip).limit(limit)
+    )
+    items = [LoanResponse.model_validate(loan) for loan in result.scalars().all()]
+
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one_or_none() or 0
+
+    return LoanListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
+# GET /loans/{loan_id}/status — Fast polling endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{loan_id}/status",
+    response_model=LoanStatusResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden: not the loan owner"},
+        404: {"description": "Loan not found"},
+    },
+)
+async def get_loan_status(
+    loan_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LoanStatusResponse:
+    """
+    Retrieve the current status of a single loan.
+
+    Intended as a lightweight polling endpoint for the kiosk app.
+
+    - **Admin**: may poll any loan.
+    - **Other roles**: may only poll their own loans (returns 403 otherwise).
+    """
+    loan = await _get_loan_or_404(db, loan_id)
+
+    if not _is_admin(current_user) and loan.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view this loan.",
+        )
+
+    return LoanStatusResponse.model_validate(loan)
+
+
+# ---------------------------------------------------------------------------
+# POST /loans/checkout — Initiate a checkout
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/checkout",
+    response_model=LoanResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"description": "Asset unavailable, not found, or has no locker assigned"},
+        401: {"description": "Not authenticated"},
+        409: {"description": "Asset is currently being processed by another request"},
+    },
+)
+async def checkout(
+    payload: CheckoutRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LoanResponse:
+    """
+    Begin a checkout by scanning an asset's Aztec barcode.
+
+    Uses `SELECT … FOR UPDATE NOWAIT` to guarantee that two concurrent
+    requests for the same asset cannot both succeed. If the row is already
+    locked, a **409 Conflict** is returned immediately (no retry).
+
+    **State transitions (hardware-free path):**
+    - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
+    - `Asset.locker_id`: cleared to `None` (asset leaves the locker)
+    - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
+    - New `Loan` record created with `loan_status = ACTIVE`
+    """
+    # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
+    try:
+        result = await db.execute(
+            select(Asset)
+            .where(Asset.aztec_code == payload.aztec_code)
+            .with_for_update(nowait=True)
+        )
+    except OperationalError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Asset is currently being processed. Please try again.",
+        )
+
+    asset = result.scalar_one_or_none()
+
+    # --- 2. Validate asset ---
+    if asset is None or asset.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset not found.",
+        )
+
+    if asset.asset_status != AssetStatus.AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset is not available for checkout.",
+        )
+
+    if asset.locker_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Asset has no assigned locker and cannot be checked out.",
+        )
+
+    checkout_locker_id: UUID = asset.locker_id
+
+    # --- 3. Lock the locker row so we can safely mutate its status ---
+    locker_result = await db.execute(
+        select(Locker)
+        .where(Locker.locker_id == checkout_locker_id)
+        .with_for_update(nowait=True)
+    )
+    locker = locker_result.scalar_one_or_none()
+
+    # --- 4. Apply state mutations ---
+    # Asset leaves the locker → locker becomes available again
+    asset.asset_status = AssetStatus.BORROWED
+    asset.locker_id = None
+
+    if locker is not None:
+        locker.locker_status = LockerStatus.AVAILABLE
+
+    # --- 5. Create loan record ---
+    loan = Loan(
+        user_id=current_user.user_id,
+        asset_id=asset.asset_id,
+        checkout_locker_id=checkout_locker_id,
+        loan_status=LoanStatus.ACTIVE,
+        borrowed_at=datetime.now(UTC),
+    )
+    db.add(loan)
+
+    await db.commit()
+    await db.refresh(loan)
+
+    return LoanResponse.model_validate(loan)
+
+
+# ---------------------------------------------------------------------------
+# POST /loans/return/initiate — Begin the return flow
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/return/initiate",
+    response_model=LoanResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Loan is not in ACTIVE state"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden: not the loan owner"},
+        404: {"description": "Loan not found"},
+        503: {"description": "No available lockers at the requested kiosk"},
+    },
+)
+async def return_initiate(
+    payload: ReturnInitiateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LoanResponse:
+    """
+    Initiate the return process for an active loan.
+
+    Finds the first available locker at the kiosk where the user is
+    standing (`payload.kiosk_id`) using `SELECT … FOR UPDATE SKIP LOCKED`
+    so that concurrent return requests from different users never grab the
+    same slot.
+
+    **State transitions:**
+    - `Locker.locker_status`: `AVAILABLE` → `OCCUPIED` (reserved for this return)
+    - `Loan.return_locker_id`: assigned to the chosen locker
+    - `Loan.loan_status`: `ACTIVE` → `RETURNING`
+    """
+    # --- 1. Fetch and validate the loan ---
+    loan = await _get_loan_or_404(db, payload.loan_id)
+
+    if not _is_admin(current_user) and loan.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to return this loan.",
+        )
+
+    if loan.loan_status != LoanStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Loan is not active and cannot be returned.",
+        )
+
+    # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
+    locker_result = await db.execute(
+        select(Locker)
+        .where(
+            Locker.kiosk_id == payload.kiosk_id,
+            Locker.locker_status == LockerStatus.AVAILABLE,
+        )
+        .order_by(Locker.logical_number)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    locker = locker_result.scalar_one_or_none()
+
+    if locker is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No available lockers at this kiosk. Please try again shortly.",
+        )
+
+    # --- 3. Reserve the locker and update the loan ---
+    locker.locker_status = LockerStatus.OCCUPIED
+    loan.return_locker_id = locker.locker_id
+    loan.loan_status = LoanStatus.RETURNING
+
+    await db.commit()
+    await db.refresh(loan)
+
+    return LoanResponse.model_validate(loan)

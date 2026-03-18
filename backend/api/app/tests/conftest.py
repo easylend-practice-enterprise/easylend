@@ -62,7 +62,7 @@ class _QueuedSession:
 
     async def refresh(self, obj):
         # Simulate the database: generate a UUID for empty Primary Keys
-        for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id"]:
+        for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id", "loan_id"]:
             if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:
                 setattr(obj, pk_field, uuid.uuid4())
         # Simulate the database: set default values for Assets
