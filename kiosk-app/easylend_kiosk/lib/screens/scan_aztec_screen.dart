@@ -17,6 +17,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   bool _isDetecting = false;
   CameraDescription? _cameraDescription;
   Timer? _periodicTimer;
+  String? _cameraError;
 
   @override
   void initState() {
@@ -28,6 +29,16 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _cameraError = 'No camera found on this device.';
+          });
+        } else {
+          _cameraError = 'No camera found on this device.';
+        }
+        return;
+      }
       // prefer back camera
       _cameraDescription = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
@@ -47,7 +58,13 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
       );
       if (mounted) setState(() {});
     } catch (e) {
-      // ignore camera errors for now
+      if (mounted) {
+        setState(() {
+          _cameraError = 'Failed to initialize camera: $e';
+        });
+      } else {
+        _cameraError = 'Failed to initialize camera: $e';
+      }
     }
   }
 
