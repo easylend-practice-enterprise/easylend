@@ -65,7 +65,7 @@ class CheckoutRequest(BaseModel):
     locker, and creates the loan record.
     """
 
-    aztec_code: str = Field(..., min_length=1, max_length=255)
+    aztec_code: str = Field(..., min_length=1, max_length=100)
 
 
 class ReturnInitiateRequest(BaseModel):

@@ -39,6 +39,26 @@ from app.schemas.loan import (
     ReturnInitiateRequest,
 )
 
+
+def _is_lock_not_available_error(exc: OperationalError) -> bool:
+    """
+    Best-effort detection of a lock-not-available error coming from the DB.
+    We inspect the wrapped DBAPI error (exc.orig) for a lock-specific
+    SQLSTATE such as PostgreSQL's 55P03 ("lock_not_available").
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return False
+    # PostgreSQL via psycopg/asyncpg exposes SQLSTATE here
+    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    if pgcode == "55P03":
+        return True
+
+    # Fallback for SQLite in tests
+    message = str(orig).lower()
+    return "database is locked" in message or "lock not available" in message
+
+
 router = APIRouter(prefix="/loans", tags=["loans"])
 
 # ---------------------------------------------------------------------------
@@ -162,7 +182,8 @@ async def get_loan_status(
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
         401: {"description": "Not authenticated"},
-        409: {"description": "Asset is currently being processed by another request"},
+        404: {"description": "Asset not found"},
+        409: {"description": "Conflict: lock contention or processing error"},
     },
 )
 async def checkout(
@@ -190,12 +211,14 @@ async def checkout(
             .where(Asset.aztec_code == payload.aztec_code)
             .with_for_update(nowait=True)
         )
-    except OperationalError:
+    except OperationalError as exc:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Asset is currently being processed. Please try again.",
-        )
+        if _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset is currently being processed. Please try again.",
+            )
+        raise
 
     asset = result.scalar_one_or_none()
 
@@ -230,12 +253,15 @@ async def checkout(
             .where(Locker.locker_id == checkout_locker_id)
             .with_for_update(nowait=True)
         )
-    except OperationalError:
+    except OperationalError as exc:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Locker is currently being processed. Please try again.",
-        )
+        if _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Locker is currently being processed. Please try again.",
+            )
+        # Non-lock-related OperationalErrors should propagate as 5xx
+        raise
     locker = locker_result.scalar_one_or_none()
 
     # --- 4. Apply state mutations ---
@@ -276,6 +302,7 @@ async def checkout(
         401: {"description": "Not authenticated"},
         403: {"description": "Forbidden: not the loan owner"},
         404: {"description": "Loan not found"},
+        409: {"description": "Conflict: loan state changed or lock contention"},
         503: {"description": "No available lockers at the requested kiosk"},
     },
 )
@@ -297,7 +324,7 @@ async def return_initiate(
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
-    # --- 1. Fetch and validate the loan ---
+
     # --- 1. Fetch and validate the loan (non-locking) ---
     loan = await _get_loan_or_404(db, payload.loan_id)
 
@@ -324,12 +351,15 @@ async def return_initiate(
             )
             .with_for_update(nowait=True)
         )
-    except OperationalError:
+    except OperationalError as exc:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A return is already in progress for this loan. Please try again shortly.",
-        )
+        if _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A return is already in progress for this loan. Please try again shortly.",
+            )
+        # Non-lock-related OperationalErrors should propagate as 5xx
+        raise
 
     locked_loan = locked_loan_result.scalar_one_or_none()
     if locked_loan is None:
@@ -354,6 +384,7 @@ async def return_initiate(
     locker = locker_result.scalar_one_or_none()
 
     if locker is None:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="No available lockers at this kiosk. Please try again shortly.",

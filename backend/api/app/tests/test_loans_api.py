@@ -106,7 +106,7 @@ class _LockingSession(_QueuedSession):
             raise OperationalError(
                 "could not obtain lock",
                 params=None,
-                orig=Exception("could not obtain lock"),
+                orig=Exception("lock not available"),
             )
         return await super().execute(query)
 
