@@ -58,4 +58,4 @@ pre-commit run --all-files
 
 ## Team
 
-Maxim Huardel, Jasper Savels, and Injo De Pot are the primary developers of this project. We collaborate closely and follow the guidelines in `CONTRIBUTING.md` for a streamlined workflow.
+Maxim Huardel, Jasper Savels, and Injo De Pot are the primary developers of this project. We collaborate closely and follow the guidelines in [CONTRIBUTING.md](CONTRIBUTING.md) for a streamlined workflow.
