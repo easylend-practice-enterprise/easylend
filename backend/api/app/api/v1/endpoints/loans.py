@@ -182,7 +182,6 @@ async def get_loan_status(
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Asset not found"},
         409: {"description": "Conflict: lock contention or processing error"},
     },
 )
@@ -218,7 +217,10 @@ async def checkout(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Asset is currently being processed. Please try again.",
             )
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
 
     asset = result.scalar_one_or_none()
 
@@ -260,8 +262,10 @@ async def checkout(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Locker is currently being processed. Please try again.",
             )
-        # Non-lock-related OperationalErrors should propagate as 5xx
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
     locker = locker_result.scalar_one_or_none()
 
     # --- 4. Apply state mutations ---
@@ -358,8 +362,10 @@ async def return_initiate(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A return is already in progress for this loan. Please try again shortly.",
             )
-        # Non-lock-related OperationalErrors should propagate as 5xx
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
 
     locked_loan = locked_loan_result.scalar_one_or_none()
     if locked_loan is None:

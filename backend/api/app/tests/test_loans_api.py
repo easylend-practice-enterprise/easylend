@@ -7,7 +7,7 @@ Coverage:
     3. GET /loans/{id}/status : owner 200, wrong user 403
     4. POST /loans/checkout   : happy path 201, asset not found 400,
                                 asset not available 400, lock contention 409
-    5. POST /return/initiate  : happy path 200, unknown loan 404,
+    5. POST /loans/return/initiate  : happy path 200, unknown loan 404,
                                 wrong user 403, not active 400, no locker 503
 
 _QueuedSession execute() ordering — every `await db.execute(query)` pops one
@@ -105,6 +105,42 @@ class _LockingSession(_QueuedSession):
         if self._call_count == 2:  # 1st is get_current_user, 2nd is FOR UPDATE NOWAIT
             raise OperationalError(
                 "could not obtain lock",
+                params=None,
+                orig=Exception("lock not available"),
+            )
+        return await super().execute(query)
+
+
+class _LockerLockingSession(_QueuedSession):
+    """Raises OperationalError on locker lock (3rd execute call)."""
+
+    def __init__(self, *results):
+        super().__init__(*results)
+        self._call_count = 0
+
+    async def execute(self, query):
+        self._call_count += 1
+        if self._call_count == 3:
+            raise OperationalError(
+                "lock not available",
+                params=None,
+                orig=Exception("lock not available"),
+            )
+        return await super().execute(query)
+
+
+class _LoanLockingSession(_QueuedSession):
+    """Raises OperationalError on loan lock (3rd execute call)."""
+
+    def __init__(self, *results):
+        super().__init__(*results)
+        self._call_count = 0
+
+    async def execute(self, query):
+        self._call_count += 1
+        if self._call_count == 3:
+            raise OperationalError(
+                "lock not available",
                 params=None,
                 orig=Exception("lock not available"),
             )
@@ -322,6 +358,27 @@ def test_checkout_returns_400_when_asset_not_available(client_with_overrides):
     assert fake_db.commit_calls == 0
 
 
+def test_checkout_returns_400_when_asset_has_no_locker(client_with_overrides):
+    """POST /checkout for an asset without locker_id returns 400."""
+    student = _make_student()
+    orphaned_asset = _make_asset(asset_status="AVAILABLE", locker_id=None)
+
+    fake_db = _QueuedSession(student, orphaned_asset)
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": orphaned_asset.aztec_code},
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 400
+    assert (
+        response.json()["detail"]
+        == "Asset has no assigned locker and cannot be checked out."
+    )
+    assert fake_db.commit_calls == 0
+
+
 def test_checkout_returns_409_on_lock_contention(client_with_overrides):
     """POST /checkout when the asset row is locked by another TX → 409.
 
@@ -335,6 +392,24 @@ def test_checkout_returns_409_on_lock_contention(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": "AZT-LOCKED"},
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 409
+    assert "currently being processed" in response.json()["detail"]
+    assert locking_db.commit_calls == 0
+
+
+def test_checkout_returns_409_on_locker_lock_contention(client_with_overrides):
+    """POST /checkout returns 409 when locker row lock is contended."""
+    student = _make_student()
+    asset = _make_asset(asset_status="AVAILABLE", locker_id=uuid.uuid4())
+
+    locking_db = _LockerLockingSession(student, asset)
+    with client_with_overrides(locking_db) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
             headers=_bearer(student),
         )
 
@@ -474,4 +549,48 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
 
     assert response.status_code == 503
     assert "No available lockers" in response.json()["detail"]
+    assert fake_db.commit_calls == 0
+
+
+def test_return_initiate_returns_409_on_loan_lock_contention(client_with_overrides):
+    """POST /return/initiate returns 409 when loan lock is contended."""
+    student = _make_student()
+    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+
+    locking_db = _LoanLockingSession(student, active_loan)
+    with client_with_overrides(locking_db) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={
+                "loan_id": str(active_loan.loan_id),
+                "kiosk_id": str(_VALID_KIOSK_ID),
+            },
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 409
+    assert "already in progress" in response.json()["detail"]
+    assert locking_db.commit_calls == 0
+
+
+def test_return_initiate_returns_409_when_loan_state_changed_concurrently(
+    client_with_overrides,
+):
+    """POST /return/initiate returns 409 when lock query no longer matches."""
+    student = _make_student()
+    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+
+    fake_db = _QueuedSession(student, active_loan, None)
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={
+                "loan_id": str(active_loan.loan_id),
+                "kiosk_id": str(_VALID_KIOSK_ID),
+            },
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 409
+    assert "no longer in a state" in response.json()["detail"]
     assert fake_db.commit_calls == 0
