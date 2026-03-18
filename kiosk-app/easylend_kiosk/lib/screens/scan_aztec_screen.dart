@@ -47,7 +47,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
       );
       if (mounted) setState(() {});
     } catch (e) {
-      // ignore camera errors for now
+      // ignore camera errors for now, later add a warning message or something
     }
   }
 
@@ -128,11 +128,12 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
                 child: Container(
                   width: 300,
                   height: 300,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: AppColors.divider.withAlpha(138),
-                        width: 3,
-                      ),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.divider.withAlpha(138),
+                      // 54% transparancy for the scanning recticle ^
+                      width: 3,
+                    ),
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
