@@ -13,7 +13,7 @@ High-Level Goals:
 | Category | Tool/Library | Purpose |
 | :--- | :--- | :--- |
 | Framework | Flutter | Android tablet target (landscape UI). |
-| State Management | TBD (e.g., Riverpod or `flutter_bloc`) | Final decision pending; must be aligned with README before implementation. |
+| State Management | `flutter_riverpod` | Handles complex states (Auth, Transaction Polling). |
 | Networking | `dio` + `retrofit` | Type-safe HTTP client with JWT interceptors. |
 | Hardware | `nfc_manager` | NFC badge reading. |
 | Vision/Camera | `mobile_scanner` | Fast Aztec/barcode scanning via ML Kit. |
@@ -24,7 +24,7 @@ High-Level Goals:
 Focus: Environment setup and resolving specification gaps.
 
 - ELP-36: Android project setup and dependencies
-  - Initialize project with flavors (dev/prod). Install `dio`, chosen state management library (once decided), `nfc_manager`, and `flutter_secure_storage`.
+  - Initialize project with flavors (dev/prod). Install `dio`, `flutter_riverpod`, `nfc_manager`, and `flutter_secure_storage`.
 - ELP-37: Kiosk mode implementation
   - Implement `startLockTask()` and hide system UI to prevent users from exiting the app.
 - ELP-47: Auth & retry via interceptor
@@ -62,7 +62,7 @@ Focus: Managing the physical locker interaction cycle.
     - 0–10s: poll every 2 seconds.
     - 10–30s: poll every 5 seconds.
     - 30–45s: poll every 10 seconds.
-  - Hard timeout handling: At the configured timeout, transition UI to a "Transaction Pending" screen and finalize in background.
+  - Hard timeout handling: At the configured timeout, transition UI to a "Transaction Pending" screen and finalize in the background.
 - ELP-45 & ELP-46: Aztec integration
   - Integrate `mobile_scanner` for returns. On successful scan, call `POST /api/v1/loans/return/initiate`.
 
@@ -73,6 +73,7 @@ Focus: Visual feedback and error recovery.
 - ELP-43: UX (dialogs and errors)
   - Create dialogs for "Locker Jammed," "Item Not Found," and "Unauthorized Return."
 - ELP-44: UI polish
+  - Add animations, theming, and accessibility checks; ensure clear success/error states and concise copy.
 
 ### Milestones
 
