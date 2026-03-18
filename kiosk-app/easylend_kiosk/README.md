@@ -9,7 +9,7 @@
   - `assets/`: Asset-related models.
   - `auth/`: Authentication-related models.
 
-- `providers/`  Riverpod providers for state management.
+- `providers/`  State management layer (e.g., blocs/controllers).
 
 - `screens/`  Top-level screens of the app.
   - `auth/`: Login and authentication screens.
