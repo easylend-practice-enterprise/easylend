@@ -1,4 +1,4 @@
-# Easylend kiosk app
+# EasyLend Kiosk App
 
 ## Project File Structure
 
