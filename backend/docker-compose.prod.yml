@@ -79,10 +79,10 @@ services:
       - WATCHTOWER_SCOPE=easylend
       - TZ=Europe/Brussels
       - WATCHTOWER_NOTIFICATIONS_HOSTNAME=EasyLend-Proxmox
-      # Authentificatie (optioneel voor public images, maar prima als best practice)
+      # Authentication (optional for public images, but is a good practice)
       - REPO_USER=${GHCR_USERNAME}
       - REPO_PASS=${GHCR_PAT}
-      # Notificaties veilig via de .env file
+      # Notifications delivered securely via the .env file
       - WATCHTOWER_NOTIFICATIONS=shoutrrr
       - WATCHTOWER_NOTIFICATION_URL=${NTFY_WEBHOOK_URL}
 

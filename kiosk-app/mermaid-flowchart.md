@@ -19,7 +19,7 @@ flowchart TD
 
     AuthSuccess --> Dashboard[Asset Catalog Dashboard]
 
-    %% CHECKOUT FLOW (Uitlenen via REST Polling)
+    %% CHECKOUT FLOW (Lending via REST Polling)
     Dashboard --> SelectAsset{Select Asset to Lend?}
     SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
@@ -35,7 +35,7 @@ flowchart TD
     CheckoutError --> Dashboard
     LendSuccess --> Dashboard
 
-    %% RETURN FLOW (Inleveren met Tablet Camera via REST Polling)
+    %% RETURN FLOW (Return with Tablet Camera via REST Polling)
     Dashboard --> SelectReturn{Select Asset to Return?}
     SelectReturn -->|Yes| ConfirmReturn[Confirm Return]
     SelectReturn -->|No| Dashboard
@@ -47,7 +47,7 @@ flowchart TD
     ShowAztecErrorReturn --> ScanAztecReturn
 
     ValidateAztecReturn -->|Success| ReturnOpenBox["API Opens Vision Box<br/>Response: {loan_id}"]
-    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id uit initiate)"]
+    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id from initiate)"]
 
     PollReturn --> ReturnStatus{Status updated?}
     ReturnStatus -->|No - Still ACTIVE| PollReturn

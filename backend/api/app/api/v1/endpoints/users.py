@@ -214,7 +214,7 @@ async def update_user(
 
     update_data = payload.model_dump(exclude_unset=True)
 
-    # Voorkom dat niet-nullable kolommen expliciet op None worden gezet
+    # Prevent non-nullable columns from being explicitly set to None
     non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
     invalid_null_fields = [
         field

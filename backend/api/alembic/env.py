@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-# NIEUW 1: Voeg de root van het project toe aan het Python pad
+# Add the project root to the Python path so app modules are importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.core.config import settings
@@ -29,7 +29,7 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 
-# NIEUW 2: Koppel de metadata
+# Link the SQLAlchemy metadata for autogenerate support
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -74,7 +74,7 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
-    # NIEUW 3: Injecteer jouw database URL uit de settings
+    # Inject the database URL from application settings
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = settings.DATABASE_URL
 

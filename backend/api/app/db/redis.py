@@ -8,29 +8,29 @@ redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 async def check_redis_connection():
     try:
         await redis_client.ping()  # type: ignore
-        print("Succesvol verbonden met Redis Cache.")
+        print("Successfully connected to Redis Cache.")
     except Exception as e:
-        print(f"Kan niet verbinden met Redis: {e}")
+        print(f"Could not connect to Redis: {e}")
 
 
 async def store_refresh_token(user_id: str, jti: str, expires_in_seconds: int):
     """
-    Slaat een geldige refresh token op in de Redis whitelist.
+    Stores a valid refresh token in the Redis whitelist.
     """
     await redis_client.setex(f"refresh:{user_id}:{jti}", expires_in_seconds, "valid")
 
 
 async def is_refresh_token_valid(user_id: str, jti: str) -> bool:
     """
-    Controleert of een refresh token nog in de Redis whitelist staat.
+    Checks whether a refresh token is still present in the Redis whitelist.
     """
     return await redis_client.exists(f"refresh:{user_id}:{jti}") > 0
 
 
 async def revoke_refresh_token(user_id: str, jti: str) -> bool:
     """
-    Trekt één specifieke refresh token in.
-    Geeft True terug als de token daadwerkelijk bestond en is verwijderd.
+    Revokes a single specific refresh token.
+    Returns True if the token actually existed and was deleted.
     """
     result = await redis_client.delete(f"refresh:{user_id}:{jti}")
     return result > 0
@@ -38,7 +38,7 @@ async def revoke_refresh_token(user_id: str, jti: str) -> bool:
 
 async def revoke_all_refresh_tokens(user_id: str):
     """
-    Verwijdert alle actieve sessies van een gebruiker (overal uitloggen).
+    Revokes all active sessions for a user (global sign-out).
     """
     cursor = 0
     while True:

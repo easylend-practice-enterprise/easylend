@@ -1,86 +1,86 @@
 sequenceDiagram
-    actor Admin as Beheerder
-    participant App as Kiosk App (Virtueel of Fysiek)
+    actor Admin as Administrator
+    participant App as Kiosk App (Virtual or Physical)
     participant API as FastAPI Backend
     participant DB as PostgreSQL
     participant VB as Vision Box (Kiosk A)
 
-    Note over Admin,App: Admin logt in via de app
-    Admin->>App: Logt in en opent Admin Dashboard
-    App->>API: GET /api/v1/kiosks [Met JWT Admin Token]
-    API-->>App: 200 OK (Lijst van kiosken)
+    Note over Admin,App: Admin logs in via the app
+    Admin->>App: Logs in and opens Admin Dashboard
+    App->>API: GET /api/v1/kiosks [With JWT Admin Token]
+    API-->>App: 200 OK (List of kiosks)
 
     alt 1. Locker Grid UI
-        Admin->>App: Selecteert Kiosk A en opent Locker Grid
+        Admin->>App: Selects Kiosk A and opens Locker Grid
         App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers
-        API->>DB: Haal fysieke status van kluisjes op
-        DB-->>API: Statussen (bijv. AVAILABLE, MAINTENANCE, OCCUPIED)
-        API-->>App: 200 OK (Actuele status per locker)
+        API->>DB: Fetch physical status of lockers
+        DB-->>API: Statuses (e.g. AVAILABLE, MAINTENANCE, OCCUPIED)
+        API-->>App: 200 OK (Current status per locker)
 
-        opt Forceer Deur Open
-            Admin->>App: Tik op Kluisje 1 -> Forceer Open
+        opt Force Door Open
+            Admin->>App: Taps Locker 1 -> Force Open
             App->>API: POST /api/v1/lockers/{locker_id}/open
-            Note over API: Valideert Admin rol
+            Note over API: Validates Admin role
             API->>VB: WSS: open_slot {locker_id: {locker_id}}
             VB-->>API: WSS: slot_opened
             API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
-            API-->>App: 200 OK (Kluisje geopend)
+            API-->>App: 200 OK (Locker opened)
         end
 
-        opt Markeer als Defect
-            Admin->>App: Tik op Kluisje 1 -> Markeer MAINTENANCE
+        opt Mark as Defective
+            Admin->>App: Taps Locker 1 -> Mark MAINTENANCE
             App->>API: PATCH /api/v1/lockers/{locker_id}/status {locker_status: 'MAINTENANCE'}
             API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = {locker_id}
-            API-->>App: 200 OK (Kluisje gemarkeerd)
+            API-->>App: 200 OK (Locker marked)
         end
 
-    else 2. Quarantaine Inbox
-        Admin->>App: Opent Quarantaine Inbox
+    else 2. Quarantine Inbox
+        Admin->>App: Opens Quarantine Inbox
         App->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION
-        API-->>App: Lijst van loans in quarantaine
+        API-->>App: List of loans in quarantine
         App->>API: GET /api/v1/admin/evaluations/{evaluation_id}
-        API-->>App: Foto, AI-rapport, damage details
-        Note right of App: Zie [sequence_quarantine.mmd](./sequence_quarantine.mmd) voor afhandeling
+        API-->>App: Photo, AI report, damage details
+        Note right of App: See [sequence_quarantine.mmd](./sequence_quarantine.mmd) for handling
 
-    else 3. Asset Catalogus
-        Admin->>App: Opent Asset Beheer
-        App->>API: GET /api/v1/assets [Met JWT Admin Token]
+    else 3. Asset Catalog
+        Admin->>App: Opens Asset Management
+        App->>API: GET /api/v1/assets [With JWT Admin Token]
         API->>DB: SELECT a.*, l.loan_status, u.first_name, u.last_name FROM assets a LEFT JOIN loans l ON a.asset_id = l.asset_id AND l.loan_status IN ('ACTIVE', 'RESERVED') LEFT JOIN users u ON l.user_id = u.user_id WHERE a.is_deleted = FALSE
-        DB-->>API: Volledige lijst (Asset + Locker info + Lener)
-        API-->>App: 200 OK (Beheerdersweergave)
+        DB-->>API: Full list (Asset + Locker info + Borrower)
+        API-->>App: 200 OK (Admin view)
         
-        opt Nieuw Asset
-            Admin->>App: Voegt asset toe
+        opt New Asset
+            Admin->>App: Adds asset
             App->>API: POST /api/v1/assets
             API->>DB: INSERT INTO assets
             API-->>App: 201 Created
         end
         
-        opt Verwijder Asset (Soft Delete)
-            Admin->>App: Verwijdert asset
+        opt Delete Asset (Soft Delete)
+            Admin->>App: Deletes asset
             App->>API: DELETE /api/v1/assets/{asset_id}
-            Note over API,DB: Soft-delete specifiek asset (catalogus/checkout filteren is_deleted = FALSE)
+            Note over API,DB: Soft-deletes the specific asset (catalog/checkout filter is_deleted = FALSE)
             API->>DB: UPDATE assets SET is_deleted = TRUE WHERE asset_id = {asset_id}
             API-->>App: 200 OK
         end
 
-    else 4. User & NFC Beheer
-        Admin->>App: Opent User Beheer
-        App->>API: GET /api/v1/users [Met JWT Admin Token]
-        API-->>App: Lijst van gebruikers
+    else 4. User & NFC Management
+        Admin->>App: Opens User Management
+        App->>API: GET /api/v1/users [With JWT Admin Token]
+        API-->>App: List of users
         
-        opt Deblokkeer User
-            Admin->>App: Deblokkeert account
+        opt Unblock User
+            Admin->>App: Unblocks account
             App->>API: PATCH /api/v1/users/{user_id} {failed_login_attempts: 0, locked_until: null}
             Note over API,DB: Reset failed attempts & lock timer
             API->>DB: UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = {user_id}
             API-->>App: 200 OK
         end
         
-        opt Koppel NFC Tag
-            Admin->>App: Koppelt nieuwe NFC tag
+        opt Link NFC Tag
+            Admin->>App: Links new NFC tag
             App->>API: PATCH /api/v1/users/{user_id}/nfc {nfc_tag_id}
-            Note over API,DB: Update kolom in users tabel
+            Note over API,DB: Update column in users table
             API->>DB: UPDATE users SET nfc_tag_id = {nfc_tag_id} WHERE user_id = {user_id}
             API-->>App: 200 OK
         end

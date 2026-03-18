@@ -1,67 +1,67 @@
 sequenceDiagram
-    actor User as Gebruiker
+    actor User as User
     participant App as Kiosk App (Flutter)
     participant API as FastAPI Backend
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
     participant AI as YOLO26 AI Service (VM2)
 
-    User->>App: Kiest asset uit catalogus
+    User->>App: Selects asset from catalog
     App->>API: POST /api/v1/loans/checkout {asset_id} [JWT, Idempotency-Key]
     
-    API->>VB: Controleer WSS verbinding
+    API->>VB: Check WSS connection
     alt Vision Box offline
         API-->>App: 503 Service Unavailable (Hardware offline)
-        App-->>User: "Kluisje momenteel buiten gebruik"
+        App-->>User: "Locker currently out of service"
     else Vision Box online
-        API->>DB: BEGIN transactie
+        API->>DB: BEGIN transaction
         API->>DB: SELECT * FROM assets WHERE asset_id = ? AND asset_status = 'AVAILABLE' AND is_deleted = FALSE FOR UPDATE NOWAIT
         DB-->>API: Asset + locker_id
 
-        alt Asset niet beschikbaar (of DB locked)
+        alt Asset not available (or DB locked)
             API-->>App: 409 Conflict
-            App-->>User: "Item is momenteel niet beschikbaar"
-        else Asset beschikbaar
+            App-->>User: "Item is currently not available"
+        else Asset available
             API->>DB: INSERT INTO loans {loan_status: 'RESERVED'}
             API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
             API->>DB: COMMIT
             API-->>App: 202 Accepted {loan_id, locker_number}
-            App-->>User: Toon lader: "Ga naar locker #N"
+            App-->>User: Show loader: "Go to locker #N"
         end
         
-        Note over API,VB: API stuurt Vision Box realtime aan
+        Note over API,VB: API controls the Vision Box in real time
         API->>VB: WSS: open_slot {locker_id, loan_id}
 
-        VB->>VB: GPIO: slot openen + LED groen
+        VB->>VB: GPIO: open slot + LED green
 
-        User->>VB: Neemt item uit locker, sluit deur
+        User->>VB: Takes item from locker, closes door
         VB->>API: WSS: slot_closed event
 
-        Note over VB,AI: Achtergrondcontrole: kluisje moet leeg zijn
+        Note over VB,AI: Background check: locker must be empty
         VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: CHECKOUT}
         API->>AI: POST /predict {image}
         AI-->>API: {locker_empty, confidence}
 
-        alt Kluisje niet leeg (Fraude/Fout: item niet meegenomen)
+        alt Locker not empty (Fraud/Error: item not taken)
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>VB: WSS: set_led {locker_id, color: red}
-        else Kluisje leeg (Succes)
+        else Locker empty (Success)
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
             API->>VB: WSS: set_led {locker_id, color: green}
         end
 
-        Note over App,API: App vraagt de API elke 3 sec om een statusupdate (Polling)
+        Note over App,API: App polls the API every 3 sec for a status update (Polling)
         App->>API: GET /api/v1/loans/{loan_id}/status
         
         alt Status is FRAUD_SUSPECTED
             API-->>App: 200 OK {status: FRAUD_SUSPECTED}
-            App-->>User: "Fout gedetecteerd. Item niet meegenomen."
+            App-->>User: "Error detected. Item not taken."
         else Status is ACTIVE
             API-->>App: 200 OK {status: ACTIVE}
-            App-->>User: "Veel succes! Breng het item tijdig terug."
+            App-->>User: "Good luck! Return the item on time."
         end
     end

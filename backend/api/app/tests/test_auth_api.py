@@ -123,7 +123,7 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
             assert response.status_code == 401
             assert response.json()["detail"] == "Invalid PIN."
 
-        # Na 5 fouten wordt het account gelockt; de volgende poging faalt op accountstatus.
+        # After 5 failures the account is locked; the next attempt fails on account status.
         locked_response = client.post("/api/v1/auth/pin", json=payload)
         assert locked_response.status_code == 401
         assert (

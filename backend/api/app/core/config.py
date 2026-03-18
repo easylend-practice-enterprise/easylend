@@ -1,7 +1,7 @@
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Definieer de dummy secret 1 keer bovenaan
+# Define the dummy secret once at the top
 _DUMMY_SECRET = "insecure-local-dev-secret-key-123!"  # noqa: S105
 
 
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
     )
 
-    # Gebruik de constante hier
+    # Use the constant here
     JWT_SECRET_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
@@ -23,15 +23,15 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_production_secrets(self) -> "Settings":
         """
-        Zorgt ervoor dat de applicatie HARD crasht als we in productie draaien
-        zonder een veilige JWT_SECRET_KEY mee te geven in de .env file.
+        Ensures the application performs a HARD crash when running in production
+        without a secure JWT_SECRET_KEY provided in the .env file.
         """
         if self.ENVIRONMENT.lower() in ("prod", "production"):
-            # En gebruik de constante hier, Ruff zal nu zwijgen!
+            # Use the constant here — Ruff will now stay quiet!
             if self.JWT_SECRET_KEY == _DUMMY_SECRET:
                 raise ValueError(
-                    "CRITICAL: JWT_SECRET_KEY ontbreekt in productie! "
-                    "Start de server niet met de onveilige dev-fallback."
+                    "CRITICAL: JWT_SECRET_KEY is not set in production! "
+                    "Do not start the server with the insecure dev fallback."
                 )
         return self
 

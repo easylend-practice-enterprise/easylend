@@ -1,83 +1,83 @@
 # Development Workflow & Contributing
 
-Dit repository opereert als een Monorepo. Om code-kwaliteit en traceerbaarheid in een teamomgeving te waarborgen, volgen we de regels in deze bijdragehandleiding. Direct pushen naar `main` is geblokkeerd via GitHub Rulesets; alle wijzigingen verlopen via branches en Pull Requests.
+This repository operates as a Monorepo. To ensure code quality and traceability in a team environment, we follow the rules in this contribution guide. Direct pushes to `main` are blocked via GitHub Rulesets; all changes go through branches and Pull Requests.
 
-**Kernpunten:**
+**Key points:**
 
-- Branches moeten YouTrack-issues refereren (`ELP-<id>`).
-- Volg de Conventional Commits specificatie.
-- Gebruik Pull Requests en `Squash and Merge`.
+- Branches must reference YouTrack issues (`ELP-<id>`).
+- Follow the Conventional Commits specification.
+- Use Pull Requests with `Squash and Merge`.
 
 ## 1. Branching Strategy & YouTrack Flow
 
-1. Claim een issue in YouTrack (bijv. `ELP-14`).
-2. Maak een lokale branch met het type en YouTrack-ID: `type/ELP-<id>-korte-beschrijving`.
+1. Claim an issue in YouTrack (e.g. `ELP-14`).
+2. Create a local branch with the type and YouTrack ID: `type/ELP-<id>-short-description`.
 
-- Voorbeelden: `feat/ELP-14-setup-fastapi`, `fix/ELP-74-camera-crash`.
+- Examples: `feat/ELP-14-setup-fastapi`, `fix/ELP-74-camera-crash`.
 
-1. Werk lokaal, push naar de remote branch en open een Pull Request naar `main`.
-2. Na succesvolle review en CI wordt de PR samengevoegd met `Squash and Merge` en de feature-branch verwijderd.
+1. Work locally, push to the remote branch, and open a Pull Request towards `main`.
+2. After a successful review and CI, the PR is merged with `Squash and Merge` and the feature branch is deleted.
 
-Branch type conventies:
+Branch type conventions:
 
-- `feat/`: nieuwe functionaliteit
-- `fix/`: bugfixes
-- `docs/`: documentatie
-- `chore/`, `refactor/`, `test/` zoals passend
+- `feat/`: new functionality
+- `fix/`: bug fixes
+- `docs/`: documentation
+- `chore/`, `refactor/`, `test/` as appropriate
 
-## 2. Commit Message Conventies
+## 2. Commit Message Conventions
 
-We volgen [Conventional Commits 1.0.0](https://www.conventionalcommits.org/). Dit maakt de git-history machine-parseable en consistent.
+We follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/). This makes the git history machine-parseable and consistent.
 
-Verplicht formaat for commits and PR-titels:
+Required format for commits and PR titles:
 
-`type(scope): ELP-<id> korte beschrijving`
+`type(scope): ELP-<id> short description`
 
 - `type`: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-- `scope`: onderdeel (bv. `api`, `kiosk`, `auth`, `infra`)
-- `ELP-<id>`: YouTrack issue-ID (VERPLICHT)
+- `scope`: component (e.g. `api`, `kiosk`, `auth`, `infra`)
+- `ELP-<id>`: YouTrack issue ID (REQUIRED)
 
-Voorbeelden:
+Examples:
 
 - `feat(auth): ELP-26 add jwt login endpoint`
 - `fix(camera): ELP-74 fix crash on startup`
 - `docs(readme): ELP-66 update installation steps`
 - `chore(docker): ELP-16 update postgres version`
 
-BELANGRIJK: Omdat we `Squash and Merge` gebruiken, wordt de PR-titel de uiteindelijke commit message. Zorg dat je PR-titel dit formaat volgt.
+IMPORTANT: Because we use `Squash and Merge`, the PR title becomes the final commit message. Make sure your PR title follows this format.
 
 ## 3. Pull Request Workflow
 
-1. Push je feature-branch naar de remote.
-2. Open een Pull Request naar `main` met de correcte titel (Conventional Commit + ELP-ID).
-3. Zorg dat alle CI/CD checks groen zijn (tests, lint, build).
-4. Vraag minimaal één teamlid om review en verkrijg goedkeuring.
-5. Merge via `Squash and Merge` en verwijder de feature-branch.
+1. Push your feature branch to the remote.
+2. Open a Pull Request to `main` with the correct title (Conventional Commit + ELP-ID).
+3. Ensure all CI/CD checks are green (tests, lint, build).
+4. Request at least one team member for review and obtain approval.
+5. Merge via `Squash and Merge` and delete the feature branch.
 
-Praktische tips:
+Practical tips:
 
-- Voeg in de PR-omschrijving een korte samenvatting, testinstructies en relevante YouTrack-links toe.
+- Add a short summary, test instructions, and relevant YouTrack links to the PR description.
 
 ## 4. Cross-Platform Git / Line Endings
 
-Het team ontwikkelt op zowel Windows als Linux, onze servers (Docker/Ubuntu) gebruiken Linux. Om CRLF/LF-problemen en "bad interpreter" fouten in containers te voorkomen, hanteren we een `gitattributes` policy.
+The team develops on both Windows and Linux; our servers (Docker/Ubuntu) use Linux. To prevent CRLF/LF issues and "bad interpreter" errors in containers, we enforce a `gitattributes` policy.
 
-Opmerking: Als je hulp wilt, kan ik een `.gitattributes` bestand toevoegen aan de repository.
+Note: If you need help, a `.gitattributes` file can be added to the repository.
 
-## 5. Overige regels en aanbevelingen
+## 5. Additional rules and recommendations
 
-- Voeg altijd het relevante `ELP-<id>` in commits en PR-titels zodat automatisering en traceerbaarheid werkt.
-- Verwijder feature-branches na merge om de branchlijst schoon te houden.
-- Volg team conventions voor scope-namen (bv. `api`, `kiosk`, `infra`, `auth`).
+- Always include the relevant `ELP-<id>` in commits and PR titles so that automation and traceability work correctly.
+- Remove feature branches after merging to keep the branch list clean.
+- Follow team conventions for scope names (e.g. `api`, `kiosk`, `infra`, `auth`).
 
 ---
-Als je wilt, voeg ik nu direct een `.gitattributes` bestand toe en/of update de `docs/workflow.md` met een verwijzing naar deze bijdragehandleiding.
+A `.gitattributes` file can be added and/or `docs/workflows.md` updated with a reference to this contribution guide if needed.
 
-## 6. Aanbevolen lokale `git config` instellingen
+## 6. Recommended local `git config` settings
 
-Om consistente gedrag tussen ontwikkelaars te garanderen, adviseren we de volgende lokale/global `git` instellingen. Voeg altijd `ELP-<id>` toe aan commits en PR-titels zoals eerder beschreven.
+To ensure consistent behaviour across developers, we recommend the following local/global `git` settings. Always add `ELP-<id>` to commits and PR titles as described above.
 
-Windows (voorbeeld van de ontwikkelaar):
+Windows (example from a developer):
 
 ```powershell
 PS C:\Users\User> git config --global --list
@@ -92,7 +92,7 @@ fetch.prune=true
 PS C:\Users\User>
 ```
 
-Als je deze instellingen wilt toepassen op Windows, gebruik de volgende commando's in PowerShell:
+To apply these settings on Windows, use the following commands in PowerShell:
 
 ```powershell
 git config --global core.editor "C:\Users\User\AppData\Local\Programs\Microsoft VS Code\bin\code --wait"
@@ -105,9 +105,9 @@ git config --global init.defaultbranch main
 git config --global fetch.prune true
 ```
 
-Linux/macOS (aanbevolen variant: pas paden en voorkeuren aan):
+Linux/macOS (recommended variant: adjust paths and preferences):
 
-Op Linux raden we aan `core.autocrlf` op `input` te zetten (convert CRLF --> LF on commit) of `false` als je volledig vertrouwt op `.gitattributes`. Een voorbeeldconfig:
+On Linux we recommend setting `core.autocrlf` to `input` (convert CRLF → LF on commit) or `false` if you fully trust `.gitattributes`. An example config:
 
 ```bash
 git config --global --list
@@ -121,7 +121,7 @@ init.defaultbranch=main
 fetch.prune=true
 ```
 
-En de bijbehorende commando's:
+And the corresponding commands:
 
 ```bash
 git config --global core.editor "code --wait"
@@ -134,20 +134,20 @@ git config --global init.defaultbranch main
 git config --global fetch.prune true
 ```
 
-Opmerking:
+Note:
 
-- Wij behouden `.gitattributes` in de repo als de primaire bron van waarheid voor eol-normalisatie. Deze `git config`-aanbevelingen zijn bedoeld om ontwikkelaars een consistente, veilige lokale setup te geven.
-- Als je wilt dat ik deze exacte instellingen in een korte `setup`-script of README toevoeg, dan maak ik dat aan.
+- We keep `.gitattributes` in the repo as the primary source of truth for end-of-line normalisation. These `git config` recommendations are intended to give developers a consistent, safe local setup.
+- A short `setup` script or README addition can be provided if needed.
 
-## 7. Bugfixes na een Squash & Merge
+## 7. Bug Fixes After a Squash & Merge
 
-Heb je een branch succesvol gesquashed en gemerged (bijv. `ELP-16`), maar ontdek je later toch een bug?
-**Heropen NOOIT de oude branch en force-push NOOIT over de historie heen.**
+Have you successfully squashed and merged a branch (e.g. `ELP-16`), but later discover a bug?
+**Never reopen the old branch and never force-push over history.**
 
-Volg altijd deze Enterprise-flow:
+Always follow this enterprise flow:
 
-1. Sleep het originele ticket in YouTrack terug naar "In Progress" (of maak een nieuw bug-ticket aan).
-2. Zorg dat je lokaal op de nieuwste `main` branch zit (`git pull origin main`).
-3. Maak een **nieuwe** fix-branch aan vanaf `main` (bijv. `fix/ELP-16-database-url-typo`).
-4. Fix de code, push de nieuwe branch, en doe een verse Squash & Merge PR.
-Zo blijft de `main` tijdlijn altijd vooruit bewegen zonder Git-conflicten.
+1. Move the original ticket in YouTrack back to "In Progress" (or create a new bug ticket).
+2. Make sure you are on the latest `main` branch locally (`git pull origin main`).
+3. Create a **new** fix branch from `main` (e.g. `fix/ELP-16-database-url-typo`).
+4. Fix the code, push the new branch, and open a fresh Squash & Merge PR.
+This keeps the `main` timeline always moving forward without Git conflicts.

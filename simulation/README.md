@@ -1,51 +1,51 @@
-# Simulatie
+# Simulation
 
-## Wat is dit?
+## What is this?
 
-De simulatie is een **digital twin** van de EasyLend locker-kiosk. Het is een Python-applicatie met een web UI die een grid van fysieke lockers virtueel nabootst.
+The simulation is a **digital twin** of the EasyLend locker kiosk. It is a Python application with a web UI that virtually mimics a grid of physical lockers.
 
-In plaats van echte hardware spreekt de simulatie rechtstreeks met de API via WebSockets (als een gewone Vision Box), zodat de backend volledig getest kan worden zonder fysieke kiosks.
+Instead of real hardware, the simulation communicates directly with the API via WebSockets (acting as a regular Vision Box), allowing the backend to be fully tested without physical kiosks.
 
 ## Scope
 
-- Visualiseer een **lockersgrid** met real-time statussen (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, `ERROR_OPEN`)
-- Simuleer hardware-events: slot openen/sluiten, LED-kleurverandering
-- Stuur en ontvang **WebSocket-berichten** (zelfde protocol als de echte Vision Box)
-- Authenticatie via **statische M2M API-key** (`X-Device-Token` header)
+- Visualise a **locker grid** with real-time statuses (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, `ERROR_OPEN`)
+- Simulate hardware events: slot opening/closing, LED colour change
+- Send and receive **WebSocket messages** (same protocol as the real Vision Box)
+- Authentication via a **static M2M API key** (`X-Device-Token` header)
 
-## Verbinding met de API
+## Connection to the API
 
 ```text
 WSS: wss://<api-host>/ws/visionbox
 Headers: X-Device-Token: <static_key>
 ```
 
-De simulatie gedraagt zich als een Vision Box: ze luistert naar `open_slot` events en stuurt `slot_closed` events terug.
+The simulation behaves like a Vision Box: it listens for `open_slot` events and sends `slot_closed` events back.
 
 ## Framework
 
-Nog niet vastgelegd. Kandidaten:
+Not yet decided. Candidates:
 
 | Framework | Pro | Con |
 | --- | --- | --- |
-| **Streamlit** | Snel, Python-native, makkelijk grid UI | Minder controle over WebSocket lifecycle |
-| **FastAPI + HTMX** | Consistent met rest van de stack (al FastAPI in backend) | Meer boilerplate |
-| **Flask + Socket.IO** | Eenvoudig, goede WebSocket ondersteuning | Extra dependency |
+| **Streamlit** | Fast, Python-native, easy grid UI | Less control over WebSocket lifecycle |
+| **FastAPI + HTMX** | Consistent with the rest of the stack (FastAPI already used in backend) | More boilerplate |
+| **Flask + Socket.IO** | Simple, good WebSocket support | Extra dependency |
 
-> Keuze wordt gemaakt bij start van ELP-32 (Simulatie framework kiezen).
+> Selection will be made at the start of ELP-32 (Choose simulation framework).
 
-## Mapstructuur (gepland)
+## Directory Structure (planned)
 
 ```text
 simulation/
-├── README.md         # Dit bestand
-├── main.py           # Startpunt
+├── README.md         # This file
+├── main.py           # Entry point
 ├── config.py         # API URL, API key via .env
 ├── websocket.py      # WSS client logic
-├── ui/               # Web UI componenten
+├── ui/               # Web UI components
 └── .env.example      # API_URL, DEVICE_TOKEN
 ```
 
-## Setup (nog niet beschikbaar)
+## Setup (not yet available)
 
-Zie ELP-32 tot ELP-35 voor de uiteindelijke setup-instructies zodra het framework gekozen is.
+See ELP-32 to ELP-35 for the final setup instructions once the framework is chosen.

@@ -14,22 +14,22 @@ from app.core.security import (
 
 def test_pin_hashing_and_verification():
     """
-    Test of een PIN correct gehasht wordt en succesvol (en onsuccesvol)
-    geverifieerd kan worden.
+    Tests that a PIN is correctly hashed and can be successfully (and unsuccessfully)
+    verified.
     """
-    plain_pin = "123456"  # Een geldige 6-cijferige PIN
+    plain_pin = "123456"  # A valid 6-digit PIN
 
-    # 1. Hash de PIN
+    # 1. Hash the PIN
     hashed_pin = get_pin_hash(plain_pin)
 
-    # Zorg dat de hash niet gelijk is aan de plain-text
+    # Verify the hash is not equal to the plain-text value
     assert hashed_pin != plain_pin
     assert "123456" not in hashed_pin
 
-    # 2. Verifieer met de JUISTE PIN
+    # 2. Verify with the CORRECT PIN
     assert verify_pin(plain_pin, hashed_pin) is True
 
-    # 3. Verifieer met een FOUTE PIN
+    # 3. Verify with an INCORRECT PIN
     assert verify_pin("654321", hashed_pin) is False
     assert verify_pin("12345", hashed_pin) is False
 

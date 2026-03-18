@@ -1,61 +1,61 @@
 # EasyLend AI Vision Service
 
-AI microservice voor het herkennen van assets via YOLO26. Draait **server-side op een Proxmox VM**: niet op het edge device (Vision Box).
+AI microservice for recognising assets via YOLO26. Runs **server-side on a Proxmox VM**: not on the edge device (Vision Box).
 
-## Overzicht
+## Overview
 
-De Vision Box (Raspberry Pi 4) stuurt een foto door naar deze service via de API. De service analyseert de foto en geeft terug welk asset gedetecteerd is en in welke conditie.
+The Vision Box (Raspberry Pi 4) forwards a photo to this service via the API. The service analyses the photo and returns which asset was detected and its condition.
 
 **Ticket:** ELP-56 (In Progress), ELP-72 (AI docs: Open)
 
 ## Model
 
-| Eigenschap | Waarde |
+| Property | Value |
 | --- | --- |
 | Model | YOLO26 Medium Segmentation (`yolo26m-seg.pt`) |
 | Framework | [Ultralytics](https://docs.ultralytics.com/) |
 | Training hardware | RTX 3090 (CUDA) |
-| Inferentie | Proxmox VM (CPU-only) |
+| Inference | Proxmox VM (CPU-only) |
 | CPU (host) | Intel Xeon Gold 6426Y (Sapphire Rapids, AVX-512 + AMX) |
 
-**Exportformaat voor productie (ELP-56):**
+**Production export format (ELP-56):**
 
-- **OpenVINO (INT8)**: definitieve keuze. De Xeon Gold 6426Y heeft AVX-512 en Intel AMX waardoor INT8-kwantisatie natively versneld wordt (tot 3× sneller dan PyTorch `.pt`)
-- ONNX als noodoplossing als OpenVINO installatieproblemen geeft
+- **OpenVINO (INT8)**: final choice. The Xeon Gold 6426Y includes AVX-512 and Intel AMX, which natively accelerates INT8 quantisation (up to 3× faster than PyTorch `.pt`)
+- ONNX as a fallback if OpenVINO installation issues arise
 
-**Proxmox VM specs (aanbeveling):**
+**Proxmox VM specs (recommendation):**
 
-| Resource | Minimum | Aanbevolen |
+| Resource | Minimum | Recommended |
 | --- | --- | --- |
 | vCPUs | 4 | **8** |
 | RAM | 4 GB | **8 GB** |
 
-> De host heeft 16 cores (32 threads). 8 vCPUs doorpassen is realistisch zonder andere VMs te raken. 8 GB RAM dekt model + OpenVINO runtime + Python overhead met voldoende buffer.
+> The host has 16 cores (32 threads). Passing through 8 vCPUs is realistic without impacting other VMs. 8 GB RAM covers the model + OpenVINO runtime + Python overhead with ample buffer.
 
-Benchmarken op de VM zelf:
+Benchmark on the VM itself:
 
 ```bash
 uv run yolo benchmark model=yolo26m.pt imgsz=640
 ```
 
-## Huidige staat
+## Current State
 
-Bestanden in deze repo:
+Files in this repo:
 
-- `main.py`: trainingsscript (proof of concept op rock-paper-scissors dataset)
+- `main.py`: training script (proof of concept on rock-paper-scissors dataset)
 - `utils/webcam.py`: webcam capture utility
 
-Lokaal gegenereerde/gedownloade artifacts (**niet** in Git, staan in `.gitignore`):
+Locally generated/downloaded artifacts (**not** in Git, listed in `.gitignore`):
 
 - `yolo26m-seg.pt`: YOLO26 Medium Segmentation model
-- `datasets/`: trainingsdatasets
-- `runs/`: trainingsresultaten (Ultralytics output)
+- `datasets/`: training datasets
+- `runs/`: training results (Ultralytics output)
 
-> De daadwerkelijke asset-dataset (foto's van ICT-materiaal) en de bijhorende inferentie-API endpoint (`POST /api/v1/vision/analyze`) worden later uitgewerkt zodra het AI-ontwerp vaststaat (ELP-72).
+> The actual asset dataset (photos of ICT equipment) and the corresponding inference API endpoint (`POST /api/v1/vision/analyze`) will be developed once the AI design is finalised (ELP-72).
 
-## Lokaal uitvoeren
+## Running Locally
 
-*(Zorg dat `yolo26m-seg.pt` en de `datasets/` map lokaal aanwezig zijn)*
+*(Make sure `yolo26m-seg.pt` and the `datasets/` directory are available locally)*
 
 ```bash
 uv run python main.py
@@ -69,33 +69,33 @@ uv run ruff check . --fix
 uv run ruff format .
 ```
 
-## Export guide: PyTorch --> ONNX / OpenVINO
+## Export Guide: PyTorch → ONNX / OpenVINO
 
-*Voer deze stappen uit op de Proxmox VM of op een trainingsmachine met GPU.*
+*Run these steps on the Proxmox VM or on a training machine with a GPU.*
 
-### Stap 1: Model trainen of downloaden
+### Step 1: Train or download the model
 
-Zorg dat `yolo26m-seg.pt` beschikbaar is (getraind of gedownload via Ultralytics).
+Make sure `yolo26m-seg.pt` is available (trained or downloaded via Ultralytics).
 
-### Stap 2: Benchmarken (optioneel maar aanbevolen)
+### Step 2: Benchmark (optional but recommended)
 
-Voor je exporteert, vergelijk de formaten op de **Proxmox VM zelf**:
+Before exporting, compare formats on the **Proxmox VM itself**:
 
 ```bash
 uv run yolo benchmark model=yolo26m-seg.pt imgsz=640
 ```
 
-Dit toont inference-snelheid per formaat (PyTorch, ONNX, OpenVINO, ...).
+This shows inference speed per format (PyTorch, ONNX, OpenVINO, ...).
 
-### Stap 3a: Exporteren naar ONNX
+### Step 3a: Export to ONNX
 
-Makkelijkste optie, werkt op elke CPU:
+Easiest option, works on any CPU:
 
 ```bash
 yolo export model=yolo26m-seg.pt format=onnx imgsz=640
 ```
 
-Geeft `yolo26m-seg.onnx` terug. Inferentie:
+Produces `yolo26m-seg.onnx`. Inference:
 
 ```python
 from ultralytics import YOLO
@@ -104,18 +104,18 @@ model = YOLO("yolo26m.onnx")
 results = model("image.jpg")
 ```
 
-### Stap 3b: Exporteren naar OpenVINO (INT8): aanbevolen voor Intel CPU
+### Step 3b: Export to OpenVINO (INT8): recommended for Intel CPU
 
-> **Let op:** Om dit te kunnen doen, moet je eerst de juiste packages installeren, aangezien deze niet standaard in de `uv.lock` zitten om de image klein te houden:
+> **Note:** To do this you must first install the required packages, as they are not included in `uv.lock` by default to keep the image small:
 > `uv pip install openvino onnx onnxruntime`
 
-Geeft standaard FP32, voeg `int8=True` toe voor INT8 kwantisatie:
+Defaults to FP32; add `int8=True` for INT8 quantisation:
 
 ```bash
 yolo export model=yolo26m-seg.pt format=openvino imgsz=640 int8=True
 ```
 
-Geeft een map `yolo26m-seg_openvino_model/` terug. Inferentie:
+Produces a `yolo26m-seg_openvino_model/` directory. Inference:
 
 ```python
 from ultralytics import YOLO
@@ -124,5 +124,5 @@ model = YOLO("yolo26m-seg_openvino_model/")
 results = model("image.jpg")
 ```
 
-> **Kies OpenVINO** als de Proxmox-CPU Intel is (check met `lscpu | grep "Model name"`).  
-> **Kies ONNX** als de CPU AMD is of als OpenVINO installatieproblemen geeft.
+> **Choose OpenVINO** if the Proxmox CPU is Intel (check with `lscpu | grep "Model name"`).  
+> **Choose ONNX** if the CPU is AMD or if OpenVINO installation issues arise.

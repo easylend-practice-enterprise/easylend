@@ -1,16 +1,16 @@
-# EasyLend Systeemarchitectuur
+# EasyLend System Architecture
 
-Dit document bevat de macro-architectuur, infrastructuur-topologie en het databasemodel van het EasyLend platform.
+This document covers the macro-architecture, infrastructure topology, and database model of the EasyLend platform.
 
-## 1. Topologie
+## 1. Topology
 
-De architectuur is gebouwd rondom een gecentraliseerde **Proxmox Virtual Environment**. We hanteren het *Microservices Pattern* om de zware AI-inferentie te scheiden van de reactieve API. Hardware en simulaties fungeren als "Thin Clients".
+The architecture is built around a centralised **Proxmox Virtual Environment**. We apply the *Microservices Pattern* to isolate the heavy AI inference workload from the reactive API. Hardware and simulations act as "Thin Clients".
 
-### Fysieke topologie
+### Physical topology
 
 ```mermaid
 flowchart TD
-    %% STIJLEN
+    %% STYLES
     classDef container fill:#bfdbfe,stroke:#3b82f6,stroke-width:2px,color:#000;
     classDef db fill:#fef08a,stroke:#eab308,stroke-width:2px,color:#000;
     classDef edge fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,color:#000;
@@ -19,7 +19,7 @@ flowchart TD
         direction TB
         K["Android Kiosk App<br/>(NFC + UI)"]:::edge
         V["Vision Box<br/>(Camera + Slot)"]:::edge
-        S["Digital Twin<br/>(Python Simulatie)"]:::edge
+        S["Digital Twin<br/>(Python Simulation)"]:::edge
     end
 
     subgraph Proxmox ["Proxmox VE Server (Hypervisor)"]
@@ -49,17 +49,17 @@ flowchart TD
 
 ```
 
-### Logische topologie
+### Logical topology
 
 ```mermaid
 flowchart TD
-    %% STIJLEN (Corporate & Clean)
+    %% STYLES (Corporate & Clean)
     classDef soft fill:#E1F5FE,stroke:#0277BD,stroke-width:2px,color:#000;
     classDef hard fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#000;
     classDef data fill:#FFF9C4,stroke:#FBC02d,stroke-width:2px,color:#000;
     classDef sim  fill:#F3E5F5,stroke:#7B1FA2,stroke-width:2px,stroke-dasharray: 5 5,color:#000;
 
-    %% DOMEIN 1: KIOSK (LINKS)
+    %% DOMAIN 1: KIOSK (LEFT)
     subgraph Kiosk ["Kiosk (Frontend)"]
         direction TB
         NFC[NFC Reader]:::hard
@@ -70,12 +70,12 @@ flowchart TD
         CamTab -->|Aztec code| App
     end
 
-    %% DOMEIN 2: BACKEND (MIDDEN)
+    %% DOMAIN 2: BACKEND (CENTRE)
     subgraph Backend ["Backend (Proxmox Server)"]
         direction TB
         API["FastAPI & WebSockets"]:::soft
         AIService["YOLO26 AI Service"]:::soft
-        PXE["PXE Live Boot Service<br/>(Post-MVP (V2) - Buiten de huidige scope)"]:::soft
+        PXE["PXE Live Boot Service<br/>(Post-MVP (V2) - Outside current scope)"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
         
@@ -85,67 +85,67 @@ flowchart TD
         API <-->|"Hardware Status"| PXE
     end
 
-    %% DOMEIN 3: VISION BOX (RECHTS)
+    %% DOMAIN 3: VISION BOX (RIGHT)
     subgraph Box ["Vision Box (Thin Client)"]
         direction TB
         RPi["Raspberry Pi 4"]:::hard
         CamBox[Camera]:::hard
-        Lock["Elektronisch slot"]:::hard
+        Lock["Electronic lock"]:::hard
         LED["LED Strip"]:::hard
         
         CamBox -->|Photo| RPi
         RPi -->|"Open/Close"| Lock
-        RPi -->|"Status signaal"| LED
+        RPi -->|"Status signal"| LED
     end
 
-    %% SIMULATIE (ONDER)
+    %% SIMULATION (BOTTOM)
     Sim["Digital Twin WebUI"]:::sim
 
-    %% HOOFD VERBINDINGEN
+    %% MAIN CONNECTIONS
     
-    %% Kiosk praat met API
+    %% Kiosk communicates with API
     App <-->|"HTTPS REST + Polling<br/>(JWT Auth)"| API
 
-    %% API praat met Box
+    %% API communicates with Box
     RPi <-->|"WSS & POST Image<br/>(Static API Key)"| API
 
-    %% Simulatie test de API
-    Sim -.->|"WSS (Virtuele Lockers)<br/>(Static API Key)"| API
+    %% Simulation tests the API
+    Sim -.->|"WSS (Virtual Lockers)<br/>(Static API Key)"| API
 ```
 
 ## 2. Security & Core Principles
 
-* **Zero-Trust Authenticatie:** In V1 vereisen vrijwel alle endpoints een geldig Bearer JWT. Er zijn **exact vier** auth-endpoints die geen Bearer JWT header vereisen: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh` en `POST /api/v1/auth/logout`. De eerste twee zijn nodig voor de loginflow en worden **in Stap 12 strikt rate-limited** (nu nog niet actief in V1). `refresh` en `logout` valideren het token uit de JSON body. Voor hardware-communicatie zijn `X-Device-Token` en Static API Keys via `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) **gepland voor implementatie in Stap 9** en dus nog niet enforced in de huidige V1.
-* **Cryptografische Audit Trail:** Alle kritieke transacties (`LOGIN`, `DOOR_OPENED`, `SELF_DECLARATION`) worden opgeslagen in `AUDIT_LOGS`. Elke rij bevat een `current_hash` gebaseerd op de payload én de `previous_hash` van de vorige rij, wat de database *tamper-proof* maakt. **Implementatiestatus:** het `AUDIT_LOGS` schema is beschikbaar vanaf Stap 1; het hash-chaining mechanisme en de tamper-detection endpoint (`GET /api/v1/audit`) worden geïmplementeerd in Stap 13 (Phase 2, na de transactielogica).
-* **No Hardcoding:** Hardcoded IP-adressen of secrets zijn verboden. Alles loopt via een `.env` bestand, strikt gevalideerd door FastAPI `pydantic-settings`.
-* **Database Isolatie:** De database is niet blootgesteld aan het internet (`0.0.0.0` is verboden) en wordt door developers benaderd via een SSH Tunnel naar `127.0.0.1`.
-* **PXE Live Boot Service:** Deze component is zichtbaar in de logische topologie maar valt **buiten de scope van de huidige implementatie (V1/MVP)**. PXE is gepland voor V2 (Post-MVP). Referenties naar `PXE_CHECK` audit-acties en PXE-boot hardware tests zijn gereserveerd voor die release.
+* **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **strictly rate-limited in Step 12** (not yet active in V1). `refresh` and `logout` validate the token from the JSON body. For hardware communication, `X-Device-Token` and Static API Keys via `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) are **planned for implementation in Step 9** and are therefore not yet enforced in the current V1.
+* **Cryptographic Audit Trail:** All critical transactions (`LOGIN`, `DOOR_OPENED`, `SELF_DECLARATION`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row, making the database *tamper-proof*. **Implementation status:** the `AUDIT_LOGS` schema is available from Step 1; the hash-chaining mechanism and tamper-detection endpoint (`GET /api/v1/audit`) will be implemented in Step 13 (Phase 2, after the transaction logic).
+* **No Hardcoding:** Hardcoded IP addresses or secrets are prohibited. Everything is configured via a `.env` file, strictly validated by FastAPI `pydantic-settings`.
+* **Database Isolation:** The database is not exposed to the internet (`0.0.0.0` is prohibited) and is accessed by developers via an SSH Tunnel to `127.0.0.1`.
+* **PXE Live Boot Service:** This component is visible in the logical topology but falls **outside the scope of the current implementation (V1/MVP)**. PXE is planned for V2 (Post-MVP). References to `PXE_CHECK` audit actions and PXE-boot hardware tests are reserved for that release.
 
-## 3. Database Architectuur & Datamodel (ERD)
+## 3. Database Architecture & Data Model (ERD)
 
-Het datamodel (PostgreSQL) is strikt genormaliseerd (3NF) en specifiek ontworpen om naadloos om te gaan met asynchrone hardware-statussen, AI-analyses en fraudepreventie.
+The data model (PostgreSQL) is strictly normalised (3NF) and specifically designed to handle asynchronous hardware statuses, AI analyses, and fraud prevention seamlessly.
 
-### Kernconcepten van het Datamodel
+### Core Concepts of the Data Model
 
-1. **Dynamische Locker Toewijzing:** Assets zijn niet hardcoded gekoppeld aan één fysiek kluisje. De `ASSETS.locker_id` is merely de *huidige* locatie. Tijdens een uitleen-transactie (`LOAN`) registreert de database het `checkout_locker_id`. Bij het inleveren berekent de backend welk kluisje leeg is en wijst deze toe als `return_locker_id`. Dit voorkomt bottlenecks als kluisjes defect zijn.
-2. **Geavanceerd State Management (Edge Cases):** Om real-world problemen (zoals verborgen defecten of gebruikers die elkaar beschuldigen) op te vangen, werken de enums nauw samen. Een verdachte inlevering triggert `loan_status = DISPUTED` of `PENDING_INSPECTION`. Het corresponderende kluisje wordt direct hardwarematig geblokkeerd via `locker_status = MAINTENANCE` (De Quarantaine-flow).
-3. **JSONB voor Flexibiliteit (NoSQL in SQL):** Omdat hardware checks en AI-modellen onvoorspelbare of wisselende datastructuren genereren, gebruiken we het krachtige `JSONB` datatype van PostgreSQL.
-   * `AI_EVALUATIONS.detected_objects` slaat de ruwe bounding-box data op.
-   * `AUDIT_LOGS.payload` vangt alles op van hardware-events tot self-declarations (`{"has_damage": false}`). PXE-boot hardware tests (`{"ram_ok": true}`) zijn gereserveerd voor V2 (Post-MVP).
+1. **Dynamic Locker Assignment:** Assets are not hardcoded to a single physical locker. `ASSETS.locker_id` is merely the *current* location. During a loan transaction, the database records the `checkout_locker_id`. On return, the backend calculates which locker is available and assigns it as `return_locker_id`. This prevents bottlenecks when lockers are faulty.
+2. **Advanced State Management (Edge Cases):** To handle real-world problems (such as hidden defects or users accusing each other), the enums work closely together. A suspicious return triggers `loan_status = DISPUTED` or `PENDING_INSPECTION`. The corresponding locker is immediately locked in hardware via `locker_status = MAINTENANCE` (the Quarantine flow).
+3. **JSONB for Flexibility (NoSQL in SQL):** Because hardware checks and AI models generate unpredictable or varying data structures, we use the powerful `JSONB` data type of PostgreSQL.
+   * `AI_EVALUATIONS.detected_objects` stores the raw bounding-box data.
+   * `AUDIT_LOGS.payload` captures everything from hardware events to self-declarations (`{"has_damage": false}`). PXE-boot hardware tests (`{"ram_ok": true}`) are reserved for V2 (Post-MVP).
 
 ### Entity Relationship Diagram
 
 ```mermaid
 erDiagram
-    %% Lookup Tabellen
+    %% Lookup Tables
     ROLES ||--o{ USERS : has
     CATEGORIES ||--o{ ASSETS : categorizes
     
-    %% Infrastructuur
+    %% Infrastructure
     KIOSKS ||--o{ LOCKERS : contains
     LOCKERS ||--o{ ASSETS : currently_holds
     
-    %% Transacties
+    %% Transactions
     USERS ||--o{ LOANS : initiates
     ASSETS ||--o{ LOANS : is_part_of
     LOCKERS ||--o{ LOANS : checkout_location
@@ -172,7 +172,7 @@ erDiagram
         varchar first_name
         varchar last_name
         varchar email UK
-        varchar nfc_tag_id UK "Nullable: Voor onboarding"
+        varchar nfc_tag_id UK "Nullable: For onboarding"
         varchar pin_hash
         int failed_login_attempts "Anti-brute-force"
         timestamp locked_until "Lockout timer"
@@ -190,14 +190,14 @@ erDiagram
     LOCKERS {
         uuid locker_id PK
         uuid kiosk_id FK
-        int logical_number "Fysiek nummer 1, 2, 3... (UK per kiosk: uq_kiosk_logical_number)"
+        int logical_number "Physical number 1, 2, 3... (UK per kiosk: uq_kiosk_logical_number)"
         enum locker_status "AVAILABLE, OCCUPIED, MAINTENANCE, ERROR_OPEN"
     }
     
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
-        uuid locker_id FK "Nullable: NULL als uitgeleend"
+        uuid locker_id FK "Nullable: NULL when on loan"
         varchar name
         varchar aztec_code UK
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
@@ -209,7 +209,7 @@ erDiagram
         uuid user_id FK
         uuid asset_id FK
         uuid checkout_locker_id FK
-        uuid return_locker_id FK "Nullable: Totdat item geretourneerd is"
+        uuid return_locker_id FK "Nullable: Until item is returned"
         timestamp reserved_at "Nullable"
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
@@ -223,8 +223,8 @@ erDiagram
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
         float ai_confidence
-        jsonb detected_objects "Bijv. Aztec code locatie, object type"
-        boolean has_damage_detected "Snel filteren op probleem-evaluaties"
+        jsonb detected_objects "E.g. Aztec code location, object type"
+        boolean has_damage_detected "Quickly filter problem evaluations"
         varchar model_version
         boolean is_approved
         varchar rejection_reason "Nullable"
@@ -234,15 +234,15 @@ erDiagram
     DAMAGE_REPORTS {
         uuid damage_id PK
         uuid evaluation_id FK
-        varchar damage_type "Bijv. kras, barst, ontbrekende toets"
+        varchar damage_type "E.g. scratch, crack, missing key"
         varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
-        jsonb segmentation_data "YOLO polygon/bounding box coördinaten"
+        jsonb segmentation_data "YOLO polygon/bounding box coordinates"
         boolean requires_repair
     }
     
     AUDIT_LOGS {
         uuid audit_id PK
-        uuid user_id FK "Nullable: Bij anonieme errors"
+        uuid user_id FK "Nullable: For anonymous errors"
         enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
         jsonb payload
         varchar previous_hash
@@ -254,7 +254,7 @@ erDiagram
 
 ## 4. Operations & Monitoring (Ops)
 
-Om de gezondheid van het systeem te waarborgen zonder zware overhead, maken we gebruik van lichtgewicht, geïsoleerde tooling:
+To ensure system health without heavy overhead, we use lightweight, isolated tooling:
 
-* **Monitoring:** Uptime Kuma draait intern in de Docker-stack en monitort de FastAPI health-endpoints en de database-verbinding.
-* **Backups (Disaster Recovery):** De database wordt dagelijks asynchroon geback-upt via een headless SQLBak container naar een off-site cloudlocatie, volledig buiten de scope van de applicatielogica.
+* **Monitoring:** Uptime Kuma runs internally in the Docker stack and monitors the FastAPI health endpoints and database connection.
+* **Backups (Disaster Recovery):** The database is backed up daily asynchronously via a headless SQLBak container to an off-site cloud location, completely outside the scope of the application logic.

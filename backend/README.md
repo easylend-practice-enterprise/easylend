@@ -1,39 +1,39 @@
 # EasyLend Backend
 
-TODO: docker compose uitleg
+TODO: Docker Compose setup documentation
 
-## Database Migraties (Alembic)
+## Database Migrations (Alembic)
 
-Wij gebruiken **Alembic** om wijzigingen in onze SQLAlchemy modellen (`models.py`) veilig door te voeren naar de PostgreSQL database. Dit zorgt ervoor dat onze database-structuur altijd in sync is met onze code.
+We use **Alembic** to safely apply changes to our SQLAlchemy models (`models.py`) to the PostgreSQL database. This ensures that our database structure is always in sync with our code.
 
-### 🚀 De 3 Sleutelcommando's
+### 🚀 The 3 Key Commands
 
-Zorg dat je terminal in de `backend/api` map staat en je Docker database draait voordat je deze commando's gebruikt.
+Make sure your terminal is in the `backend/api` directory and your Docker database is running before using these commands.
 
-**1. Een nieuwe wijziging klaarzetten (Autogenerate)**
-Heb je een nieuwe tabel, kolom of relatie toegevoegd in `models.py`? Laat Alembic dan de verschillen zoeken en een migratie-script genereren:
+**1. Stage a new change (Autogenerate)**
+Have you added a new table, column, or relationship in `models.py`? Let Alembic detect the differences and generate a migration script:
 
 ```bash
-uv run alembic revision --autogenerate -m "Korte beschrijving van je wijziging"
+uv run alembic revision --autogenerate -m "Short description of your change"
 
 ```
 
-*(Controleer altijd even het gegenereerde bestand in `alembic/versions/` of Alembic alles goed heeft begrepen!)*
+*(Always inspect the generated file in `alembic/versions/` to verify that Alembic interpreted everything correctly!)*
 
-**2. De wijziging doorvoeren naar de database (Upgrade)**
-Zodra je script klaar staat (of als je de code van een collega hebt gepulld), voer je dit commando uit om de database daadwerkelijk bij te werken:
+**2. Apply the change to the database (Upgrade)**
+Once your script is ready (or after pulling a colleague's code), run this command to actually update the database:
 
 ```bash
 uv run alembic upgrade head
 
 ```
 
-**3. Een foutje ongedaan maken (Downgrade)**
-Heb je per ongeluk een foute migratie doorgevoerd op je lokale database? Je kunt één stap terug in de tijd met:
+**3. Undo a mistake (Downgrade)**
+Have you accidentally applied a bad migration to your local database? You can roll back one step with:
 
 ```bash
 uv run alembic downgrade -1
 
 ```
 
-*(Let op: Bij PostgreSQL worden `Enum` types soms niet automatisch verwijderd bij een downgrade. Bij het lokaal opzetten van een compleet nieuwe architectuur is het soms sneller om je Docker container even te resetten met `docker compose down -v`).*
+*(Note: In PostgreSQL, `Enum` types are sometimes not automatically removed during a downgrade. When setting up a completely fresh local environment, it can be faster to reset your Docker container with `docker compose down -v`).*

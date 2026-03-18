@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-# Zorg ervoor dat Python de 'app' module kan vinden vanaf de scripts map
+# Ensure Python can locate the 'app' module when running from the scripts directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import or_, select
@@ -26,14 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 async def get_or_create(session, model, defaults=None, update_existing=False, **kwargs):
-    """Haalt een bestaand record op of maakt een nieuwe aan. Werkt bestaande bij indien vereist."""
+    """Retrieves an existing record or creates a new one. Updates the existing record if required."""
     result = await session.execute(select(model).filter_by(**kwargs))
     instances = result.scalars().all()
 
     if len(instances) > 1:
         raise RuntimeError(
-            f"Meerdere records gevonden voor {model.__name__} met filter {kwargs}. "
-            "Zorg voor unieke data."
+            f"Multiple records found for {model.__name__} with filter {kwargs}. "
+            "Ensure the seed data is unique."
         )
 
     if len(instances) == 1:
@@ -54,7 +54,7 @@ async def get_or_create(session, model, defaults=None, update_existing=False, **
 
 
 async def seed_database():
-    logger.info("Starten met seeden van de database.")
+    logger.info("Starting database seeding.")
 
     async with AsyncSessionLocal() as session:
         try:
@@ -66,7 +66,7 @@ async def seed_database():
                         session, Role, role_name=role_name
                     )
                     if created:
-                        logger.info(f"Rol aangemaakt: {role_name}")
+                        logger.info(f"Role created: {role_name}")
                     if role_name == "ADMIN":
                         admin_role = role
 
@@ -77,7 +77,7 @@ async def seed_database():
                         session, Category, category_name=cat_name
                     )
                     if created:
-                        logger.info(f"Categorie aangemaakt: {cat_name}")
+                        logger.info(f"Category created: {cat_name}")
                     if cat_name == "Laptops":
                         laptop_cat = cat
 
@@ -85,14 +85,14 @@ async def seed_database():
                     session,
                     Kiosk,
                     defaults={
-                        "location_description": "Inkomhal naast de receptie",
+                        "location_description": "Main entrance hall, next to the reception desk",
                         "kiosk_status": KioskStatus.ONLINE,
                     },
                     update_existing=True,
-                    name="Hoofdgebouw A",
+                    name="Main Building A",
                 )
                 if created:
-                    logger.info("Kiosk aangemaakt: Hoofdgebouw A")
+                    logger.info("Kiosk created: Main Building A")
 
                 for logical_num, status in [
                     (1, LockerStatus.OCCUPIED),
@@ -108,10 +108,12 @@ async def seed_database():
                         logical_number=logical_num,
                     )
                     if created:
-                        logger.info(f"Locker aangemaakt. Logical nr: {logical_num}")
+                        logger.info(f"Locker created. Logical number: {logical_num}")
 
                 if not admin_role:
-                    raise RuntimeError("Admin rol mist. Kan gebruiker niet aanmaken.")
+                    raise RuntimeError(
+                        "Admin role is missing. Cannot create the admin user."
+                    )
 
                 admin_pin = os.getenv("ADMIN_DEFAULT_PIN", "123456")
                 admin_email = os.getenv("ADMIN_DEFAULT_EMAIL", "admin@easylend.be")
@@ -126,8 +128,8 @@ async def seed_database():
 
                 if len(admin_users) > 1:
                     raise RuntimeError(
-                        "Meerdere admin users gevonden met hetzelfde email of NFC-tag. "
-                        "Los dit conflict op."
+                        "Multiple admin users found with the same email or NFC tag. "
+                        "Resolve this conflict before re-seeding."
                     )
 
                 admin_user = admin_users[0] if admin_users else None
@@ -153,7 +155,7 @@ async def seed_database():
                     created = True
 
                 if created:
-                    logger.info(f"Admin user aangemaakt: {admin_email}")
+                    logger.info(f"Admin user created: {admin_email}")
 
                 locker1, _ = await get_or_create(
                     session, Locker, kiosk_id=kiosk.kiosk_id, logical_number=1
@@ -161,7 +163,7 @@ async def seed_database():
 
                 if not laptop_cat or not locker1:
                     raise RuntimeError(
-                        "Categorie of Locker mist. Kan asset niet aanmaken."
+                        "Category or Locker is missing. Cannot create the seed asset."
                     )
 
                 asset, created = await get_or_create(
@@ -177,12 +179,12 @@ async def seed_database():
                     aztec_code="AZ-LAP-001",
                 )
                 if created:
-                    logger.info("Asset aangemaakt: Dell XPS 15")
+                    logger.info("Asset created: Dell XPS 15")
 
-            logger.info("Database seeding voltooid.")
+            logger.info("Database seeding completed successfully.")
 
         except Exception:
-            logger.exception("Fout tijdens seeding")
+            logger.exception("An error occurred during seeding")
             raise
 
 

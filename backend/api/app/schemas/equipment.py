@@ -4,7 +4,7 @@ Pydantic schemas for Equipment entities: Category, Kiosk, Locker, and Asset.
 Business rules (from docs/architecture.md & docs/erd.mmd):
 - Kiosk.kiosk_status  → KioskStatus  enum  (ONLINE | OFFLINE | MAINTENANCE)
 - Locker.locker_status → LockerStatus enum  (AVAILABLE | OCCUPIED | MAINTENANCE | ERROR_OPEN)
-- Asset.locker_id is *nullable*: NULL when an asset is currently on loan (Dynamische Locker Toewijzing)
+- Asset.locker_id is *nullable*: NULL when an asset is currently on loan (Dynamic Locker Assignment)
 - Asset.asset_status  → AssetStatus  enum  (AVAILABLE | BORROWED | RESERVED |
                                              PENDING_INSPECTION | MAINTENANCE | LOST)
 - Asset.is_deleted   → soft-delete flag, server-managed (excluded from Base/Create)

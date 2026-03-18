@@ -2,30 +2,30 @@ sequenceDiagram
     participant API as FastAPI Backend
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
-    participant Admin as Beheerder
+    participant Admin as Administrator
 
-    Note over API,VB: Systeem bevindt zich in PENDING_INSPECTION (oranje LED brandt)
+    Note over API,VB: System is in PENDING_INSPECTION state (orange LED active)
 
     Admin->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION [JWT admin]
-    API-->>Admin: Lijst van loans in quarantaine
+    API-->>Admin: List of loans in quarantine
 
     Admin->>API: GET /api/v1/admin/evaluations/{evaluation_id}
     API->>DB: SELECT loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence FROM ai_evaluations WHERE evaluation_id = {evaluation_id}
     DB-->>API: loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence
-    API-->>Admin: Foto (photo_url), gedetecteerde objecten (detected_objects), schade-indicator (has_damage_detected), AI confidence (ai_confidence) (incl. loan_id, asset_id)
+    API-->>Admin: Photo (photo_url), detected objects (detected_objects), damage indicator (has_damage_detected), AI confidence (ai_confidence) (incl. loan_id, asset_id)
 
-    alt Beheerder keurt schade goed (Echte schade of Fraude)
+    alt Administrator approves damage (Real damage or Fraud)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: true}
         API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = {loan_id}
         API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = {asset_id}
         API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_CONFIRMED'}
-        API-->>Admin: 200 OK (Schade bevestigd, gebruiker gemarkeerd)
-    else Beheerder verwerpt AI rapport (Fout-positief)
+        API-->>Admin: 200 OK (Damage confirmed, user flagged)
+    else Administrator rejects AI report (False positive)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: false}
         API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = {loan_id}
         API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = {asset_id}
         API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
         API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_REJECTED_FALSE_POSITIVE'}
         API->>VB: WSS: set_led {locker_id: <return_locker_id>, color: green}
-        API-->>Admin: 200 OK (Quarantaine opgeheven)
+        API-->>Admin: 200 OK (Quarantine lifted)
     end
