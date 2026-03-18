@@ -108,8 +108,11 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         ],
       ),
     );
-    // restart stream
-    if (_controller != null) {
+    // widget may have been disposed while dialog was open
+    if (!mounted) return;
+
+    // restart stream only if controller is still available and initialized
+    if (_controller != null && _controller!.value.isInitialized) {
       _periodicTimer = Timer.periodic(
         const Duration(milliseconds: 800),
         (_) => _captureAndProcess(),
