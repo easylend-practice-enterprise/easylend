@@ -442,7 +442,7 @@ async def update_locker_status(
     `locker_status = MAINTENANCE` when a damage inspection is pending,
     or to restore a locker to `AVAILABLE` after an admin resolves it.
 
-    All fields in the payload are optional.
+    Payload must include a locker_status value.
     """
     locker = await _get_locker_or_404(db, locker_id)
 
@@ -543,8 +543,8 @@ async def get_asset_by_id(
     Retrieve a single asset by its unique identifier.
 
     Accessible by every authenticated user. Returns the asset regardless
-    of `is_deleted` status so that admins performing a GET by ID (e.g.
-    from a loan history) can still fetch the record.
+    of `is_deleted` status so that historical records remain retrievable
+    when the ID is known.
     """
     asset = await _get_asset_or_404(db, asset_id)
     return AssetResponse.model_validate(asset)

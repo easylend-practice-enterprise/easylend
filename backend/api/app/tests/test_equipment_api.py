@@ -11,8 +11,7 @@ Coverage:
 
 _QueuedSession execute() ordering — every `await db.execute(query)` pops one
 slot from the queue in FIFO order. Each test documents the exact slots used.
-`await db.refresh(obj)` is a no-op (objects are SimpleNamespaces mutated in-
-place; our conftest stub does nothing).
+`await db.refresh(obj)` mutates the object in-place to assign missing UUIDs.
 """
 
 import uuid
@@ -208,7 +207,7 @@ def test_create_category_returns_403_for_medewerker(client_with_overrides):
 
 
 def test_update_category_returns_404_for_unknown_category(client_with_overrides):
-    """PUT /categories/{id} where the category doesn't exist → 404.
+    """PATCH /categories/{id} where the category doesn't exist → 404.
 
     DB execute order:
     [1] get_current_user           → admin
@@ -227,7 +226,7 @@ def test_update_category_returns_404_for_unknown_category(client_with_overrides)
 
 
 def test_update_category_returns_200_and_mutates_name(client_with_overrides):
-    """PUT /categories/{id} (admin) renames the category in-place.
+    """PATCH /categories/{id} (admin) renames the category in-place.
 
     DB execute order:
     [1] get_current_user     → admin
@@ -290,7 +289,7 @@ def test_list_kiosks_returns_401_without_token(client_with_overrides):
 
 
 def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides):
-    """PUT /kiosks/{id}/status where kiosk doesn't exist → 404.
+    """PATCH /kiosks/{id}/status where kiosk doesn't exist → 404.
 
     DB execute order:
     [1] get_current_user  → admin
@@ -309,7 +308,7 @@ def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides
 
 
 def test_update_kiosk_status_returns_200_and_mutates_status(client_with_overrides):
-    """PUT /kiosks/{id}/status (admin) transitions kiosk to MAINTENANCE.
+    """PATCH /kiosks/{id}/status (admin) transitions kiosk to MAINTENANCE.
 
     DB execute order:
     [1] get_current_user  → admin
@@ -591,7 +590,7 @@ def test_get_asset_by_id_returns_404_for_unknown_asset(client_with_overrides):
 
 
 def test_update_asset_returns_200_and_mutates_status(client_with_overrides):
-    """PUT /assets/{id} (admin) changes asset_status to MAINTENANCE in-place.
+    """PATCH /assets/{id} (admin) changes asset_status to MAINTENANCE in-place.
 
     DB execute order:
     [1] get_current_user  → admin
@@ -669,3 +668,48 @@ def test_soft_delete_asset_returns_403_for_medewerker(client_with_overrides):
             f"/api/v1/assets/{uuid.uuid4()}", headers=_bearer(medewerker)
         )
     assert response.status_code == 403
+
+
+def test_list_lockers_returns_list_for_admin(client_with_overrides):
+    """GET /lockers returns 200 for admin and includes items."""
+    admin = _make_admin()
+    locker = SimpleNamespace(
+        locker_id=uuid.uuid4(),
+        kiosk_id=uuid.uuid4(),
+        logical_number=1,
+        locker_status="AVAILABLE",
+    )
+    fake_db = _QueuedSession(admin, [locker], 1)
+    with client_with_overrides(fake_db) as client:
+        response = client.get("/api/v1/lockers", headers=_bearer(admin))
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_list_lockers_returns_403_for_medewerker(client_with_overrides):
+    """GET /lockers returns 403 for medewerker (admin-only endpoint)."""
+    medewerker = _make_medewerker()
+    fake_db = _QueuedSession(medewerker)
+    with client_with_overrides(fake_db) as client:
+        response = client.get("/api/v1/lockers", headers=_bearer(medewerker))
+    assert response.status_code == 403
+
+
+def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
+    """PATCH /lockers/{id}/status correctly updates the status."""
+    admin = _make_admin()
+    locker = SimpleNamespace(
+        locker_id=uuid.uuid4(),
+        kiosk_id=uuid.uuid4(),
+        logical_number=1,
+        locker_status="AVAILABLE",
+    )
+    fake_db = _QueuedSession(admin, locker)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/lockers/{locker.locker_id}/status",
+            json={"locker_status": "MAINTENANCE"},
+            headers=_bearer(admin),
+        )
+    assert response.status_code == 200
+    assert response.json()["locker_status"] == "MAINTENANCE"

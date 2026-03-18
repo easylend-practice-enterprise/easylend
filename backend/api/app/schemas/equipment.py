@@ -152,8 +152,7 @@ class AssetBase(BaseModel):
     """Client-editable asset attributes.
 
     Note: locker_id is intentionally excluded here: it is a FK that belongs
-    in Create and Response, since it can be NULL (asset on loan) and changes
-    via the loan workflow, not via a simple asset PATCH.
+    in Create and Response, since it can be NULL (asset on loan).
     """
 
     name: str = Field(..., min_length=1, max_length=255)
