@@ -66,7 +66,7 @@ class LendingCompleteScreen extends StatelessWidget {
         width: double.infinity,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.background),
+          border: Border.all(color: AppColors.divider),
         ),
         child: Center(
           child: Text(
