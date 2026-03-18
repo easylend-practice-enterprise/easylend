@@ -2,11 +2,11 @@
 Tests for the Equipment CRUD endpoints — ELP-26.
 
 Coverage:
-    1. RBAC / Auth       – unauthenticated → 401, medewerker → 403
-    2. Categories        – GET list (any auth), POST (admin), PUT (admin + 404)
-    3. Kiosks            – POST (admin, 201), PUT status (admin + 404)
-    4. Lockers           – POST (admin, 201), POST with invalid kiosk_id (400)
-    5. Assets            – POST (admin, 201), GET list filter, GET by id, PUT,
+    1. RBAC / Auth      : unauthenticated → 401, medewerker → 403
+    2. Categories       : GET list (any auth), POST (admin), PUT (admin + 404)
+    3. Kiosks           : POST (admin, 201), PUT status (admin + 404)
+    4. Lockers          : POST (admin, 201), POST with invalid kiosk_id (400)
+    5. Assets           : POST (admin, 201), GET list filter, GET by id, PUT,
                            DELETE soft-delete (204), DELETE invalid id (404)
 
 _QueuedSession execute() ordering — every `await db.execute(query)` pops one
@@ -217,7 +217,7 @@ def test_update_category_returns_404_for_unknown_category(client_with_overrides)
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
-        response = client.put(
+        response = client.patch(
             f"/api/v1/categories/{uuid.uuid4()}",
             json={"category_name": "Updated"},
             headers=_bearer(admin),
@@ -238,7 +238,7 @@ def test_update_category_returns_200_and_mutates_name(client_with_overrides):
 
     fake_db = _QueuedSession(admin, existing_cat)
     with client_with_overrides(fake_db) as client:
-        response = client.put(
+        response = client.patch(
             f"/api/v1/categories/{existing_cat.category_id}",
             json={"category_name": "New Name"},
             headers=_bearer(admin),
@@ -299,7 +299,7 @@ def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
-        response = client.put(
+        response = client.patch(
             f"/api/v1/kiosks/{uuid.uuid4()}/status",
             json={"kiosk_status": "MAINTENANCE"},
             headers=_bearer(admin),
@@ -320,7 +320,7 @@ def test_update_kiosk_status_returns_200_and_mutates_status(client_with_override
 
     fake_db = _QueuedSession(admin, kiosk)
     with client_with_overrides(fake_db) as client:
-        response = client.put(
+        response = client.patch(
             f"/api/v1/kiosks/{kiosk.kiosk_id}/status",
             json={"kiosk_status": "MAINTENANCE"},
             headers=_bearer(admin),
@@ -602,7 +602,7 @@ def test_update_asset_returns_200_and_mutates_status(client_with_overrides):
 
     fake_db = _QueuedSession(admin, asset)
     with client_with_overrides(fake_db) as client:
-        response = client.put(
+        response = client.patch(
             f"/api/v1/assets/{asset.asset_id}",
             json={"asset_status": "MAINTENANCE"},
             headers=_bearer(admin),

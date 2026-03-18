@@ -61,8 +61,6 @@ class _QueuedSession:
         self.rollback_calls += 1
 
     async def refresh(self, obj):
-        import uuid
-
         # Simuleer de database: genereer een UUID voor lege Primary Keys
         for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id"]:
             if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:

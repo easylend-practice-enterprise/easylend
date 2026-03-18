@@ -4,7 +4,7 @@ Pydantic schemas for Equipment entities: Category, Kiosk, Locker, and Asset.
 Business rules (from docs/architecture.md & docs/erd.mmd):
 - Kiosk.kiosk_status  → KioskStatus  enum  (ONLINE | OFFLINE | MAINTENANCE)
 - Locker.locker_status → LockerStatus enum  (AVAILABLE | OCCUPIED | MAINTENANCE | ERROR_OPEN)
-- Asset.locker_id is *nullable* – NULL when an asset is currently on loan (Dynamische Locker Toewijzing)
+- Asset.locker_id is *nullable*: NULL when an asset is currently on loan (Dynamische Locker Toewijzing)
 - Asset.asset_status  → AssetStatus  enum  (AVAILABLE | BORROWED | RESERVED |
                                              PENDING_INSPECTION | MAINTENANCE | LOST)
 - Asset.is_deleted   → soft-delete flag, server-managed (excluded from Base/Create)
@@ -78,6 +78,12 @@ class KioskUpdate(BaseModel):
     kiosk_status: KioskStatus | None = None
 
 
+class KioskStatusUpdate(BaseModel):
+    """Schema specifically for the /status endpoint."""
+
+    kiosk_status: KioskStatus
+
+
 class KioskResponse(KioskBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -119,6 +125,12 @@ class LockerUpdate(BaseModel):
     locker_status: LockerStatus | None = None
 
 
+class LockerStatusUpdate(BaseModel):
+    """Schema specifically for the /status endpoint."""
+
+    locker_status: LockerStatus
+
+
 class LockerResponse(LockerBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -139,7 +151,7 @@ class LockerListResponse(BaseModel):
 class AssetBase(BaseModel):
     """Client-editable asset attributes.
 
-    Note: locker_id is intentionally excluded here – it is a FK that belongs
+    Note: locker_id is intentionally excluded here: it is a FK that belongs
     in Create and Response, since it can be NULL (asset on loan) and changes
     via the loan workflow, not via a simple asset PATCH.
     """
@@ -161,7 +173,7 @@ class AssetUpdate(BaseModel):
 
     Admins may update any attribute individually, including re-assigning an asset
     to a different category or locker, or marking it LOST / MAINTENANCE.
-    is_deleted is intentionally excluded – use the dedicated soft-delete endpoint.
+    is_deleted is intentionally excluded: use the dedicated soft-delete endpoint.
     """
 
     name: str | None = Field(default=None, min_length=1, max_length=255)

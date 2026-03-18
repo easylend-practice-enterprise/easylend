@@ -8,7 +8,7 @@ Four APIRouters, one per entity, in dependency order:
     assets_router      → /assets
 
 Auth rules:
-  - All write operations (POST / PATCH / PUT / DELETE) require Admin.
+    - All write operations (POST / PATCH / DELETE) require Admin.
   - Admin-only GET list endpoints are also guarded.
   - GET /categories and GET /assets (+ /assets/{id}) are readable by
     every authenticated user (student / medewerker / admin) so the
@@ -38,11 +38,11 @@ from app.schemas.equipment import (
     KioskCreate,
     KioskListResponse,
     KioskResponse,
-    KioskUpdate,
+    KioskStatusUpdate,
     LockerCreate,
     LockerListResponse,
     LockerResponse,
-    LockerUpdate,
+    LockerStatusUpdate,
 )
 
 # ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ async def list_categories(
     responses={
         400: {"description": "Category name already exists"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def create_category(
@@ -140,22 +140,16 @@ async def create_category(
     return CategoryResponse.model_validate(category)
 
 
-@categories_router.put(
+@categories_router.patch(
     "/{category_id}",
     response_model=CategoryResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {"description": "Category name already exists"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Category not found"},
     },
-)
-@categories_router.patch(
-    "/{category_id}",
-    response_model=CategoryResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,  # Surface only PUT in Swagger; PATCH shares handler
 )
 async def update_category(
     category_id: UUID,
@@ -164,10 +158,10 @@ async def update_category(
     _: User = Depends(get_current_admin),
 ) -> CategoryResponse:
     """
-    Update an existing category (full or partial).
+    Update an existing category.
 
-    Requires Admin role. Both `PUT` and `PATCH` are accepted; all fields
-    in the request body are optional so partial updates are supported.
+    Requires Admin role. All fields in the request body are optional so
+    partial updates are supported.
     """
     category = await _get_category_or_404(db, category_id)
 
@@ -211,7 +205,7 @@ async def _get_kiosk_or_404(db: AsyncSession, kiosk_id: UUID) -> Kiosk:
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def list_kiosks(
@@ -242,7 +236,7 @@ async def list_kiosks(
     status_code=status.HTTP_201_CREATED,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def create_kiosk(
@@ -267,34 +261,27 @@ async def create_kiosk(
     return KioskResponse.model_validate(kiosk)
 
 
-@kiosks_router.put(
+@kiosks_router.patch(
     "/{kiosk_id}/status",
     response_model=KioskResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Kiosk not found"},
     },
 )
-@kiosks_router.patch(
-    "/{kiosk_id}/status",
-    response_model=KioskResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
-)
-async def update_kiosk(
+async def update_kiosk_status(
     kiosk_id: UUID,
-    payload: KioskUpdate,
+    payload: KioskStatusUpdate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> KioskResponse:
     """
-    Update a kiosk's metadata or operational status.
+    Update a kiosk's operational status.
 
     Requires Admin role. Typically used to change `kiosk_status`
     (e.g. `ONLINE` → `MAINTENANCE`) via the Admin Remote Control flow.
-    All fields are optional so partial updates are supported.
     """
     kiosk = await _get_kiosk_or_404(db, kiosk_id)
 
@@ -331,7 +318,7 @@ async def _get_locker_or_404(db: AsyncSession, locker_id: UUID) -> Locker:
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def list_lockers(
@@ -365,7 +352,7 @@ async def list_lockers(
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Locker not found"},
     },
 )
@@ -390,7 +377,7 @@ async def get_locker_by_id(
     responses={
         400: {"description": "Invalid kiosk_id or duplicate logical_number"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def create_locker(
@@ -437,20 +424,19 @@ async def create_locker(
     response_model=LockerResponse,
     status_code=status.HTTP_200_OK,
     responses={
-        400: {"description": "Invalid kiosk_id"},
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Locker not found"},
     },
 )
 async def update_locker_status(
     locker_id: UUID,
-    payload: LockerUpdate,
+    payload: LockerStatusUpdate,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_admin),
 ) -> LockerResponse:
     """
-    Update a locker's status (and optionally other attributes).
+    Update a locker's operational status.
 
     Requires Admin role. Primarily used by the Quarantine flow to set
     `locker_status = MAINTENANCE` when a damage inspection is pending,
@@ -461,16 +447,6 @@ async def update_locker_status(
     locker = await _get_locker_or_404(db, locker_id)
 
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
-
-    if "kiosk_id" in update_data and update_data["kiosk_id"] is not None:
-        kiosk_exists = await db.execute(
-            select(Kiosk.kiosk_id).where(Kiosk.kiosk_id == update_data["kiosk_id"])
-        )
-        if kiosk_exists.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid kiosk_id: kiosk does not exist.",
-            )
 
     for field, value in update_data.items():
         setattr(locker, field, value)
@@ -583,7 +559,7 @@ async def get_asset_by_id(
             "description": "Duplicate aztec_code, invalid category_id, or invalid locker_id"
         },
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
     },
 )
 async def create_asset(
@@ -640,7 +616,7 @@ async def create_asset(
     return AssetResponse.model_validate(asset)
 
 
-@assets_router.put(
+@assets_router.patch(
     "/{asset_id}",
     response_model=AssetResponse,
     status_code=status.HTTP_200_OK,
@@ -649,15 +625,9 @@ async def create_asset(
             "description": "Duplicate aztec_code, invalid category_id, or invalid locker_id"
         },
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Asset not found"},
     },
-)
-@assets_router.patch(
-    "/{asset_id}",
-    response_model=AssetResponse,
-    status_code=status.HTTP_200_OK,
-    include_in_schema=False,
 )
 async def update_asset(
     asset_id: UUID,
@@ -666,10 +636,10 @@ async def update_asset(
     _: User = Depends(get_current_admin),
 ) -> AssetResponse:
     """
-    Update an existing asset (full or partial).
+    Update an existing asset.
 
-    Requires Admin role. Both `PUT` and `PATCH` are accepted; all fields
-    in `AssetUpdate` are optional so partial updates are supported.
+    Requires Admin role. All fields in `AssetUpdate` are optional so
+    partial updates are supported.
 
     Common admin use-cases:
     - Mark an asset `MAINTENANCE` or `LOST` via `asset_status`.
@@ -725,7 +695,7 @@ async def update_asset(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         401: {"description": "Not authenticated"},
-        403: {"description": "Forbidden – Admin only"},
+        403: {"description": "Forbidden: Admin only"},
         404: {"description": "Asset not found"},
     },
 )
