@@ -49,7 +49,7 @@ Focus: Implementing 2-step login and secure admin entry.
 Focus: Navigational guards and data fetching.
 
 - ELP-41 & ELP-48: Fetch assets
-  - Role logic: Use `go_router` redirects. If JWT claim `role != "admin"`, block access to `/admin/*`.
+  - Role logic: Use `go_router` redirects. If the JWT `role` claim (from `user.role.role_name`) is not `"ADMIN"` (case-insensitive), block access to `/admin/*`.
   - Standard view: Display category grid (e.g., "Handheld Scanners: 4 Available").
   - Admin view: Full asset list showing who has which item and ability to force-open lockers.
 
