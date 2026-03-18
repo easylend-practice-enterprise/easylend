@@ -13,7 +13,7 @@ High-Level Goals:
 | Category | Tool/Library | Purpose |
 | :--- | :--- | :--- |
 | Framework | Flutter | Android tablet target (landscape UI). |
-| State Management | `flutter_bloc` | Handles complex states (Auth, Transaction Polling). |
+| State Management | TBD (e.g., Riverpod or `flutter_bloc`) | Final decision pending; must be aligned with README before implementation. |
 | Networking | `dio` + `retrofit` | Type-safe HTTP client with JWT interceptors. |
 | Hardware | `nfc_manager` | NFC badge reading. |
 | Vision/Camera | `mobile_scanner` | Fast Aztec/barcode scanning via ML Kit. |
@@ -24,7 +24,7 @@ High-Level Goals:
 Focus: Environment setup and resolving specification gaps.
 
 - ELP-36: Android project setup and dependencies
-  - Initialize project with flavors (dev/prod). Install `dio`, `flutter_bloc`, `nfc_manager`, and `flutter_secure_storage`.
+  - Initialize project with flavors (dev/prod). Install `dio`, chosen state management library (once decided), `nfc_manager`, and `flutter_secure_storage`.
 - ELP-37: Kiosk mode implementation
   - Implement `startLockTask()` and hide system UI to prevent users from exiting the app.
 - ELP-47: Auth & retry via interceptor
