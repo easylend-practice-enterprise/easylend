@@ -280,7 +280,8 @@ async def checkout(
     # Asset leaves the locker → locker becomes available again
     asset.asset_status = AssetStatus.BORROWED
     asset.locker_id = None
-    locker.locker_status = LockerStatus.AVAILABLE
+    if locker.locker_status == LockerStatus.OCCUPIED:
+        locker.locker_status = LockerStatus.AVAILABLE
 
     # --- 5. Create loan record ---
     loan = Loan(
@@ -311,7 +312,7 @@ async def checkout(
         400: {"description": "Loan is not in ACTIVE state"},
         401: {"description": "Not authenticated"},
         403: {"description": "Forbidden: not the loan owner"},
-        404: {"description": "Loan not found"},
+        404: {"description": "Loan or Kiosk not found"},
         409: {"description": "Conflict: loan state changed or lock contention"},
         503: {"description": "No available lockers at the requested kiosk"},
     },
@@ -381,6 +382,19 @@ async def return_initiate(
             detail="Loan is no longer in a state that can be returned.",
         )
     loan = locked_loan
+
+    # --- 1c. Validate that the kiosk exists ---
+    kiosk_lockers_count_result = await db.execute(
+        select(func.count())
+        .select_from(Locker)
+        .where(Locker.kiosk_id == payload.kiosk_id)
+    )
+    if kiosk_lockers_count_result.scalar_one() == 0:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Kiosk not found.",
+        )
 
     # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
     locker_result = await db.execute(

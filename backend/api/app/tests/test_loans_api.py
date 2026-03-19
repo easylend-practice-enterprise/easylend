@@ -429,16 +429,17 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
     """POST /return/initiate for an active loan assigns a return locker → 200.
 
     DB execute order:
-    [1] get_current_user   → student
-    [2] _get_loan_or_404   → active loan (same user)
-    [3] lock loan row      → active loan (locked)
-    [4] free locker query  → available locker
+    [1] get_current_user      → student
+    [2] _get_loan_or_404      → active loan (same user)
+    [3] lock loan row         → active loan (locked)
+    [4] kiosk lockers count   → 1 (kiosk exists)
+    [5] free locker query     → available locker
     """
     student = _make_student()
     loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    fake_db = _QueuedSession(student, loan, loan, free_locker)
+    fake_db = _QueuedSession(student, loan, loan, 1, free_locker)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -528,15 +529,16 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
     """POST /return/initiate when all lockers at the kiosk are occupied → 503.
 
     DB execute order:
-    [1] get_current_user   → student
-    [2] loan query         → active loan
-    [3] lock loan row      → active loan (locked)
-    [4] free locker query  → None (no available locker)
+    [1] get_current_user      → student
+    [2] loan query            → active loan
+    [3] lock loan row         → active loan (locked)
+    [4] kiosk lockers count   → 1 (kiosk exists)
+    [5] free locker query     → None (no available locker)
     """
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, active_loan, active_loan, None)
+    fake_db = _QueuedSession(student, active_loan, active_loan, 1, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -549,6 +551,34 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
 
     assert response.status_code == 503
     assert "No available lockers" in response.json()["detail"]
+    assert fake_db.commit_calls == 0
+
+
+def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
+    """POST /return/initiate with an unknown kiosk_id → 404.
+
+    DB execute order:
+    [1] get_current_user      → student
+    [2] loan query            → active loan
+    [3] lock loan row         → active loan (locked)
+    [4] kiosk lockers count   → 0 (kiosk does not exist)
+    """
+    student = _make_student()
+    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+
+    fake_db = _QueuedSession(student, active_loan, active_loan, 0)
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={
+                "loan_id": str(active_loan.loan_id),
+                "kiosk_id": str(uuid.uuid4()),  # non-existent kiosk
+            },
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Kiosk not found."
     assert fake_db.commit_calls == 0
 
 
