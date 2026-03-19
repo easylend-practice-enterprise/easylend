@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  ai-model:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - MODEL_PATH=models/best.pt
+      - VISION_API_KEY=insecure-vision-secret-123!
+    mem_limit: 8g
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 --cleanup
+    restart: always

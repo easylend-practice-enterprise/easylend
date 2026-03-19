@@ -1,12 +1,68 @@
-def test_environment_setup():
-    """Simple check that Pytest is successfully configured in the Vision module."""
-    assert True
+import os
+import secrets
+
+from fastapi.testclient import TestClient
+
+from main import app
+
+# Gebruik de TestClient binnen een 'with' block zodat de lifespan (opstarten) netjes runt
+# (Ook al faalt het inladen van de YOLO AI lokaal, FastAPI start wel gewoon op)
+client = TestClient(app)
+
+# Ensure tests use a non-hardcoded token value for auth checks.
+os.environ.setdefault("VISION_API_KEY", secrets.token_urlsafe(24))
+VALID_TOKEN = os.environ["VISION_API_KEY"]
+AUTH_HEADER = {"Authorization": f"Bearer {VALID_TOKEN}"}
 
 
-def test_ultralytics_import():
-    """Verify that Ultralytics (YOLO) can be successfully imported."""
-    from ultralytics import YOLO
+def test_predict_requires_auth():
+    """Test of het predict endpoint crasht zonder token."""
+    response = client.post("/predict")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"
 
-    # We do not instantiate a model here to keep the CI pipeline fast,
-    # but we verify that the class is available in the virtual environment.
-    assert YOLO is not None
+
+def test_predict_rejects_invalid_token():
+    """Test of het predict endpoint crasht met een fout token."""
+    response = client.post(
+        "/predict", headers={"Authorization": "Bearer foute-code-123"}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Invalid API token"
+
+
+def test_predict_valid_token_no_file():
+    """Test of we voorbij de auth komen, maar falen op missende file."""
+    response = client.post("/predict", headers=AUTH_HEADER)
+    # 422 Unprocessable Entity = Auth gelukt, maar geen Pydantic/File payload gevonden
+    assert response.status_code == 422
+
+
+def test_update_model_requires_auth():
+    """Test of de webhook beveiligd is."""
+    response = client.post(
+        "/update-model", json={"download_url": "https://roboflow.com/best.pt"}
+    )
+    assert response.status_code == 401
+
+
+def test_update_model_rejects_http():
+    """Test of de webhook HTTP (en file://) weigert ter preventie van SSRF."""
+    response = client.post(
+        "/update-model",
+        headers=AUTH_HEADER,
+        json={"download_url": "http://onveilige-site.com/best.pt"},
+    )
+    assert response.status_code == 400
+    assert "Alleen HTTPS URLs zijn toegestaan" in response.json()["detail"]
+
+
+def test_update_model_rejects_empty_url():
+    """Test of de webhook een lege URL weigert."""
+    response = client.post(
+        "/update-model",
+        headers=AUTH_HEADER,
+        json={"download_url": ""},
+    )
+    assert response.status_code == 400
+    assert "Alleen HTTPS URLs zijn toegestaan" in response.json()["detail"]

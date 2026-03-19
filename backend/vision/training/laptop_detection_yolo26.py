@@ -1,0 +1,25 @@
+from pathlib import Path
+
+from ultralytics import YOLO
+
+# Dit wijst altijd naar de 'backend/vision' root map
+VISION_ROOT = Path(__file__).parent.parent.resolve()
+
+
+def main():
+    model = YOLO(
+        "yolov8m.pt"
+    )  # (Note: YOLO26 bestaat niet, waarschijnlijk bedoelt hij YOLOv8m of YOLO11m)
+
+    model.train(
+        data=str(VISION_ROOT / "datasets" / "laptop_detection_YOLO26" / "data.yaml"),
+        epochs=100,
+        imgsz=640,
+        device=0,
+        name="yolo26m-laptop_detection",
+        project=str(VISION_ROOT / "runs" / "laptop-detection"),
+    )
+
+
+if __name__ == "__main__":
+    main()

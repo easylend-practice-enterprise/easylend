@@ -64,3 +64,4 @@ __pycache__/
 *.onnx
 datasets/
 runs/
+*_openvino_model/
