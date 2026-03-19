@@ -52,7 +52,7 @@ class AppTheme {
       primary: AppColors.primary,
       secondary: AppColors.accent,
       surface: AppColors.surface,
-      onPrimary: Colors.black,
+      onPrimary: AppColors.onPrimary,
       onSurface: Colors.white,
     ),
     scaffoldBackgroundColor: AppColors.background,

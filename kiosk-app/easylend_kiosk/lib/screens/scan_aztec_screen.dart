@@ -18,6 +18,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   bool _isDetecting = false;
   CameraDescription? _cameraDescription;
   bool _isStreaming = false;
+  String? _cameraError;
 
   @override
   void initState() {
@@ -29,6 +30,14 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        const errorMessage = 'No camera found on this device.';
+        _cameraError = errorMessage;
+        if (mounted) {
+          setState(() {});
+        }
+        return;
+      }
       // prefer back camera
       _cameraDescription = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
@@ -44,7 +53,13 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
       await _startImageStream();
       if (mounted) setState(() {});
     } catch (e) {
-      // ignore camera errors for now, later add a warning message or something
+      if (mounted) {
+        setState(() {
+          _cameraError = 'Failed to initialize camera: $e';
+        });
+      } else {
+        _cameraError = 'Failed to initialize camera: $e';
+      }
     }
   }
 
@@ -153,7 +168,15 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
     if (_controller == null || !_controller!.value.isInitialized) {
       return Scaffold(
         backgroundColor: AppColors.background,
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: _cameraError != null
+              ? Text(
+                  _cameraError!,
+                  style: TextStyle(color: AppColors.text),
+                  textAlign: TextAlign.center,
+                )
+              : const CircularProgressIndicator(),
+        ),
       );
     }
 
