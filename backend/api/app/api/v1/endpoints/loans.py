@@ -182,6 +182,7 @@ async def get_loan_status(
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
         401: {"description": "Not authenticated"},
+        404: {"description": "Locker not found"},
         409: {"description": "Conflict: lock contention or processing error"},
     },
 )

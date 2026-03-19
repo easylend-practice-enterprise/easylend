@@ -11,11 +11,12 @@ from app.db.models import LoanStatus
 
 
 class LoanBase(BaseModel):
-    """Attributes that callers can supply when creating a loan record.
+    """Core loan fields shared by loan response schemas.
 
-    Server-managed timestamps (reserved_at, borrowed_at, due_date,
-    returned_at) and FK identifiers resolved by business logic are
-    intentionally excluded here.
+    These fields are populated and managed by server-side business logic,
+    not supplied by callers. Server-managed timestamps (reserved_at,
+    borrowed_at, due_date, returned_at) and FK identifiers resolved by
+    business logic are intentionally excluded here.
     """
 
     user_id: UUID
@@ -61,8 +62,9 @@ class CheckoutRequest(BaseModel):
     """Payload the kiosk sends to initiate a checkout.
 
     The ``aztec_code`` is the barcode scanned from the asset label on the
-    kiosk screen.  The backend resolves the associated asset, finds a free
-    locker, and creates the loan record.
+    kiosk screen. The backend resolves the associated asset, uses that
+    asset's current locker to lock the asset/locker, creates the loan
+    record, and then frees the locker.
     """
 
     aztec_code: str = Field(..., min_length=1, max_length=100)
@@ -89,8 +91,8 @@ class LoanStatusResponse(BaseModel):
     """Minimal payload for the status-polling endpoint.
 
     The kiosk polls ``GET /api/v1/loans/{loan_id}/status`` until the
-    ``loan_status`` transitions to a terminal state (ACTIVE, COMPLETED,
-    FRAUD_SUSPECTED, etc.).
+    ``loan_status`` reaches the desired state for the kiosk flow (for
+    example, a final state such as ``COMPLETED`` or ``FRAUD_SUSPECTED``).
     """
 
     model_config = ConfigDict(from_attributes=True)
