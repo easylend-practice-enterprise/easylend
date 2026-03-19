@@ -69,9 +69,18 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_isStreaming) return;
 
-    await _controller!.startImageStream(_captureAndProcess);
-    if (!mounted) return;
     _isStreaming = true;
+    try {
+      await _controller!.startImageStream(_captureAndProcess);
+      if (!mounted) {
+        // Widget was unmounted while starting the stream; ensure we stop it.
+        await _stopImageStream();
+      }
+    } catch (e) {
+      // Starting the stream failed; reset streaming state and rethrow.
+      _isStreaming = false;
+      rethrow;
+    }
   }
 
   Future<void> _stopImageStream() async {
