@@ -60,7 +60,7 @@ class ReturnStatusScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'External camera active. Please place the item in the vision box.',
+                'Please place the item in the vision box.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppColors.text),
               ),

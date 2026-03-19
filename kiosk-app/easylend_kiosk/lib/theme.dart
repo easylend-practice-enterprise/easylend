@@ -2,26 +2,20 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   AppColors._();
-
-  static const Color primary = Color.fromARGB(255, 87, 87, 87);
+  // Use runtime getters so colors can update on hot reload.
+  static Color get primary => const Color.fromARGB(255, 87, 87, 87);
   // used for buttons and major ui elements
-
-  static const Color accent = Color.fromARGB(255, 14, 115, 209);
+  static Color get accent => const Color.fromARGB(255, 14, 115, 209);
   // used for smaller ui elements and
-
-  static const Color background = Color.fromARGB(255, 0, 0, 0);
+  static Color get background => const Color.fromARGB(255, 0, 0, 0);
   // used as background color
-
-  static const Color surface = Color.fromARGB(255, 90, 90, 90);
+  static Color get surface => const Color.fromARGB(255, 90, 90, 90);
   //used as a transition between screen transitions
-
-  static const Color text = Color.fromARGB(255, 255, 255, 255);
+  static Color get text => const Color.fromARGB(255, 255, 255, 255);
   // secondary/utility text color, used for subtitles and exit buttons
-
-  static const Color onPrimary = Color.fromARGB(255, 255, 0, 200);
+  static Color get onPrimary => const Color.fromARGB(255, 255, 0, 200);
   // thin divider/separator used across the UI
-
-  static const Color divider = Color.fromARGB(255, 255, 0, 0);
+  static Color get divider => const Color.fromARGB(255, 255, 0, 0);
 }
 
 class AppTheme {
@@ -54,7 +48,7 @@ class AppTheme {
 
   static final ThemeData dark = ThemeData(
     brightness: Brightness.dark,
-    colorScheme: const ColorScheme.dark(
+    colorScheme: ColorScheme.dark(
       primary: AppColors.primary,
       secondary: AppColors.accent,
       surface: AppColors.surface,
@@ -66,7 +60,7 @@ class AppTheme {
     primaryColor: AppColors.primary,
     fontFamily: 'Roboto',
     textTheme: _textTheme,
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: AppColors.background,
       elevation: 0,
       centerTitle: true,
@@ -77,7 +71,7 @@ class AppTheme {
       ),
       iconTheme: IconThemeData(color: AppColors.text),
     ),
-    bottomAppBarTheme: const BottomAppBarThemeData(color: AppColors.surface),
+    bottomAppBarTheme: BottomAppBarThemeData(color: AppColors.surface),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
@@ -92,7 +86,7 @@ class AppTheme {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.text,
-        side: const BorderSide(color: AppColors.divider),
+        side: BorderSide(color: AppColors.divider),
       ),
     ),
   );

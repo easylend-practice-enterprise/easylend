@@ -24,11 +24,7 @@ class InactivityModal extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.hourglass_bottom,
-                size: 48,
-                color: AppColors.accent,
-              ),
+              Icon(Icons.hourglass_bottom, size: 48, color: AppColors.accent),
               const SizedBox(height: 8),
               const Text(
                 'Session Timing Out',
@@ -36,15 +32,15 @@ class InactivityModal extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
-                children: const [
+                children: [
                   Expanded(
                     child: _TimeBox(value: '00', label: 'Hours'),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _TimeBox(value: '00', label: 'Minutes'),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _TimeBox(value: '30', label: 'Seconds'),
                   ),
@@ -91,15 +87,12 @@ class _TimeBox extends StatelessWidget {
           child: Center(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: AppColors.text),
-        ),
+        Text(label, style: TextStyle(fontSize: 12, color: AppColors.text)),
       ],
     );
   }

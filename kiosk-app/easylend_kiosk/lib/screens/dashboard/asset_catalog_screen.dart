@@ -29,7 +29,7 @@ class AssetCatalogScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: TextField(
-                style: const TextStyle(color: AppColors.divider),
+                style: TextStyle(color: AppColors.divider),
                 decoration: InputDecoration(
                   filled: true,
                   fillColor: AppColors.surface,
@@ -62,7 +62,7 @@ class AssetCatalogScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'My Borrowed Items',
                       style: TextStyle(
                         color: AppColors.divider,
@@ -93,7 +93,7 @@ class AssetCatalogScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Catalog',
                       style: TextStyle(
                         color: AppColors.divider,
@@ -190,15 +190,12 @@ class AssetCatalogScreen extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.divider,
             fontWeight: FontWeight.bold,
           ),
         ),
-        Text(
-          'ID: $id',
-          style: const TextStyle(color: AppColors.text, fontSize: 12),
-        ),
+        Text('ID: $id', style: TextStyle(color: AppColors.text, fontSize: 12)),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -265,15 +262,12 @@ class AssetCatalogScreen extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.divider,
             fontWeight: FontWeight.bold,
           ),
         ),
-        Text(
-          'ID: $id',
-          style: const TextStyle(color: AppColors.text, fontSize: 12),
-        ),
+        Text('ID: $id', style: TextStyle(color: AppColors.text, fontSize: 12)),
         const SizedBox(height: 8),
         Row(
           children: [

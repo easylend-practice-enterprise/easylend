@@ -12,7 +12,7 @@ class LendingCompleteScreen extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 24),
-            const Icon(Icons.check_circle, size: 96, color: AppColors.accent),
+            Icon(Icons.check_circle, size: 96, color: AppColors.accent),
             const SizedBox(height: 12),
             const Text(
               'Item Lent Successfully',
@@ -71,12 +71,12 @@ class LendingCompleteScreen extends StatelessWidget {
         child: Center(
           child: Text(
             value,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-          ),
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              ),
         ),
       ),
       const SizedBox(height: 6),
-      Text(label, style: const TextStyle(fontSize: 12, color: AppColors.text)),
+      Text(label, style: TextStyle(fontSize: 12, color: AppColors.text)),
     ],
   );
 }

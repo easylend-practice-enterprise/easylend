@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import '../theme.dart';
@@ -16,7 +17,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   late final BarcodeScanner _barcodeScanner;
   bool _isDetecting = false;
   CameraDescription? _cameraDescription;
-  Timer? _periodicTimer;
+  bool _isStreaming = false;
 
   @override
   void initState() {
@@ -40,24 +41,36 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
       await _controller!.initialize();
-      // start periodic capture instead of image stream to avoid format/rotation issues
-      _periodicTimer = Timer.periodic(
-        const Duration(milliseconds: 800),
-        (_) => _captureAndProcess(),
-      );
+      await _startImageStream();
       if (mounted) setState(() {});
     } catch (e) {
       // ignore camera errors for now, later add a warning message or something
     }
   }
 
-  Future<void> _captureAndProcess() async {
+  Future<void> _startImageStream() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_isStreaming) return;
+
+    await _controller!.startImageStream(_captureAndProcess);
+    _isStreaming = true;
+  }
+
+  Future<void> _stopImageStream() async {
+    if (_controller == null) return;
+    if (!_isStreaming) return;
+
+    await _controller!.stopImageStream();
+    _isStreaming = false;
+  }
+
+  Future<void> _captureAndProcess(CameraImage image) async {
     if (_isDetecting) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
     _isDetecting = true;
     try {
-      final XFile file = await _controller!.takePicture();
-      final inputImage = InputImage.fromFilePath(file.path);
+      final inputImage = _inputImageFromCameraImage(image);
+      if (inputImage == null) return;
       final barcodes = await _barcodeScanner.processImage(inputImage);
       if (barcodes.isNotEmpty) {
         for (final b in barcodes) {
@@ -74,9 +87,42 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
     }
   }
 
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
+    final camera = _controller?.description;
+    if (camera == null) return null;
+
+    final rotation = InputImageRotationValue.fromRawValue(
+      camera.sensorOrientation,
+    );
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (rotation == null || format == null) return null;
+
+    final allBytes = BytesBuilder(copy: false);
+    for (final plane in image.planes) {
+      allBytes.add(plane.bytes);
+    }
+
+    return InputImage.fromBytes(
+      bytes: allBytes.takeBytes(),
+      inputImageData: InputImageData(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        imageRotation: rotation,
+        inputImageFormat: format,
+        planeData: image.planes
+            .map(
+              (plane) => InputImagePlaneMetadata(
+                bytesPerRow: plane.bytesPerRow,
+                width: plane.width,
+                height: plane.height,
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
   Future<void> _onAztecDetected(String value) async {
-    // pause periodic captures while showing result
-    _periodicTimer?.cancel();
+    await _stopImageStream();
     if (!mounted) return;
     await showDialog(
       context: context,
@@ -91,19 +137,13 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         ],
       ),
     );
-    // restart stream
-    if (_controller != null) {
-      _periodicTimer = Timer.periodic(
-        const Duration(milliseconds: 800),
-        (_) => _captureAndProcess(),
-      );
-    }
+    await _startImageStream();
   }
 
   @override
   void dispose() {
     _barcodeScanner.close();
-    _periodicTimer?.cancel();
+    unawaited(_stopImageStream());
     _controller?.dispose();
     super.dispose();
   }
@@ -143,7 +183,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
               left: 16,
               top: 16,
               child: IconButton(
-                icon: const Icon(Icons.close, color: AppColors.divider),
+                icon: Icon(Icons.close, color: AppColors.divider),
                 onPressed: () => Navigator.of(context).maybePop(),
               ),
             ),
