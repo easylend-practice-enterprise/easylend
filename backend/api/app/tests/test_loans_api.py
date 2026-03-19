@@ -159,6 +159,33 @@ def test_list_loans_returns_401_without_token(client_with_overrides):
     assert response.status_code == 401
 
 
+def test_get_loan_status_returns_401_without_token(client_with_overrides):
+    """GET /loans/{id}/status without any Bearer token → 401."""
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.get(f"/api/v1/loans/{uuid.uuid4()}/status")
+    assert response.status_code == 401
+
+
+def test_checkout_returns_401_without_token(client_with_overrides):
+    """POST /loans/checkout without any Bearer token → 401."""
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": "AZT-001"},
+        )
+    assert response.status_code == 401
+
+
+def test_return_initiate_returns_401_without_token(client_with_overrides):
+    """POST /loans/return/initiate without any Bearer token → 401."""
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
+        )
+    assert response.status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # 2. GET /loans
 # ---------------------------------------------------------------------------
@@ -432,14 +459,14 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
     [1] get_current_user      → student
     [2] _get_loan_or_404      → active loan (same user)
     [3] lock loan row         → active loan (locked)
-    [4] kiosk lockers count   → 1 (kiosk exists)
+    [4] kiosk query           → kiosk object (exists)
     [5] free locker query     → available locker
     """
     student = _make_student()
     loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    fake_db = _QueuedSession(student, loan, loan, 1, free_locker)
+    fake_db = _QueuedSession(student, loan, loan, SimpleNamespace(), free_locker)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -532,13 +559,13 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
     [1] get_current_user      → student
     [2] loan query            → active loan
     [3] lock loan row         → active loan (locked)
-    [4] kiosk lockers count   → 1 (kiosk exists)
+    [4] kiosk query           → kiosk object (exists)
     [5] free locker query     → None (no available locker)
     """
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, active_loan, active_loan, 1, None)
+    fake_db = _QueuedSession(student, active_loan, active_loan, SimpleNamespace(), None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -561,12 +588,12 @@ def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
     [1] get_current_user      → student
     [2] loan query            → active loan
     [3] lock loan row         → active loan (locked)
-    [4] kiosk lockers count   → 0 (kiosk does not exist)
+    [4] kiosk query           → None (kiosk does not exist)
     """
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, active_loan, active_loan, 0)
+    fake_db = _QueuedSession(student, active_loan, active_loan, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",

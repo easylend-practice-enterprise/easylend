@@ -25,6 +25,7 @@ from app.db.database import get_db
 from app.db.models import (
     Asset,
     AssetStatus,
+    Kiosk,
     Loan,
     LoanStatus,
     Locker,
@@ -384,12 +385,11 @@ async def return_initiate(
     loan = locked_loan
 
     # --- 1c. Validate that the kiosk exists ---
-    kiosk_lockers_count_result = await db.execute(
-        select(func.count())
-        .select_from(Locker)
-        .where(Locker.kiosk_id == payload.kiosk_id)
+    kiosk_result = await db.execute(
+        select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
     )
-    if kiosk_lockers_count_result.scalar_one() == 0:
+    kiosk = kiosk_result.scalar_one_or_none()
+    if kiosk is None:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
