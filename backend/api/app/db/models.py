@@ -89,6 +89,7 @@ class AssetStatus(enum.StrEnum):
 class LoanStatus(enum.StrEnum):
     RESERVED = "RESERVED"
     ACTIVE = "ACTIVE"
+    RETURNING = "RETURNING"
     OVERDUE = "OVERDUE"
     COMPLETED = "COMPLETED"
     FRAUD_SUSPECTED = "FRAUD_SUSPECTED"

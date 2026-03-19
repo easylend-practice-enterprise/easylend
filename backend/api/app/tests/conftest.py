@@ -13,8 +13,9 @@ class _FakeResult:
     """
     Unified result stub.
 
-    Supports both call patterns used in users.py:
+    Supports call patterns used throughout the codebase:
     - result.scalar_one_or_none()   (single-row queries)
+    - result.scalar_one()           (count queries)
     - result.scalars().all()        (list queries in list_users)
     """
 
@@ -22,6 +23,9 @@ class _FakeResult:
         self._value = value
 
     def scalar_one_or_none(self):
+        return self._value
+
+    def scalar_one(self):
         return self._value
 
     def scalars(self):
@@ -62,7 +66,7 @@ class _QueuedSession:
 
     async def refresh(self, obj):
         # Simulate the database: generate a UUID for empty Primary Keys
-        for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id"]:
+        for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id", "loan_id"]:
             if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:
                 setattr(obj, pk_field, uuid.uuid4())
         # Simulate the database: set default values for Assets
