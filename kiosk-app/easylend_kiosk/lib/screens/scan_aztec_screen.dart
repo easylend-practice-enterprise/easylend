@@ -158,8 +158,10 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   @override
   void dispose() {
     _barcodeScanner.close();
-    unawaited(_stopImageStream());
-    _controller?.dispose();
+    final controller = _controller;
+    if (controller != null) {
+      unawaited(_stopImageStream().whenComplete(controller.dispose));
+    }
     super.dispose();
   }
 
