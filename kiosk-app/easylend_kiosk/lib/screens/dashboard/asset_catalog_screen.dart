@@ -275,7 +275,7 @@ class AssetCatalogScreen extends StatelessWidget {
               width: 10,
               height: 10,
               decoration: BoxDecoration(
-                color: inStock ? AppColors.surface : AppColors.accent,
+                color: inStock ? AppColors.accent : AppColors.surface,
                 shape: BoxShape.circle,
               ),
             ),
@@ -284,8 +284,8 @@ class AssetCatalogScreen extends StatelessWidget {
               inStock ? 'In Stock' : 'Lent',
               style: TextStyle(
                 color: inStock
-                    ? AppColors.surface.withAlpha(179)
-                    : AppColors.accent.withAlpha(179),
+                    ? AppColors.accent.withAlpha(179)
+                    : AppColors.surface.withAlpha(179),
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),

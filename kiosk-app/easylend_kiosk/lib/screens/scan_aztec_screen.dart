@@ -18,6 +18,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   bool _isDetecting = false;
   CameraDescription? _cameraDescription;
   bool _isStreaming = false;
+  bool _isDisposed = false;
   String? _cameraError;
 
   @override
@@ -80,7 +81,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   }
 
   Future<void> _captureAndProcess(CameraImage image) async {
-    if (_isDetecting) return;
+    if (_isDisposed || _isDetecting) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
     _isDetecting = true;
     try {
@@ -96,7 +97,9 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         }
       }
     } catch (e) {
-      // ignore
+      if (mounted) {
+        debugPrint('Aztec scan processing error: $e');
+      }
     } finally {
       _isDetecting = false;
     }
@@ -152,11 +155,14 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         ],
       ),
     );
+    if (!mounted) return;
+    if (_controller == null || !_controller!.value.isInitialized) return;
     await _startImageStream();
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     _barcodeScanner.close();
     final controller = _controller;
     if (controller != null) {
