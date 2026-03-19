@@ -73,21 +73,25 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-async def verify_vision_box_token(
-    x_device_token: str = Header(..., alias="X-Device-Token"),
-) -> None:
-    if not secrets.compare_digest(x_device_token, settings.VISION_BOX_API_KEY):
+def _verify_device_token(expected_token: str, provided_token: str | None) -> None:
+    """Verify a device token with timing-safe comparison and WWW-Authenticate header."""
+    if provided_token is None or not secrets.compare_digest(
+        provided_token, expected_token
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid device token.",
+            headers={"WWW-Authenticate": "X-Device-Token"},
         )
+
+
+async def verify_vision_box_token(
+    x_device_token: str | None = Header(None, alias="X-Device-Token"),
+) -> None:
+    _verify_device_token(settings.VISION_BOX_API_KEY, x_device_token)
 
 
 async def verify_simulation_token(
-    x_device_token: str = Header(..., alias="X-Device-Token"),
+    x_device_token: str | None = Header(None, alias="X-Device-Token"),
 ) -> None:
-    if not secrets.compare_digest(x_device_token, settings.SIMULATION_API_KEY):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid device token.",
-        )
+    _verify_device_token(settings.SIMULATION_API_KEY, x_device_token)

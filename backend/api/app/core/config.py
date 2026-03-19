@@ -23,27 +23,26 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     @model_validator(mode="after")
-    def _validate_production_secrets(self) -> "Settings":
+    def _validate_secrets(self) -> "Settings":
         """
-        Ensures the application performs a HARD crash when running in production
-        without a secure JWT_SECRET_KEY provided in the .env file.
+        Ensures the application performs a HARD crash if dummy secrets are used
+        in any environment other than explicitly "dev" or "test". This is a strict,
+        fail-fast check to prevent accidental exposure of insecure defaults.
         """
-        if self.ENVIRONMENT.lower() in ("prod", "production"):
-            # Use the constant here — Ruff will now stay quiet!
+        is_local_dev = self.ENVIRONMENT.lower() in ("dev", "test")
+
+        if not is_local_dev:
             if self.JWT_SECRET_KEY == _DUMMY_SECRET:
                 raise ValueError(
-                    "CRITICAL: JWT_SECRET_KEY is not set in production! "
-                    "Do not start the server with the insecure dev fallback."
+                    "CRITICAL: JWT_SECRET_KEY must be set in non-dev environments!"
                 )
             if self.VISION_BOX_API_KEY == _DUMMY_SECRET:
                 raise ValueError(
-                    "CRITICAL: VISION_BOX_API_KEY is not set in production! "
-                    "Do not start the server with the insecure dev fallback."
+                    "CRITICAL: VISION_BOX_API_KEY must be set in non-dev environments!"
                 )
             if self.SIMULATION_API_KEY == _DUMMY_SECRET:
                 raise ValueError(
-                    "CRITICAL: SIMULATION_API_KEY is not set in production! "
-                    "Do not start the server with the insecure dev fallback."
+                    "CRITICAL: SIMULATION_API_KEY must be set in non-dev environments!"
                 )
         return self
 

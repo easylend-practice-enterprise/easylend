@@ -21,13 +21,14 @@ def _build_test_client() -> TestClient:
     return TestClient(app)
 
 
-def test_verify_vision_box_token_missing_header_returns_422(monkeypatch):
+def test_verify_vision_box_token_missing_header_returns_401(monkeypatch):
     monkeypatch.setattr(settings, "VISION_BOX_API_KEY", "vision-secret-token")
     client = _build_test_client()
 
     response = client.get("/test/vision")
 
-    assert response.status_code == 422
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "X-Device-Token"
 
 
 def test_verify_vision_box_token_invalid_header_returns_401(monkeypatch):
@@ -41,6 +42,7 @@ def test_verify_vision_box_token_invalid_header_returns_401(monkeypatch):
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid device token."}
+    assert response.headers["WWW-Authenticate"] == "X-Device-Token"
 
 
 def test_verify_vision_box_token_valid_header_returns_200(monkeypatch):
@@ -56,13 +58,14 @@ def test_verify_vision_box_token_valid_header_returns_200(monkeypatch):
     assert response.json() == {"status": "ok"}
 
 
-def test_verify_simulation_token_missing_header_returns_422(monkeypatch):
+def test_verify_simulation_token_missing_header_returns_401(monkeypatch):
     monkeypatch.setattr(settings, "SIMULATION_API_KEY", "simulation-secret-token")
     client = _build_test_client()
 
     response = client.get("/test/simulation")
 
-    assert response.status_code == 422
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "X-Device-Token"
 
 
 def test_verify_simulation_token_invalid_header_returns_401(monkeypatch):
@@ -76,6 +79,7 @@ def test_verify_simulation_token_invalid_header_returns_401(monkeypatch):
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Invalid device token."}
+    assert response.headers["WWW-Authenticate"] == "X-Device-Token"
 
 
 def test_verify_simulation_token_valid_header_returns_200(monkeypatch):
