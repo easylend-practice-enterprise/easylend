@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     # Use the constant here
     JWT_SECRET_KEY: str = _DUMMY_SECRET
+    VISION_BOX_API_KEY: str = _DUMMY_SECRET
+    SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -31,6 +33,16 @@ class Settings(BaseSettings):
             if self.JWT_SECRET_KEY == _DUMMY_SECRET:
                 raise ValueError(
                     "CRITICAL: JWT_SECRET_KEY is not set in production! "
+                    "Do not start the server with the insecure dev fallback."
+                )
+            if self.VISION_BOX_API_KEY == _DUMMY_SECRET:
+                raise ValueError(
+                    "CRITICAL: VISION_BOX_API_KEY is not set in production! "
+                    "Do not start the server with the insecure dev fallback."
+                )
+            if self.SIMULATION_API_KEY == _DUMMY_SECRET:
+                raise ValueError(
+                    "CRITICAL: SIMULATION_API_KEY is not set in production! "
                     "Do not start the server with the insecure dev fallback."
                 )
         return self

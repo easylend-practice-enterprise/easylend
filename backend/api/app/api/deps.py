@@ -1,12 +1,14 @@
+import secrets
 from datetime import UTC, datetime
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User
 
@@ -69,3 +71,23 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Insufficient permissions.",
         )
     return current_user
+
+
+async def verify_vision_box_token(
+    x_device_token: str = Header(..., alias="X-Device-Token"),
+) -> None:
+    if not secrets.compare_digest(x_device_token, settings.VISION_BOX_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device token.",
+        )
+
+
+async def verify_simulation_token(
+    x_device_token: str = Header(..., alias="X-Device-Token"),
+) -> None:
+    if not secrets.compare_digest(x_device_token, settings.SIMULATION_API_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid device token.",
+        )
