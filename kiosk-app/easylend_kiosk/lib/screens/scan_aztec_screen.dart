@@ -196,7 +196,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
                   decoration: BoxDecoration(
                     border: Border.all(
                       color: AppColors.divider.withAlpha(138),
-                      // 54% transparancy for the scanning recticle ^
+                      // 54% transparency for the scanning reticle ^
                       width: 3,
                     ),
                     borderRadius: BorderRadius.circular(12),
