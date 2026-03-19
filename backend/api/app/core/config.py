@@ -1,3 +1,5 @@
+import sys
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,21 +30,39 @@ class Settings(BaseSettings):
         Ensures the application performs a HARD crash if dummy secrets are used
         in any environment other than explicitly "dev" or "test". This is a strict,
         fail-fast check to prevent accidental exposure of insecure defaults.
+
+        Skips validation during Alembic migrations to avoid breaking DB utility scripts.
         """
+        # Skip validation during Alembic migrations
+        if sys.argv and "alembic" in sys.argv[0]:
+            return self
+
         is_local_dev = self.ENVIRONMENT.lower() in ("dev", "test")
 
         if not is_local_dev:
-            if self.JWT_SECRET_KEY == _DUMMY_SECRET:
+            if (
+                not self.JWT_SECRET_KEY
+                or self.JWT_SECRET_KEY == _DUMMY_SECRET
+                or len(self.JWT_SECRET_KEY) < 16
+            ):
                 raise ValueError(
-                    "CRITICAL: JWT_SECRET_KEY must be set in non-dev environments!"
+                    "CRITICAL: JWT_SECRET_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
-            if self.VISION_BOX_API_KEY == _DUMMY_SECRET:
+            if (
+                not self.VISION_BOX_API_KEY
+                or self.VISION_BOX_API_KEY == _DUMMY_SECRET
+                or len(self.VISION_BOX_API_KEY) < 16
+            ):
                 raise ValueError(
-                    "CRITICAL: VISION_BOX_API_KEY must be set in non-dev environments!"
+                    "CRITICAL: VISION_BOX_API_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
-            if self.SIMULATION_API_KEY == _DUMMY_SECRET:
+            if (
+                not self.SIMULATION_API_KEY
+                or self.SIMULATION_API_KEY == _DUMMY_SECRET
+                or len(self.SIMULATION_API_KEY) < 16
+            ):
                 raise ValueError(
-                    "CRITICAL: SIMULATION_API_KEY must be set in non-dev environments!"
+                    "CRITICAL: SIMULATION_API_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
         return self
 
