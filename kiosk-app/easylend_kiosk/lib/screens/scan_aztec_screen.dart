@@ -65,10 +65,12 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
   }
 
   Future<void> _startImageStream() async {
+    if (!mounted) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
     if (_isStreaming) return;
 
     await _controller!.startImageStream(_captureAndProcess);
+    if (!mounted) return;
     _isStreaming = true;
   }
 
@@ -97,9 +99,7 @@ class _ScanAztecScreenState extends State<ScanAztecScreen> {
         }
       }
     } catch (e) {
-      if (mounted) {
-        debugPrint('Aztec scan processing error: $e');
-      }
+      debugPrint('Aztec scan processing error: $e');
     } finally {
       _isDetecting = false;
     }
