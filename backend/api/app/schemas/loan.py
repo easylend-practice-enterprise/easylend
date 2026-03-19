@@ -14,9 +14,10 @@ class LoanBase(BaseModel):
     """Core loan fields shared by loan response schemas.
 
     These fields are populated and managed by server-side business logic,
-    not supplied by callers. Server-managed timestamps (reserved_at,
-    borrowed_at, due_date, returned_at) and FK identifiers resolved by
-    business logic are intentionally excluded here.
+    not supplied by callers. This base schema includes the core foreign key
+    identifiers (user_id, asset_id, checkout_locker_id) but excludes
+    server-managed timestamps (reserved_at, borrowed_at, due_date,
+    returned_at).
     """
 
     user_id: UUID
