@@ -93,7 +93,7 @@ class _LockingSession(_QueuedSession):
     """Like _QueuedSession but raises OperationalError on the 2nd execute call.
 
     Use this to simulate a locked row (FOR UPDATE NOWAIT contention).
-    Queue slot [0] is consumed by get_current_user; execute #2 raises.
+    Queue slot [1] is consumed by get_current_user; execute #2 raises.
     """
 
     def __init__(self, *results):
