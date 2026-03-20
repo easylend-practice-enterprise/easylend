@@ -1,12 +1,102 @@
-# EasyLend Backend
+# EasyLend Backend Infrastructure
 
-TODO: Docker Compose setup documentation
+This directory contains the backend infrastructure for the EasyLend platform. We use a microservices-inspired architecture split across different Virtual Machines.
+
+## Orchestration Guide (Docker Compose)
+
+Because our services run on different Proxmox VMs, we use separate Docker Compose environments:
+
+### 1. Root Orchestration (Main Backend)
+
+**Files:** `docker-compose.local.yml` / `docker-compose.prod.yml`
+**Location:** `/backend/`
+**Runs on:** Main VM
+**Purpose:** Manages the core infrastructure:
+
+- FastAPI (Main API)
+- PostgreSQL Database
+- Redis Cache
+- pgAdmin (Local only)
+- SQLBak & Watchtower (Prod only)
+
+### 2. Vision AI Orchestration (Microservice)
+
+**Files:** `docker-compose.local.yml` / `docker-compose.prod.yml`
+**Location:** `/backend/vision/`
+**Runs on:** VM2 (Intel Xeon Optimized)
+**Purpose:** Runs the isolated YOLO/OpenVINO AI inference engine. Separated because it requires specific CPU resources and runs on a dedicated edge/AI node.
+
+## Quick Start
+
+### Prerequisites
+
+- Docker + Docker Compose installed
+- Correct `.env` values for each environment (at minimum secrets and API keys)
+
+### Start Local Main Backend Stack (from `/backend`)
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+### Start Local Vision Stack (from `/backend/vision`)
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+### Start Production Main Backend Stack (from `/backend`)
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Start Production Vision Stack (from `/backend/vision`)
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Stop Stacks
+
+```bash
+docker compose -f docker-compose.local.yml down
+docker compose -f docker-compose.prod.yml down
+```
+
+### Useful Notes
+
+- Main backend and Vision are intentionally orchestrated separately because they run on different VMs.
+- Watchtower should only run in production compose files, not in local development compose files.
+- Model artifacts (`*.pt`) are intentionally excluded from git and image context; provide them via runtime mount or model update flow.
+
+## Health Checks (Quick)
+
+```bash
+# Main API (from VM1)
+curl http://localhost:8000/health
+
+# Vision API (from VM2, local compose default port)
+curl http://localhost:8001/health
+```
+
+## Environment Variables (Minimum)
+
+- Main backend: DB connection vars, Redis vars, JWT secret.
+- Vision: `VISION_API_KEY` (required), `MODEL_PATH` (prod), `SKIP_MODEL_LOADING=1` (local dev optional).
+
+## Troubleshooting (Short)
+
+- Port already in use: stop old containers or change compose port mapping.
+- `unhealthy` service: check logs with `docker compose logs -f <service>`.
+- Vision model not loaded: verify model mount/path or run model update flow.
+- DB migration issues: run from `backend/api` and confirm database container is up.
 
 ## Database Migrations (Alembic)
 
 We use **Alembic** to safely apply changes to our SQLAlchemy models (`models.py`) to the PostgreSQL database. This ensures that our database structure is always in sync with our code.
 
-### 🚀 The 3 Key Commands
+### The 3 Key Commands
 
 Make sure your terminal is in the `backend/api` directory and your Docker database is running before using these commands.
 
