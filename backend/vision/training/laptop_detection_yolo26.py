@@ -9,7 +9,7 @@ VISION_ROOT = Path(__file__).parent.parent.resolve()
 def main():
     model = YOLO(
         "yolov8m.pt"
-    )  # (Note: YOLO26 bestaat niet, waarschijnlijk bedoelt hij YOLOv8m of YOLO11m)
+    )  # Base checkpoint used by our YOLO26 training configuration.
 
     model.train(
         data=str(VISION_ROOT / "datasets" / "laptop_detection_YOLO26" / "data.yaml"),

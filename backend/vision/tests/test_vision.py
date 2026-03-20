@@ -4,10 +4,13 @@ import secrets
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
-
 # Ensure tests use a non-hardcoded token value for auth checks.
 os.environ.setdefault("VISION_API_KEY", secrets.token_urlsafe(24))
+# Skip expensive OpenVINO compilation during unit tests.
+os.environ.setdefault("SKIP_MODEL_LOADING", "1")
+
+from main import app
+
 VALID_TOKEN = os.environ["VISION_API_KEY"]
 AUTH_HEADER = {"Authorization": f"Bearer {VALID_TOKEN}"}
 
@@ -58,7 +61,7 @@ def test_update_model_rejects_http(client):
         json={"download_url": "http://insecure-site.com/best.pt"},
     )
     assert response.status_code == 400
-    assert "Only HTTPS URLs are allowed" in response.json()["detail"]
+    assert "Invalid or unsafe model URL" in response.json()["detail"]
 
 
 def test_update_model_rejects_empty_url(client):
@@ -69,4 +72,4 @@ def test_update_model_rejects_empty_url(client):
         json={"download_url": ""},
     )
     assert response.status_code == 400
-    assert "Only HTTPS URLs are allowed" in response.json()["detail"]
+    assert "Invalid or unsafe model URL" in response.json()["detail"]
