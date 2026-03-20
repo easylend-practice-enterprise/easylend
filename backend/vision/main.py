@@ -206,7 +206,7 @@ def update_model(
             logger.info("Creating backup of the current model...")
             shutil.copy2(MODEL_PATH, BACKUP_PATH)
 
-        # 3. Download het nieuwe model
+        # 3. Download the new model
         path_with_query = parsed_url.path or "/"
         if parsed_url.query:
             path_with_query = f"{path_with_query}?{parsed_url.query}"

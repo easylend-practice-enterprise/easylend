@@ -2,33 +2,33 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Optimalisaties voor uv en Docker
+# Optimizations for uv and Docker
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV UV_NO_DEV=1
 ENV PYTHONUNBUFFERED=1
 
-# Kopieer de razendsnelle 'uv' binary rechtstreeks van de makers
+# Copy the fast 'uv' binary directly from the image publisher
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# STAP 1: Kopieer ALLEEN de lockfiles en installeer dependencies.
-# Dit is een gigantische snelheids-boost, want deze Docker-laag wordt nu 
-# gecachet zolang je geen nieuwe packages toevoegt aan pyproject.toml!
+# STEP 1: Copy ONLY the lockfiles and install dependencies.
+# This provides a major speed boost because this Docker layer stays cached
+# until you add new packages to pyproject.toml.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project
 
-# STAP 2: Kopieer de rest van de applicatie
+# STEP 2: Copy the rest of the application
 COPY app/ ./app/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
 
-# STAP 3: Sync het project zelf (razendsnel want dependencies zijn er al)
+# STEP 3: Sync the project itself (fast because dependencies are already present)
 RUN uv sync --locked
 
-# Activeer de virtuele omgeving automatisch voor alle volgende commando's
+# Activate the virtual environment automatically for all subsequent commands
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
-# EERST migraties runnen, DAN uvicorn starten bij successvolle migraties
+# Run migrations first, then start uvicorn when migrations succeed
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

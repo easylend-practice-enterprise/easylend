@@ -191,9 +191,9 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
     created_user = SimpleNamespace(
         user_id=uuid.uuid4(),
         role_id=target_role_id,
-        first_name="Nieuw",
-        last_name="Lid",
-        email="nieuw@easylend.be",
+        first_name="New",
+        last_name="Member",
+        email="new@easylend.be",
         nfc_tag_id=None,
         failed_login_attempts=0,
         locked_until=None,
@@ -208,16 +208,16 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
     # [4] _get_user_with_role_or_404 after commit → created_user
     fake_db = _QueuedSession(admin, None, target_role_id, created_user)
     payload = {
-        "first_name": "Nieuw",
-        "last_name": "Lid",
-        "email": "nieuw@easylend.be",
+        "first_name": "New",
+        "last_name": "Member",
+        "email": "new@easylend.be",
         "role_id": str(target_role_id),
         "pin": "securepin123",
     }
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
     assert response.status_code == 201
-    assert response.json()["email"] == "nieuw@easylend.be"
+    assert response.json()["email"] == "new@easylend.be"
     assert fake_db.commit_calls == 1
     assert len(fake_db.added) == 1  # User object was passed to db.add()
 
@@ -250,9 +250,9 @@ def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
     # [3] role_exists check      → None    (role not found → 400)
     fake_db = _QueuedSession(admin, None, None)
     payload = {
-        "first_name": "Nieuw",
-        "last_name": "Lid",
-        "email": "nieuw2@easylend.be",
+        "first_name": "New",
+        "last_name": "Member",
+        "email": "new2@easylend.be",
         "role_id": str(uuid.uuid4()),
         "pin": "securepin123",
     }
@@ -270,7 +270,7 @@ def test_update_user_unblocks_locked_account(client_with_overrides):
     locked_user = SimpleNamespace(
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
-        first_name="Geblokkeerd",
+        first_name="Blocked",
         last_name="Account",
         email="blocked@easylend.be",
         nfc_tag_id=None,
@@ -321,7 +321,7 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
     target_user = SimpleNamespace(
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
-        first_name="Geen",
+        first_name="No",
         last_name="NFC",
         email="nonfc@easylend.be",
         nfc_tag_id=None,
@@ -331,9 +331,7 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
         ban_reason=None,
         role=SimpleNamespace(role_name="Medewerker"),
     )
-    updated_user = SimpleNamespace(
-        **{**vars(target_user), "nfc_tag_id": "NFC-NIEUW-007"}
-    )
+    updated_user = SimpleNamespace(**{**vars(target_user), "nfc_tag_id": "NFC-NEW-007"})
     # DB execute order:
     # [1] get_current_user                          → admin
     # [2] _get_user_with_role_or_404                → target_user
@@ -343,11 +341,11 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.patch(
             f"/api/v1/users/{target_user.user_id}/nfc",
-            json={"nfc_tag_id": "NFC-NIEUW-007"},
+            json={"nfc_tag_id": "NFC-NEW-007"},
             headers=_bearer(admin),
         )
     assert response.status_code == 200
-    assert response.json()["nfc_tag_id"] == "NFC-NIEUW-007"
+    assert response.json()["nfc_tag_id"] == "NFC-NEW-007"
     assert fake_db.commit_calls == 1
 
 
