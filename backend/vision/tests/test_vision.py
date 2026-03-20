@@ -10,7 +10,15 @@ os.environ.setdefault("VISION_API_KEY", secrets.token_urlsafe(24))
 # Skip expensive OpenVINO compilation during unit tests.
 os.environ.setdefault("SKIP_MODEL_LOADING", "1")
 
+import main
 from main import app
+
+
+class DummyModel:
+    def predict(self, source, imgsz=640):
+        # Return an empty results list so the prediction path runs without errors
+        return []
+
 
 VALID_TOKEN = os.environ["VISION_API_KEY"]
 AUTH_HEADER = {"Authorization": f"Bearer {VALID_TOKEN}"}
@@ -54,7 +62,39 @@ def test_predict_rejects_non_image(client):
         files={"file": ("test.txt", BytesIO(b"not an image"), "text/plain")},
     )
     assert response.status_code == 400
-    assert "File must be an image" in response.json()["detail"]
+    assert (
+        "File must be a JPEG/PNG/WebP/BMP/GIF/TIFF image" in response.json()["detail"]
+    )
+
+
+def test_predict_rejects_oversize(client, monkeypatch):
+    """Test that the predict endpoint rejects images larger than MAX_UPLOAD_SIZE."""
+    monkeypatch.setenv("MAX_UPLOAD_SIZE", "10")
+    # Ensure a model is present so the request proceeds past the model check
+    main.model = DummyModel()
+    big_bytes = b"A" * 11
+    response = client.post(
+        "/predict",
+        headers=AUTH_HEADER,
+        files={"file": ("big.jpg", BytesIO(big_bytes), "image/jpeg")},
+    )
+    assert response.status_code == 400
+    # The app wraps internal failures with a generic error message.
+    assert response.json()["detail"] == "Error processing image"
+
+
+def test_predict_handles_corrupt_image(client):
+    """Test that a corrupt image payload returns a 400 with a generic error."""
+    # Send something with an image content-type but invalid bytes
+    # Ensure a model is present so the request proceeds past the model check
+    main.model = DummyModel()
+    response = client.post(
+        "/predict",
+        headers=AUTH_HEADER,
+        files={"file": ("bad.jpg", BytesIO(b"not really an image"), "image/jpeg")},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Error processing image"
 
 
 def test_update_model_requires_auth(client):

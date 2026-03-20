@@ -1,0 +1,28 @@
+name: easylend-vision-prod
+
+services:
+  vision-api:
+    image: ghcr.io/easylend-practice-enterprise/easylend-vision:latest
+    container_name: easylend_vision_api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=models/best.pt
+      - VISION_API_KEY=${VISION_API_KEY}
+    mem_limit: 8g
+    restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.scope=vision"
+
+  watchtower:
+    image: nickfedor/watchtower
+    container_name: watchtower_vision
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup --scope vision
+    environment:
+      - WATCHTOWER_SCOPE=vision
+      - TZ=Europe/Brussels
+      - REPO_USER=${GHCR_USERNAME}
+      - REPO_PASS=${GHCR_PAT}

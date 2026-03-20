@@ -5,6 +5,7 @@ import os
 import secrets
 import shutil
 import socket
+import ssl
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -176,11 +177,21 @@ def predict(
     token: str = Depends(verify_token),  # noqa: ARG001
 ) -> PredictionResponse:
     """Run object detection on the provided image."""
-    # Validate content type is an image (check before model availability)
-    if not file.content_type or not file.content_type.startswith("image/"):
+    # Validate content type is an allowed image type and size limits.
+    allowed = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/bmp",
+        "image/gif",
+        "image/tiff",
+    }
+    max_size = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MiB default
+
+    if not file.content_type or file.content_type not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be an image",
+            detail="File must be a JPEG/PNG/WebP/BMP/GIF/TIFF image",
         )
 
     if model is None:
@@ -190,8 +201,23 @@ def predict(
         )
 
     try:
-        image_data = file.file.read()
+        # Defensive read: cap the bytes we accept from the client.
+        image_data = file.file.read(max_size + 1)
+        if len(image_data) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Image too large (max {max_size} bytes)",
+            )
+
+        # Prevent decompression-bomb style images
+        Image.MAX_IMAGE_PIXELS = int(os.getenv("PIL_MAX_PIXELS", 100_000_000))
         image = Image.open(BytesIO(image_data))
+        width, height = image.size
+        if width * height > int(os.getenv("MAX_IMAGE_PIXELS", 50_000_000)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Image has too many pixels",
+            )
 
         logger.info(f"Running prediction on image: {file.filename}")
         results = model.predict(source=image, imgsz=640)
@@ -221,6 +247,33 @@ def predict(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
         )
+
+
+def _download_via_ip(
+    hostname: str,
+    ip: str,
+    port: int,
+    path_with_query: str,
+    headers: dict,
+    timeout: int = 60,
+) -> http.client.HTTPResponse:
+    """Download an HTTPS resource by connecting to a resolved IP while preserving SNI/Host."""
+    sock = socket.create_connection((ip, port), timeout=timeout)
+    ctx = ssl.create_default_context()
+    ssock = ctx.wrap_socket(sock, server_hostname=hostname)
+
+    request_lines = [f"GET {path_with_query} HTTP/1.1", f"Host: {hostname}"]
+    for k, v in headers.items():
+        request_lines.append(f"{k}: {v}")
+    request_lines.append("Connection: close")
+    request_lines.append("")
+    request_lines.append("")
+    req = "\r\n".join(request_lines)
+    ssock.sendall(req.encode("utf-8"))
+
+    resp = http.client.HTTPResponse(ssock)
+    resp.begin()
+    return resp
 
 
 @app.post("/update-model", tags=["Management"])
@@ -259,40 +312,73 @@ def update_model(
             logger.info("Creating backup of the current model...")
             shutil.copy2(model_path, backup_path)
 
-        conn = http.client.HTTPSConnection(hostname, port=port, timeout=60)
-        try:
-            conn.request(
-                "GET",
-                path_with_query,
-                headers={"User-Agent": "EasyLend-Vision-Bot"},
-            )
-            response = conn.getresponse()
+        # Resolve IP to prevent DNS rebinding
+        addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+        chosen_ip = None
+        for info in addr_info:
+            candidate = info[4][0]
+            ip_obj = ipaddress.ip_address(candidate)
+            if not ip_obj.is_global:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or unsafe model URL.",
+                )
+            if chosen_ip is None or ip_obj.version == 4:
+                chosen_ip = candidate
 
-            # Strict checks on download response
-            if response.status != 200:
+        if not chosen_ip:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to resolve model host",
+            )
+        # Ensure chosen_ip is a string (some addrinfo tuples may include ints)
+        chosen_ip = str(chosen_ip)
+
+        temp_path = f"{model_path}.tmp"
+        resp = _download_via_ip(
+            hostname,
+            chosen_ip,
+            port,
+            path_with_query,
+            headers={"User-Agent": "EasyLend-Vision-Bot"},
+            timeout=60,
+        )
+
+        try:
+            if resp.status != 200:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Model download failed with status {response.status}",
+                    detail=f"Model download failed with status {resp.status}",
                 )
 
-            content_type = response.getheader("Content-Type") or ""
+            content_type = resp.getheader("Content-Type") or ""
             if content_type.startswith("text/html"):
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Model download failed: Received HTML instead of model file",
+                    detail="Model download failed: Received HTML",
                 )
 
-            with open(model_path, "wb") as out_file:
-                shutil.copyfileobj(response, out_file)
+            total = 0
+            with open(temp_path, "wb") as out_file:
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    out_file.write(chunk)
+                    total += len(chunk)
 
-            # Verify the file is not empty
-            if os.path.getsize(model_path) == 0:
+            if total == 0:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail="Model download failed: File is empty",
                 )
+
+            os.replace(temp_path, model_path)
         finally:
-            conn.close()
+            try:
+                resp.close()
+            except Exception:
+                logger.exception("Error closing HTTP response socket")
 
         if os.path.exists(openvino_dir):
             shutil.rmtree(openvino_dir)
@@ -309,7 +395,6 @@ def update_model(
     except Exception:
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
-
         logger.exception("Error updating model. Backup restored.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
