@@ -32,3 +32,12 @@ extend-select = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
