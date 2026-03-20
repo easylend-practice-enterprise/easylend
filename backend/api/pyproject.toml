@@ -16,6 +16,7 @@ dependencies = [
     "redis>=7.2.1",
     "sqlalchemy>=2.0.47",
     "uvicorn[standard]>=0.41.0",
+    "httpx>=0.28.1",
 ]
 
 [dependency-groups]

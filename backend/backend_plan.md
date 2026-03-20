@@ -137,43 +137,47 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 **Kiosks** *(kiosk_id FK in LOCKERS: must come first)*
 
-- `GET /api/v1/kiosks` (admin)
-- `POST /api/v1/kiosks` (admin: register a new kiosk device)
-- `PUT /api/v1/kiosks/{id}/status`
+- [x] `GET /api/v1/kiosks` (admin)
+- [x] `POST /api/v1/kiosks` (admin: register a new kiosk device)
+- [x] `PATCH /api/v1/kiosks/{id}/status`
 
 **Categories** *(category_id FK in ASSETS: must come first)*
 
-- `GET /api/v1/categories`
-- `POST /api/v1/categories` (admin)
-- `PUT /api/v1/categories/{id}`
+- [x] `GET /api/v1/categories` (all authenticated users)
+- [x] `POST /api/v1/categories` (admin)
+- [x] `PATCH /api/v1/categories/{id}`
 
 **Lockers** *(requires kiosk_id)*
 
-- `GET /api/v1/lockers` (admin: overview + status)
-- `GET /api/v1/lockers/{id}`
-- `POST /api/v1/lockers` (admin: link locker to kiosk)
-- `PATCH /api/v1/lockers/{id}/status` (admin: update status, e.g. to MAINTENANCE)
+- [x] `GET /api/v1/lockers` (admin: overview + status)
+- [x] `GET /api/v1/lockers/{id}` (admin)
+- [x] `POST /api/v1/lockers` (admin: link locker to kiosk)
+- [x] `PATCH /api/v1/lockers/{id}/status` (admin: update status, e.g. to MAINTENANCE)
 
 **Assets** *(requires category_id + locker_id)*
 
-- `GET /api/v1/assets` (pagination, filter by status)
-- `GET /api/v1/assets/{id}`
-- `POST /api/v1/assets` (admin: including `aztec_code` and `category_id`)
-- `PUT /api/v1/assets/{id}` (admin)
-- `DELETE /api/v1/assets/{id}` (admin, soft-delete)
+- [x] `GET /api/v1/assets` (pagination, filter by status, excludes soft-deleted rows)
+- [x] `GET /api/v1/assets/{id}`
+- [x] `POST /api/v1/assets` (admin: including `aztec_code`, `category_id`, optional `locker_id`)
+- [x] `PATCH /api/v1/assets/{id}` (admin)
+- [x] `DELETE /api/v1/assets/{id}` (admin, soft-delete)
   - Implementation: set `is_deleted = true` on the `assets` row (preserve `asset_status` and history). Use DB-level default `FALSE` for `is_deleted`.
 
 **Catalog** *(requires assets + categories: buildable in same ticket)*
 
-- `GET /api/v1/catalog` (all authenticated users)
+- [ ] `GET /api/v1/catalog` (all authenticated users)
   - **Role == staff/student:** categorised pool — number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
   - **Role == Admin:** admin view — all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
+
+- [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
+- [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
+- [ ] Remaining gap in this step: `GET /api/v1/catalog`
 
 ---
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
-**Ticket:** ELP-90 · **Status:** ❌ Open · *Requires: step 4*
+**Ticket:** ELP-90 · **Status:** 📋 In Progress · *Requires: step 4*
 
 > ⚠️ **Moved up.** The Vision Box needs a Static Device Token to call `POST /api/v1/vision/analyze` (Step 10b). Must be ready before the hardware integration.
 
@@ -185,23 +189,32 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 - Keys in `.env` as `VISION_BOX_API_KEY` and `SIMULATION_API_KEY`.
 - **No** `POST /api/v1/auth/token` endpoint or `client_credentials` grant.
 
+- [x] Device-token dependencies implemented in `backend/api/app/api/deps.py` (`verify_vision_box_token`, `verify_simulation_token`)
+- [x] Config keys present in `backend/api/app/core/config.py` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`)
+- [x] Dependency behavior tested in `backend/api/app/tests/test_deps.py`
+- [ ] Remaining gap: apply these dependencies to real hardware endpoints (e.g. `POST /api/v1/vision/analyze`)
+
 ---
 
 ## Step 10a: Transaction CRUD (checkout / return)
 
-**Ticket:** ELP-28 · **Status:** ❌ Open · *Requires: step 8 (assets + lockers)*
+**Ticket:** ELP-28 · **Status:** 📋 In Progress · *Requires: step 8 (assets + lockers)*
 
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
-- `POST /api/v1/loans/checkout`: lend an asset, assign a locker
+- [x] `POST /api/v1/loans/checkout`: lend an asset, assign a locker
   - **Concurrency:** Use `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
-  - **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
-- `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker.
-  - **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
-- `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
-- **Timeout Worker (Hardware-aware):** A background task cancels loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
-- Validation: asset available/active? user active? locker free? **Does this loan belong to the logged-in user (`loan.user_id == jwt.sub`)?**
-- Status update asset + locker + audit log entry
+  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
+- [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker.
+  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
+- [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
+- [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
+- [ ] **Timeout Worker (Hardware-aware):** A background task cancels loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
+- [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
+- [ ] Status update asset + locker + audit log entry
+
+- [x] Implemented in `backend/api/app/api/v1/endpoints/loans.py`
+- [x] API tests available in `backend/api/app/tests/test_loans_api.py` (including lock-contention and authorization paths)
 
 ---
 
@@ -296,16 +309,17 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 2. **After steps 7-8 (CRUD + RBAC)**
 
-   - Authorisation tests per role (admin/staff/kiosk)
-   - Happy-path + forbidden-path per endpoint
+- [x] Authorisation tests per role (admin/staff/kiosk)
+- [x] Happy-path + forbidden-path per endpoint
+- [ ] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
 
-3. **After steps 10a-10c (transactions + hardware + AI)**
+1. **After steps 10a-10c (transactions + hardware + AI)**
 
-   - Concurrency test for checkout (no double assignment)
-   - Idempotency test for checkout/return
-   - Fallback tests (AI timeout, no active Vision Box WebSocket)
+- [x] Concurrency test for checkout (no double assignment)
+- [ ] Idempotency test for checkout/return
+- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
-4. **After steps 11-13 (sanitisation/rate-limit/audit)**
+1. **After steps 11-13 (sanitisation/rate-limit/audit)**
 
    - Input validation tests (boundaries/regex)
    - Rate-limit tests (IP and token based)
@@ -346,12 +360,12 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
         --> [5] Refresh token
           --> [6] Redis integration
             --> [7] Users CRUD  <-- incl. PATCH /users/{id}/nfc
-              --> [8] Kiosks --> Categories --> Lockers --> Assets CRUD
-                --> [10a] Transaction CRUD
+              --> [8] Kiosks --> Categories --> Lockers --> Assets CRUD (catalog pending)
+                --> [10a] Transaction CRUD (idempotency + timeout worker + audit pending)
                   --> [10b] Hardware & AI  <-- decision: Local Docker Volume
                           WebSockets + fallback + /vision/analyze
                     --> [10c] Admin Quarantine Dashboard
-        --> [9] M2M Static Device Tokens  <-- before 10b, Vision Box auth (X-Device-Token header)
+        --> [9] M2M Static Device Tokens (dependency + tests done; endpoint wiring pending)
 [11] Input sanitisation (parallel, from step 10+)
 [12] Rate limiting (requires Redis: step 6)
 [13] Hash-chaining audit logs (requires step 10a)
