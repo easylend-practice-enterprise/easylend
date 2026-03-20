@@ -1,5 +1,6 @@
 import os
 import secrets
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
@@ -43,6 +44,17 @@ def test_predict_valid_token_no_file(client):
     response = client.post("/predict", headers=AUTH_HEADER)
     # 422 Unprocessable Entity = Auth gelukt, maar geen Pydantic/File payload gevonden
     assert response.status_code == 422
+
+
+def test_predict_rejects_non_image(client):
+    """Test that the predict endpoint rejects non-image files."""
+    response = client.post(
+        "/predict",
+        headers=AUTH_HEADER,
+        files={"file": ("test.txt", BytesIO(b"not an image"), "text/plain")},
+    )
+    assert response.status_code == 400
+    assert "File must be an image" in response.json()["detail"]
 
 
 def test_update_model_requires_auth(client):

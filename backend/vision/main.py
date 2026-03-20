@@ -78,14 +78,24 @@ async def lifespan(_app: FastAPI):
     openvino_dir = model_path.replace(".pt", "_openvino_model")
 
     try:
-        if not os.path.exists(openvino_dir):
-            logger.info("Exporting model to OpenVINO format for CPU acceleration...")
-            temp_model = YOLO(model_path)
-            temp_model.export(format="openvino")
+        # Check if model files exist; it's normal for fresh installations to have neither
+        if not os.path.exists(model_path) and not os.path.exists(openvino_dir):
+            logger.warning(
+                f"No model found at {model_path}. Service starting in degraded mode. "
+                "Call /update-model endpoint to download a model."
+            )
+            model = None
+        else:
+            if not os.path.exists(openvino_dir):
+                logger.info(
+                    "Exporting model to OpenVINO format for CPU acceleration..."
+                )
+                temp_model = YOLO(model_path)
+                temp_model.export(format="openvino")
 
-        logger.info("Loading OpenVINO optimized model...")
-        model = YOLO(openvino_dir)
-        logger.info("Model loaded successfully")
+            logger.info("Loading OpenVINO optimized model...")
+            model = YOLO(openvino_dir)
+            logger.info("Model loaded successfully")
     except Exception:
         logger.exception("Failed to load model")
         model = None
@@ -166,6 +176,13 @@ def predict(
     token: str = Depends(verify_token),  # noqa: ARG001
 ) -> PredictionResponse:
     """Run object detection on the provided image."""
+    # Validate content type is an image (check before model availability)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be an image",
+        )
+
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -250,14 +267,30 @@ def update_model(
                 headers={"User-Agent": "EasyLend-Vision-Bot"},
             )
             response = conn.getresponse()
-            if response.status >= 400:
+
+            # Strict checks on download response
+            if response.status != 200:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Model download failed",
+                    detail=f"Model download failed with status {response.status}",
+                )
+
+            content_type = response.getheader("Content-Type") or ""
+            if content_type.startswith("text/html"):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Model download failed: Received HTML instead of model file",
                 )
 
             with open(model_path, "wb") as out_file:
                 shutil.copyfileobj(response, out_file)
+
+            # Verify the file is not empty
+            if os.path.getsize(model_path) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Model download failed: File is empty",
+                )
         finally:
             conn.close()
 
