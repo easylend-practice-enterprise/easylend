@@ -23,6 +23,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project
 
 # STAP 2: Kopieer de rest van de applicatie
+RUN mkdir -p models
 COPY . .
 
 # STAP 3: Sync het project zelf
