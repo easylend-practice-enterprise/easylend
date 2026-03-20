@@ -1,13 +1,10 @@
 import os
 import secrets
 
+import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-
-# Gebruik de TestClient binnen een 'with' block zodat de lifespan (opstarten) netjes runt
-# (Ook al faalt het inladen van de YOLO AI lokaal, FastAPI start wel gewoon op)
-client = TestClient(app)
 
 # Ensure tests use a non-hardcoded token value for auth checks.
 os.environ.setdefault("VISION_API_KEY", secrets.token_urlsafe(24))
@@ -15,54 +12,61 @@ VALID_TOKEN = os.environ["VISION_API_KEY"]
 AUTH_HEADER = {"Authorization": f"Bearer {VALID_TOKEN}"}
 
 
-def test_predict_requires_auth():
-    """Test of het predict endpoint crasht zonder token."""
+@pytest.fixture
+def client():
+    """Provide a TestClient fixture with a context manager for clean lifespan events."""
+    with TestClient(app) as c:
+        yield c
+
+
+def test_predict_requires_auth(client):
+    """Test that the predict endpoint fails without an auth token."""
     response = client.post("/predict")
     assert response.status_code == 401
     assert response.json()["detail"] == "Not authenticated"
 
 
-def test_predict_rejects_invalid_token():
-    """Test of het predict endpoint crasht met een fout token."""
+def test_predict_rejects_invalid_token(client):
+    """Test that the predict endpoint rejects an invalid token."""
     response = client.post(
-        "/predict", headers={"Authorization": "Bearer foute-code-123"}
+        "/predict", headers={"Authorization": "Bearer invalid-token-123"}
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Invalid API token"
 
 
-def test_predict_valid_token_no_file():
-    """Test of we voorbij de auth komen, maar falen op missende file."""
+def test_predict_valid_token_no_file(client):
+    """Test that auth succeeds but request fails without a file payload."""
     response = client.post("/predict", headers=AUTH_HEADER)
     # 422 Unprocessable Entity = Auth gelukt, maar geen Pydantic/File payload gevonden
     assert response.status_code == 422
 
 
-def test_update_model_requires_auth():
-    """Test of de webhook beveiligd is."""
+def test_update_model_requires_auth(client):
+    """Test that the model update webhook requires authentication."""
     response = client.post(
         "/update-model", json={"download_url": "https://roboflow.com/best.pt"}
     )
     assert response.status_code == 401
 
 
-def test_update_model_rejects_http():
-    """Test of de webhook HTTP (en file://) weigert ter preventie van SSRF."""
+def test_update_model_rejects_http(client):
+    """Test that the webhook rejects non-HTTPS URLs to prevent SSRF."""
     response = client.post(
         "/update-model",
         headers=AUTH_HEADER,
-        json={"download_url": "http://onveilige-site.com/best.pt"},
+        json={"download_url": "http://insecure-site.com/best.pt"},
     )
     assert response.status_code == 400
-    assert "Alleen HTTPS URLs zijn toegestaan" in response.json()["detail"]
+    assert "Only HTTPS URLs are allowed" in response.json()["detail"]
 
 
-def test_update_model_rejects_empty_url():
-    """Test of de webhook een lege URL weigert."""
+def test_update_model_rejects_empty_url(client):
+    """Test that the webhook rejects an empty download URL."""
     response = client.post(
         "/update-model",
         headers=AUTH_HEADER,
         json={"download_url": ""},
     )
     assert response.status_code == 400
-    assert "Alleen HTTPS URLs zijn toegestaan" in response.json()["detail"]
+    assert "Only HTTPS URLs are allowed" in response.json()["detail"]

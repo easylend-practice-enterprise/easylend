@@ -2,11 +2,20 @@ import http.client
 import logging
 import os
 import shutil
+import time
 from contextlib import asynccontextmanager
 from io import BytesIO
 from urllib.parse import urlparse
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image
 from pydantic import BaseModel
@@ -23,7 +32,7 @@ model: YOLO | None = None
 # Lifespan event manager
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # <-- underscore toegevoegd
-    """Load or export the YOLO model with OpenVINO format"""
+    """Load or export the YOLO model in OpenVINO format."""
     global model
 
     MODEL_PATH = os.getenv("MODEL_PATH", "models/best.pt")
@@ -89,6 +98,12 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
     return credentials.credentials
 
 
+def restart_server():
+    """Wait 2 seconds and restart the server."""
+    time.sleep(2)
+    os._exit(0)
+
+
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -109,7 +124,7 @@ def predict(
 
     Args:
         file: Image file to analyze
-        token: API token (X-Vision-Token header)
+        token: API token (Authorization: Bearer <token> header)
 
     Returns:
         PredictionResponse with detected objects
@@ -160,14 +175,24 @@ def predict(
 
 
 @app.post("/update-model", tags=["Management"])
-def update_model(payload: ModelUpdateRequest, _: str = Depends(verify_token)):
+def update_model(
+    payload: ModelUpdateRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(verify_token),
+):
     """Update the AI model from a secure HTTPS URL."""
-    # 1. Beveiliging: Alleen geldige HTTPS URLs accepteren
+    # 1. Security: accept only valid HTTPS URLs
     parsed_url = urlparse(payload.download_url)
     if parsed_url.scheme != "https" or not parsed_url.netloc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Alleen HTTPS URLs zijn toegestaan ter preventie van SSRF.",
+            detail="Only HTTPS URLs are allowed to prevent SSRF.",
+        )
+
+    if parsed_url.hostname in ["localhost", "127.0.0.1", "0.0.0.0", "::1"]:  # noqa: S104
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="References to internal or loopback IP addresses are not allowed.",
         )
 
     logger.info(f"Downloading new model from: {payload.download_url}")
@@ -176,9 +201,9 @@ def update_model(payload: ModelUpdateRequest, _: str = Depends(verify_token)):
     OPENVINO_DIR = MODEL_PATH.replace(".pt", "_openvino_model")
 
     try:
-        # 2. Rollback systeem: Maak een backup van het huidige werkende model
+        # 2. Rollback system: create a backup of the current working model
         if os.path.exists(MODEL_PATH):
-            logger.info("Maken van backup van het huidige model...")
+            logger.info("Creating backup of the current model...")
             shutil.copy2(MODEL_PATH, BACKUP_PATH)
 
         # 3. Download het nieuwe model
@@ -203,25 +228,27 @@ def update_model(payload: ModelUpdateRequest, _: str = Depends(verify_token)):
         finally:
             conn.close()
 
-        # 4. Gooi de oude geoptimaliseerde versie weg zodat hij opnieuw compileert
+        # 4. Remove the old optimized version so it will be recompiled
         if os.path.exists(OPENVINO_DIR):
             shutil.rmtree(OPENVINO_DIR)
 
-        logger.info("Nieuw model gedownload en OpenVINO cache gewist. Restarting...")
+        logger.info("New model downloaded. Scheduled restart in 2 seconds...")
 
-        # 5. Sluit de applicatie af. Docker zal hem direct herstarten!
-        os._exit(0)
+        # 5. Schedule the restart as a background task and return a tidy response
+        background_tasks.add_task(restart_server)
+
+        return {"detail": "Model updated. Service will restart in 2 seconds."}
 
     except HTTPException:
         if os.path.exists(BACKUP_PATH):
             shutil.copy2(BACKUP_PATH, MODEL_PATH)
         raise
     except Exception as e:
-        # Zet de backup terug als de download faalt
+        # Restore backup if the download fails
         if os.path.exists(BACKUP_PATH):
             shutil.copy2(BACKUP_PATH, MODEL_PATH)
 
-        logger.error(f"Fout tijdens updaten model. Backup hersteld. Error: {e}")
+        logger.error(f"Error updating model. Backup restored. Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Update failed, backup restored: {e}",
