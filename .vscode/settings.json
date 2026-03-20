@@ -3,5 +3,6 @@
   "python.analysis.diagnosticSeverityOverrides": {
     "reportDeprecated": "warning"
   },
-  "cmake.ignoreCMakeListsMissing": true
+  "cmake.ignoreCMakeListsMissing": true,
+  "python.terminal.useEnvFile": true
 }

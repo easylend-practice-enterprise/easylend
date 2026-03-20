@@ -1,0 +1,22 @@
+# Python & virtuele omgevingen
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# AI Data & Modellen (Blokkeer de hele mappen, niet alleen specifieke extensies!)
+models/
+runs/
+datasets/
+training/
+
+# Zware model bestanden (voor de zekerheid, waar ze ook staan)
+*.pt
+*.onnx
+*.bin
+*.xml
+
+# Git & Config
+.git/
+.env

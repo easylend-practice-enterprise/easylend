@@ -5,11 +5,20 @@ description = "AI Vision Service for EasyLend using YOLO"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "ultralytics>=8,<9", # YOLO26 en alle AI dependencies (PyTorch, OpenCV, etc.)
+    "fastapi>=0.135.1",
+    "opencv-python-headless>=4.13.0.92; sys_platform == 'linux'",
+    "opencv-python>=4.13.0.92; sys_platform != 'linux'",
+    "openvino>=2026.0.0",
+    "pillow>=12.1.1",
+    "python-multipart>=0.0.22",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "ultralytics>=8,<9",
+    "uvicorn>=0.42.0",
 ]
 
 [dependency-groups]
-dev = ["pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+dev = ["httpx>=0.28.1", "pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -24,3 +33,12 @@ extend-select = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]

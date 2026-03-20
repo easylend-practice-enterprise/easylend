@@ -1,0 +1,12 @@
+name: easylend-vision-local
+
+services:
+  vision-api:
+    build: .
+    container_name: easylend_vision_local
+    ports:
+      - "8001:8000"
+    environment:
+      - VISION_API_KEY=local-dev-kiosk-key-123
+      - SKIP_MODEL_LOADING=1
+    restart: unless-stopped

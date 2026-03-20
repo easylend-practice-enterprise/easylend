@@ -17,6 +17,8 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - ENVIRONMENT=prod
+      - VISION_BOX_API_KEY=${VISION_BOX_API_KEY}
+      - SIMULATION_API_KEY=${SIMULATION_API_KEY}
     networks:
       - backend-net
     labels:
