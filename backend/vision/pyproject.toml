@@ -41,3 +41,7 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[tool.uv]
+# Forceer Ultralytics om headless te gebruiken i.p.v. de GUI versie
+override-dependencies = ["opencv-python>=4.13.0.92; sys_platform == 'linux'"]
