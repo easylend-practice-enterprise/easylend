@@ -196,3 +196,27 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Vision AI service is unavailable."
+
+
+def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overrides):
+    class _MockInvalidJsonResponse(_MockResponse):
+        def json(self):
+            raise ValueError("Invalid JSON")
+
+    def _async_client_factory(*, timeout: float):
+        return _MockAsyncClient(
+            timeout=timeout,
+            response=_MockInvalidJsonResponse(200, {}),
+        )
+
+    monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
+
+    with client_with_overrides(None) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Vision AI service returned invalid JSON."

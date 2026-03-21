@@ -23,8 +23,6 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    VISION_BOX_API_KEY: str
-    SIMULATION_API_KEY: str
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":

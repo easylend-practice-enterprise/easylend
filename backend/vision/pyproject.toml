@@ -29,6 +29,8 @@ extend-select = [
     "S",
     "I",
     "UP",
+    "E",
+    "F",
 ] # datetimez, flake8-bandit (security), isort, pyupgrade
 
 [tool.ruff.lint.per-file-ignores]

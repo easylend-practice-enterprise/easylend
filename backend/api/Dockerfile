@@ -28,6 +28,13 @@ RUN uv sync --locked
 # Activate the virtual environment automatically for all subsequent commands
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Create a non-root user and change ownership of the app directory
+RUN addgroup --system appgroup && adduser --system --group appuser
+RUN chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
+
 EXPOSE 8000
 
 # Run migrations first, then start uvicorn when migrations succeed
