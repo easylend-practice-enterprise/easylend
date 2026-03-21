@@ -16,13 +16,15 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
     )
 
-    # Use the constant here
     JWT_SECRET_KEY: str = _DUMMY_SECRET
+    VISION_SERVICE_URL: str = "http://localhost:8001"
     VISION_BOX_API_KEY: str = _DUMMY_SECRET
     SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    VISION_BOX_API_KEY: str
+    SIMULATION_API_KEY: str
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":
