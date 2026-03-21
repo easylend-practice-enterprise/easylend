@@ -32,6 +32,13 @@ RUN uv sync --locked
 # Activeer de virtuele omgeving automatisch voor alle volgende commando's
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Create a non-root user and change ownership of the app directory
+RUN addgroup --system appgroup && adduser --system --group appuser
+RUN chown -R appuser:appgroup /app
+
+# Switch to the non-root user
+USER appuser
+
 EXPOSE 8000
 
 # Start de applicatie (geen Alembic nodig hier, het is pure AI)
