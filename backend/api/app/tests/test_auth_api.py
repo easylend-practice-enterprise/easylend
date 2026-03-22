@@ -11,9 +11,11 @@ def test_refresh_endpoint_is_single_use(monkeypatch, build_user, client_with_ove
     valid_refresh_tokens: set[tuple[str, str]] = set()
 
     async def _mock_store_refresh_token(
-        _user_id: str, _jti: str, _expires_in_seconds: int
+        user_id: str, jti: str, expires_in_seconds: int
     ):
-        valid_refresh_tokens.add((_user_id, _jti))
+        # Keep signature compatible with production call; mark unused arg to satisfy linter
+        _ = expires_in_seconds
+        valid_refresh_tokens.add((user_id, jti))
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:
         key = (user_id, jti)
@@ -55,9 +57,10 @@ def test_logout_revokes_refresh_token(monkeypatch, build_user, client_with_overr
     valid_refresh_tokens: set[tuple[str, str]] = set()
 
     async def _mock_store_refresh_token(
-        _user_id: str, _jti: str, _expires_in_seconds: int
+        user_id: str, jti: str, expires_in_seconds: int
     ):
-        valid_refresh_tokens.add((_user_id, _jti))
+        _ = expires_in_seconds
+        valid_refresh_tokens.add((user_id, jti))
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:
         key = (user_id, jti)
@@ -98,8 +101,11 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
     monkeypatch, build_user, client_with_overrides
 ):
     async def _mock_store_refresh_token(
-        _user_id: str, _jti: str, _expires_in_seconds: int
+        user_id: str, jti: str, expires_in_seconds: int
     ):
+        _ = user_id
+        _ = jti
+        _ = expires_in_seconds
         return None
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:  # noqa: ARG001
@@ -158,8 +164,11 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     monkeypatch, build_user, client_with_overrides
 ):
     async def _mock_store_refresh_token(
-        _user_id: str, _jti: str, _expires_in_seconds: int
+        user_id: str, jti: str, expires_in_seconds: int
     ):
+        _ = user_id
+        _ = jti
+        _ = expires_in_seconds
         raise RedisError("redis down")
 
     monkeypatch.setattr(
