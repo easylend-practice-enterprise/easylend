@@ -9,6 +9,7 @@ import ssl
 import time
 from contextlib import asynccontextmanager
 from io import BytesIO
+from typing import Annotated
 from urllib.parse import urlparse
 
 from fastapi import (
@@ -135,7 +136,9 @@ class ModelUpdateRequest(BaseModel):
 
 
 # Security dependency
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+def verify_token(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(security)],
+) -> str:
     """Verify the Bearer token provided in the Authorization header."""
     expected_token = os.getenv("VISION_API_KEY")
     if not expected_token:
@@ -171,10 +174,10 @@ async def health_check():
 
 
 # Prediction endpoint
-@app.post("/predict", response_model=PredictionResponse, tags=["Predictions"])
+@app.post("/predict", tags=["Predictions"])
 def predict(
-    file: UploadFile = File(...),
-    token: str = Depends(verify_token),  # noqa: ARG001
+    file: Annotated[UploadFile, File()],
+    token: Annotated[str, Depends(verify_token)],  # noqa: ARG001
 ) -> PredictionResponse:
     """Run object detection on the provided image."""
     # Validate content type is an allowed image type and size limits.
@@ -241,12 +244,12 @@ def predict(
             detections=detections,
         )
 
-    except Exception:
+    except Exception as exc:
         logger.exception("Error during prediction")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
-        )
+        ) from exc
 
 
 def _download_via_ip(
@@ -280,7 +283,7 @@ def _download_via_ip(
 def update_model(
     payload: ModelUpdateRequest,
     background_tasks: BackgroundTasks,
-    _: str = Depends(verify_token),
+    _: Annotated[str, Depends(verify_token)],
 ):
     """Update the AI model from a secure HTTPS URL."""
     if not is_safe_url(payload.download_url):
@@ -392,11 +395,11 @@ def update_model(
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
         raise
-    except Exception:
+    except Exception as exc:
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
         logger.exception("Error updating model. Backup restored.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Update failed, backup restored",
-        )
+        ) from exc

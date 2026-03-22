@@ -16,6 +16,9 @@ from main import app
 
 class DummyModel:
     def predict(self, source, imgsz=640):
+        # Refer to arguments to avoid lint warnings about unused parameters
+        _ = source
+        _ = imgsz
         # Return an empty results list so the prediction path runs without errors
         return []
 

@@ -208,7 +208,7 @@ if __name__ == "__main__":
             print("No models discovered to select from.")
             sys.exit(1)
         print("Select model:")
-        for i, (display, cand) in enumerate(available):
+        for i, (display, _cand) in enumerate(available):
             print(f"[{i}] {display}")
         while True:
             sel = input("Enter index or partial name (q to quit): ")
