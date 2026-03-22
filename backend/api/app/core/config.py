@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     JWT_SECRET_KEY: str = _DUMMY_SECRET
     VISION_SERVICE_URL: str = "http://localhost:8001"
+    VISION_API_KEY: str = _DUMMY_SECRET
     VISION_BOX_API_KEY: str = _DUMMY_SECRET
     SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"

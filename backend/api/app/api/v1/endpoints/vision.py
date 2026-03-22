@@ -2,6 +2,7 @@ import logging
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import ValidationError
 
 from app.api.deps import verify_vision_box_token
 from app.core.config import settings
@@ -10,14 +11,15 @@ from app.schemas.vision import VisionAnalyzeResponse
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
+
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
 async def analyze_image(
     _: None = Depends(verify_vision_box_token),
     file: UploadFile = File(...),
 ) -> VisionAnalyzeResponse:
-    image_data = await file.read()
-
+    # 1. Valideer content type VOORDAT we in het geheugen inlezen
     if not (file.content_type or "").startswith("image/"):
         logger.warning(
             "Rejected non-image upload in vision analyze endpoint.",
@@ -31,11 +33,20 @@ async def analyze_image(
             detail="Uploaded file must be an image.",
         )
 
+    # 2. Lees in met een harde limiet (memory protection)
+    image_data = await file.read(MAX_UPLOAD_SIZE + 1)
+    if len(image_data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
+        )
+
+    # 3. Request naar de AI Microservice (VM2) met de juiste VISION_API_KEY
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{settings.VISION_SERVICE_URL.rstrip('/')}/predict",
-                headers={"Authorization": f"Bearer {settings.VISION_BOX_API_KEY}"},
+                headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
                 files={
                     "file": (
                         file.filename or "upload",
@@ -89,16 +100,12 @@ async def analyze_image(
 
     try:
         payload = response.json()
-    except ValueError as exc:
-        logger.error("Vision AI returned invalid JSON.")
+        validated_data = VisionAnalyzeResponse(**payload)
+    except (ValueError, ValidationError) as exc:
+        logger.error("Vision AI returned invalid JSON or unexpected schema.")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Vision AI service returned invalid JSON.",
+            detail="Vision AI service returned invalid data format.",
         ) from exc
 
-    logger.info(
-        "Vision analyze request proxied successfully.",
-        extra={"upload_name": file.filename, "upstream_status": response.status_code},
-    )
-
-    return payload
+    return validated_data

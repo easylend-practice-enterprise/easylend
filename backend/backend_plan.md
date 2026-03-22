@@ -2,8 +2,6 @@
 
 > Order based on technical dependencies. Auth must be fully complete before CRUD, CRUD before business logic.
 
----
-
 ## Step 1: Password Hashing (complete)
 
 **Ticket:** ELP-23 · **Status:** ✅ Done
@@ -25,8 +23,6 @@
 >
 > Run in local test environment: `uv run python scripts/seed.py`
 
----
-
 ## Step 2: Finish Auth Research
 
 **Ticket:** ELP-82 · **Status:** ✅ Done
@@ -37,8 +33,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 - [x] Access token TTL (e.g. 15 min)
 - [x] Refresh token TTL (e.g. 7 days)
 - [x] Refresh token storage: Redis key structure (`refresh:{user_id}:{jti}`, multi-session, value = `"active"`)
-
----
 
 ## Step 3: Define JWT Model
 
@@ -58,8 +52,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 - [x] Implemented in `backend/api/app/schemas/token.py`
 
----
-
 ## Step 4: Create JWT Tokens
 
 **Ticket:** ELP-22 · **Status:** ✅ Done · *Requires: step 3*
@@ -76,8 +68,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 > **Test with seed data (step 1)**: no User CRUD needed to test this.
 
----
-
 ## Step 5: Refresh Token Mechanism
 
 **Ticket:** ELP-24 · **Status:** ✅ Done · *Requires: step 4*
@@ -88,8 +78,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 - [x] Endpoint + rotation implemented in `backend/api/app/api/v1/endpoints/auth.py`
 - [x] Single-use and logout revocation tested in `backend/api/app/tests/test_auth_api.py`
-
----
 
 ## Step 6: Redis Integration (refresh tokens)
 
@@ -108,8 +96,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 - [x] Implemented in `backend/api/app/db/redis.py` and used in auth endpoints
 - [x] Redis failure paths (`503`) tested in `backend/api/app/tests/test_auth_api.py`
 
----
-
 ## Step 7: CRUD: Users & Permissions
 
 **Ticket:** ELP-27 · **Status:** ✅ Done · *Requires: step 4 (auth middleware)*
@@ -126,8 +112,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 > **NFC tag registration (chicken-and-egg fix):** The Login Flow only works when `nfc_tag_id` is linked to a user. Added:
 >
 > - [x] `PATCH /api/v1/users/{id}/nfc  { nfc_tag_id }` (admin only)
-
----
 
 ## Step 8: CRUD: Kiosks --> Categories --> Lockers --> Assets
 
@@ -173,8 +157,6 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
 - [ ] Remaining gap in this step: `GET /api/v1/catalog`
 
----
-
 ## Step 9: M2M Authentication (Static Device Tokens)
 
 **Ticket:** ELP-90 · **Status:** 📋 In Progress · *Requires: step 4*
@@ -193,8 +175,6 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 - [x] Config keys present in `backend/api/app/core/config.py` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`)
 - [x] Dependency behavior tested in `backend/api/app/tests/test_deps.py`
 - [ ] Remaining gap: apply these dependencies to real hardware endpoints (e.g. `POST /api/v1/vision/analyze`)
-
----
 
 ## Step 10a: Transaction CRUD (checkout / return)
 
@@ -215,8 +195,6 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 - [x] Implemented in `backend/api/app/api/v1/endpoints/loans.py`
 - [x] API tests available in `backend/api/app/tests/test_loans_api.py` (including lock-contention and authorization paths)
-
----
 
 ## Step 10b: Hardware & AI Integration
 
@@ -252,8 +230,6 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
 - Store in `ai_evaluations` table including `photo_url` and `model_version`
 
----
-
 ## Step 10c: Admin Quarantine Dashboard
 
 **Status:** ❌ Open · *Requires: step 10b*
@@ -264,8 +240,6 @@ Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in
 - `GET /api/v1/admin/evaluations/{evaluation_id}` (retrieves the AI report and `photo_url`)
 - `PATCH /api/v1/admin/evaluations/{id}` (Administrator approves: status to `DISPUTED`, or rejects: status to `COMPLETED`)
 
----
-
 ## Step 11: Input Sanitisation
 
 **Ticket:** ELP-30 · **Status:** ❌ Open · *Can be executed in parallel with step 10+*
@@ -273,8 +247,6 @@ Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in
 - Pydantic validators on all request bodies
 - Max-length checks, regex on emails / IDs
 - SQL injection not applicable (SQLAlchemy ORM): watch for XSS in string fields
-
----
 
 ## Step 12: Rate Limiting & Abuse Prevention
 
@@ -293,8 +265,6 @@ Rate limiting happens in 3 strategic layers (hybrid approach):
 
 > Current state: brute-force lockout at account level is already present in `POST /api/v1/auth/pin`; explicit rate limiting (IP/token) is still open.
 
----
-
 ## Testing Milestones (when to write tests)
 
 Write tests directly in the same PR as the feature. Use the minimum test set per phase below.
@@ -309,23 +279,21 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 2. **After steps 7-8 (CRUD + RBAC)**
 
-- [x] Authorisation tests per role (admin/staff/kiosk)
-- [x] Happy-path + forbidden-path per endpoint
-- [ ] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
+   - [x] Authorisation tests per role (admin/staff/kiosk)
+   - [x] Happy-path + forbidden-path per endpoint
+   - [ ] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
 
-1. **After steps 10a-10c (transactions + hardware + AI)**
+3. **After steps 10a-10c (transactions + hardware + AI)**
 
-- [x] Concurrency test for checkout (no double assignment)
-- [ ] Idempotency test for checkout/return
-- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+   - [x] Concurrency test for checkout (no double assignment)
+   - [ ] Idempotency test for checkout/return
+   - [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
-1. **After steps 11-13 (sanitisation/rate-limit/audit)**
+4. **After steps 11-13 (sanitisation/rate-limit/audit)**
 
    - Input validation tests (boundaries/regex)
    - Rate-limit tests (IP and token based)
    - Audit-chain integrity test
-
----
 
 ## Step 13: Hash-Chaining Audit Logs
 
@@ -336,19 +304,13 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 - Tamper-detection: verify the chain is intact on retrieval
 - Endpoint: `GET /api/v1/audit` (admin only)
 
----
-
 ## Step 14: Overdue Worker
 
 - Overdue Worker: Implement a background task (APScheduler or Celery) that runs every hour. It must execute: `UPDATE loans SET loan_status = 'OVERDUE' WHERE loan_status = 'ACTIVE' AND due_date < NOW();` and automatically log this in the audit_logs.
 
----
-
 ## Scope Note (PXE)
 
 - PXE functionality is moved to V2 (Post-MVP) and is out of the current implementation scope.
-
----
 
 ## Overview
 

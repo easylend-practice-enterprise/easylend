@@ -29,7 +29,7 @@ RUN uv sync --locked
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create a non-root user and change ownership of the app directory
-RUN addgroup --system appgroup && adduser --system --group appuser
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 RUN chown -R appuser:appgroup /app
 
 # Switch to the non-root user
