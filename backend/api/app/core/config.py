@@ -16,8 +16,9 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
     )
 
-    # Use the constant here
     JWT_SECRET_KEY: str = _DUMMY_SECRET
+    VISION_SERVICE_URL: str = "http://localhost:8001"
+    VISION_API_KEY: str = _DUMMY_SECRET
     VISION_BOX_API_KEY: str = _DUMMY_SECRET
     SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
@@ -47,6 +48,14 @@ class Settings(BaseSettings):
             ):
                 raise ValueError(
                     "CRITICAL: JWT_SECRET_KEY is missing, insecure, or too short in a non-dev environment!"
+                )
+            if (
+                not self.VISION_API_KEY
+                or self.VISION_API_KEY == _DUMMY_SECRET
+                or len(self.VISION_API_KEY) < 16
+            ):
+                raise ValueError(
+                    "CRITICAL: VISION_API_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
             if (
                 not self.VISION_BOX_API_KEY

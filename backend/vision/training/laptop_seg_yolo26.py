@@ -6,7 +6,7 @@ VISION_ROOT = Path(__file__).parent.parent.resolve()
 
 
 def main():
-    model = YOLO("yolov8m-seg.pt")  # Base segmentation checkpoint for YOLO26 config.
+    model = YOLO("yolo26m-seg.pt")  # Base segmentation checkpoint for YOLO26 config.
 
     model.train(
         data=str(

@@ -28,6 +28,17 @@ RUN uv sync --locked
 # Activate the virtual environment automatically for all subsequent commands
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Create a non-root user with a writable home directory
+RUN addgroup --system appgroup && adduser --system --home /home/appuser --ingroup appgroup appuser
+RUN mkdir -p /home/appuser
+RUN chown -R appuser:appgroup /app /home/appuser
+
+# Set HOME for libraries/tools that rely on user-scoped cache/config paths
+ENV HOME=/home/appuser
+
+# Switch to the non-root user
+USER appuser
+
 EXPOSE 8000
 
 # Run migrations first, then start uvicorn when migrations succeed

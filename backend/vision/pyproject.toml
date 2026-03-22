@@ -29,7 +29,10 @@ extend-select = [
     "S",
     "I",
     "UP",
-] # datetimez, flake8-bandit (security), isort, pyupgrade
+    "E",
+    "F",
+] # datetimez, flake8-bandit (security), isort, pyupgrade, pycodestyle, pyflakes
+ignore = ["E501"] # Negeer zeurende 'Line too long' waarschuwingen
 
 [tool.ruff.lint.per-file-ignores]
 "**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden

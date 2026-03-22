@@ -12,7 +12,7 @@ The Vision Box (Raspberry Pi 4) forwards a photo to the Main API, which proxies 
 
 | Property | Value |
 | --- | --- |
-| Model | YOLO26 Medium (`yolov8m.pt` base checkpoint) |
+| Model | YOLO26 Medium (`yolo26m.pt`) |
 | Framework | [Ultralytics](https://docs.ultralytics.com/) |
 | Training hardware | RTX 3090 (CUDA) |
 | Inference | Proxmox VM (CPU-only) |

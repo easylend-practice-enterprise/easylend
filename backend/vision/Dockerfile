@@ -32,6 +32,17 @@ RUN uv sync --locked
 # Activeer de virtuele omgeving automatisch voor alle volgende commando's
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Create a non-root user with a writable home directory for runtime caches
+RUN addgroup --system appgroup && adduser --system --home /home/appuser --ingroup appgroup appuser
+RUN mkdir -p /home/appuser
+RUN chown -R appuser:appgroup /app /home/appuser
+
+# Set HOME for libraries that write under ~/.cache or ~/.config
+ENV HOME=/home/appuser
+
+# Switch to the non-root user
+USER appuser
+
 EXPOSE 8000
 
 # Start de applicatie (geen Alembic nodig hier, het is pure AI)
