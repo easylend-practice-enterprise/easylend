@@ -88,6 +88,16 @@ async def analyze_image(
             detail="Vision AI service is temporarily unavailable.",
         )
 
+    if response.status_code == status.HTTP_400_BAD_REQUEST:
+        logger.warning(
+            "Vision AI rejected uploaded image as invalid/unsupported.",
+            extra={"upstream_status": response.status_code},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded image is invalid or unsupported.",
+        )
+
     if response.status_code != status.HTTP_200_OK:
         logger.error(
             "Vision AI returned unexpected non-200 response.",

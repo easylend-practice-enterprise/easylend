@@ -156,6 +156,26 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
     assert response.json()["detail"] == "Vision AI service is temporarily unavailable."
 
 
+def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overrides):
+    def _async_client_factory(*, timeout: float):
+        return _MockAsyncClient(
+            timeout=timeout,
+            response=_MockResponse(400, {"detail": "invalid image"}),
+        )
+
+    monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
+
+    with client_with_overrides(None) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Uploaded image is invalid or unsupported."
+
+
 def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
     monkeypatch, client_with_overrides
 ):
