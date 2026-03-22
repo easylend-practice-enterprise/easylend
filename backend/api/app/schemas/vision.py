@@ -10,3 +10,4 @@ class VisionAnalyzeResponse(BaseModel):
     status: str
     count: int
     detections: list[DetectionItem]
+    photo_url: str

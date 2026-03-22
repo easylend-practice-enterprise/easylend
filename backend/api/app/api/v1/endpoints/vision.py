@@ -1,4 +1,6 @@
 import logging
+import uuid
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -12,6 +14,8 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -33,13 +37,25 @@ async def analyze_image(
             detail="Uploaded file must be an image.",
         )
 
-    # 2. Lees in met een harde limiet (memory protection)
+    # 2a. Lees in met een harde limiet (memory protection)
     image_data = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(image_data) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
+
+    # 2b. Genereer een veilige bestandsnaam en sla lokaal op
+    file_ext = (
+        file.filename.split(".")[-1]
+        if file.filename and "." in file.filename
+        else "jpg"
+    )
+    unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
+    file_path = UPLOAD_DIR / unique_filename
+
+    file_path.write_bytes(image_data)
+    photo_url = f"/api/v1/images/{unique_filename}"
 
     # 3. Request naar de AI Microservice (VM2) met de juiste VISION_API_KEY
     try:
@@ -110,6 +126,7 @@ async def analyze_image(
 
     try:
         payload = response.json()
+        payload["photo_url"] = photo_url
         validated_data = VisionAnalyzeResponse(**payload)
     except (ValueError, ValidationError) as exc:
         logger.error("Vision AI returned invalid JSON or unexpected schema.")

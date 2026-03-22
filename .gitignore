@@ -65,3 +65,6 @@ __pycache__/
 datasets/
 runs/
 *_openvino_model/
+
+# Runtime uploads
+/backend/api/uploads/
