@@ -159,7 +159,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
-**Ticket:** ELP-90 · **Status:** 📋 In Progress · *Requires: step 4*
+**Ticket:** ELP-90 · **Status:** ✅ Done · *Requires: step 4*
 
 > ⚠️ **Moved up.** The Vision Box needs a Static Device Token to call `POST /api/v1/vision/analyze` (Step 10b). Must be ready before the hardware integration.
 
@@ -174,7 +174,7 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 - [x] Device-token dependencies implemented in `backend/api/app/api/deps.py` (`verify_vision_box_token`, `verify_simulation_token`)
 - [x] Config keys present in `backend/api/app/core/config.py` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`)
 - [x] Dependency behavior tested in `backend/api/app/tests/test_deps.py`
-- [ ] Remaining gap: apply these dependencies to real hardware endpoints (e.g. `POST /api/v1/vision/analyze`)
+- [x] Applied to real hardware endpoints (`POST /api/v1/vision/analyze`)
 
 ## Step 10a: Transaction CRUD (checkout / return)
 
@@ -198,7 +198,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 ## Step 10b: Hardware & AI Integration
 
-**Status:** ❌ Open · *Requires: step 9 (Static Device Tokens) + step 10a*
+**Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a*
 
 By far the most complex part. Couples the transaction logic with physical hardware.
 
@@ -221,9 +221,8 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 
 **AI Evaluation endpoint (for Vision Box):**
 
-- `POST /api/v1/vision/analyze`: receives photo + loan_id from Vision Box (M2M auth)
-- Save photo in `/app/uploads` --> generate `photo_url`
-- Forward photo to YOLO26 AI Service (VM2)
+- [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 AI safely (ELP-94 completed).
+- [ ] Save photo in `/app/uploads` --> generate `photo_url`
 - Process result:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
@@ -325,9 +324,9 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
               --> [8] Kiosks --> Categories --> Lockers --> Assets CRUD (catalog pending)
                 --> [10a] Transaction CRUD (idempotency + timeout worker + audit pending)
                   --> [10b] Hardware & AI  <-- decision: Local Docker Volume
-                          WebSockets + fallback + /vision/analyze
+                          WebSockets + fallback + /vision/analyze (PROXY DONE ✅)
                     --> [10c] Admin Quarantine Dashboard
-        --> [9] M2M Static Device Tokens (dependency + tests done; endpoint wiring pending)
+        --> [9] M2M Static Device Tokens (✅ DONE)
 [11] Input sanitisation (parallel, from step 10+)
 [12] Rate limiting (requires Redis: step 6)
 [13] Hash-chaining audit logs (requires step 10a)

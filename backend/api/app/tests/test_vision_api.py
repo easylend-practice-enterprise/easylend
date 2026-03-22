@@ -66,19 +66,22 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides):
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
     monkeypatch.setattr(vision_endpoints.settings, "VISION_SERVICE_URL", "http://vm2")
-    monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "vision-key")
+    monkeypatch.setattr(
+        vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
+    )
+    monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
 
     with client_with_overrides(None) as client:
         response = client.post(
             "/api/v1/vision/analyze",
-            headers={"X-Device-Token": "vision-key"},
+            headers={"X-Device-Token": "device-key"},
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
     assert response.status_code == 200
     assert response.json() == expected_payload
     assert captured["url"] == "http://vm2/predict"
-    assert captured["headers"] == {"Authorization": "Bearer vision-key"}
+    assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
     assert captured["files"]["file"] == ("sample.jpg", b"image-bytes", "image/jpeg")
 
 
@@ -219,4 +222,6 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
         )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "Vision AI service returned invalid JSON."
+    assert (
+        response.json()["detail"] == "Vision AI service returned invalid data format."
+    )

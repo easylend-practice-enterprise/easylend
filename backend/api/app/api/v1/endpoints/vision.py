@@ -8,7 +8,7 @@ from app.api.deps import verify_vision_box_token
 from app.core.config import settings
 from app.schemas.vision import VisionAnalyzeResponse
 
-router = APIRouter()
+router = APIRouter(prefix="/vision", tags=["vision"])
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
