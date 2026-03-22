@@ -1,3 +1,4 @@
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -36,7 +37,6 @@ async def _get_user_with_role_or_404(db: AsyncSession, user_id: UUID) -> User:
 
 @router.get(
     "",
-    response_model=UserListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -44,19 +44,23 @@ async def _get_user_with_role_or_404(db: AsyncSession, user_id: UUID) -> User:
     },
 )
 async def list_users(
-    skip: int = Query(
-        0,
-        ge=0,
-        description="Number of users to skip before returning results (pagination offset).",
-    ),
-    limit: int = Query(
-        100,
-        ge=1,
-        le=1000,
-        description="Maximum number of users to return in a single response (pagination page size).",
-    ),
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
+    skip: Annotated[
+        int,
+        Query(
+            ge=0,
+            description="Number of users to skip before returning results (pagination offset).",
+        ),
+    ] = 0,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=1000,
+            description="Maximum number of users to return in a single response (pagination page size).",
+        ),
+    ] = 100,
 ) -> UserListResponse:
     """
     List users with pagination.
@@ -86,7 +90,7 @@ async def list_users(
         401: {"description": "Not authenticated"},
     },
 )
-async def get_me(current_user: User = Depends(get_current_user)) -> User:
+async def get_me(current_user: Annotated[User, Depends(get_current_user)]) -> User:
     """
     Return the profile of the currently authenticated user.
 
@@ -107,8 +111,8 @@ async def get_me(current_user: User = Depends(get_current_user)) -> User:
 )
 async def get_user_by_id(
     user_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> User:
     """
     Return a user by unique identifier.
@@ -130,8 +134,8 @@ async def get_user_by_id(
 )
 async def create_user(
     payload: UserCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> User:
     """
     Create a new user account.
@@ -183,7 +187,7 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email address or NFC tag already exists.",
-        )
+        ) from None
 
     return await _get_user_with_role_or_404(db, user.user_id)
 
@@ -202,8 +206,8 @@ async def create_user(
 async def update_user(
     user_id: UUID,
     payload: UserUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> User:
     """
     Partially update an existing user.
@@ -277,7 +281,7 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email address or NFC tag already exists.",
-        )
+        ) from None
 
     return await _get_user_with_role_or_404(db, user_id)
 
@@ -296,8 +300,8 @@ async def update_user(
 async def update_user_nfc(
     user_id: UUID,
     payload: UserNfcUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> User:
     """
     Update the NFC tag linked to a user account.
@@ -325,5 +329,5 @@ async def update_user_nfc(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="NFC tag is already linked to another user.",
-        )
+        ) from None
     return await _get_user_with_role_or_404(db, user_id)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -13,7 +14,7 @@ UPLOAD_DIR = Path("uploads")
 @router.get("/{filename}")
 async def get_image(
     filename: str,
-    _: User = Depends(get_current_user),
+    _: Annotated[User, Depends(get_current_user)],
 ):
     """Serve an uploaded image by filename."""
     file_path = (UPLOAD_DIR / filename).resolve()

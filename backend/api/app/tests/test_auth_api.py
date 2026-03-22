@@ -11,9 +11,9 @@ def test_refresh_endpoint_is_single_use(monkeypatch, build_user, client_with_ove
     valid_refresh_tokens: set[tuple[str, str]] = set()
 
     async def _mock_store_refresh_token(
-        user_id: str, jti: str, expires_in_seconds: int
-    ):  # noqa: ARG001
-        valid_refresh_tokens.add((user_id, jti))
+        _user_id: str, _jti: str, _expires_in_seconds: int
+    ):
+        valid_refresh_tokens.add((_user_id, _jti))
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:
         key = (user_id, jti)
@@ -55,9 +55,9 @@ def test_logout_revokes_refresh_token(monkeypatch, build_user, client_with_overr
     valid_refresh_tokens: set[tuple[str, str]] = set()
 
     async def _mock_store_refresh_token(
-        user_id: str, jti: str, expires_in_seconds: int
-    ):  # noqa: ARG001
-        valid_refresh_tokens.add((user_id, jti))
+        _user_id: str, _jti: str, _expires_in_seconds: int
+    ):
+        valid_refresh_tokens.add((_user_id, _jti))
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:
         key = (user_id, jti)
@@ -98,8 +98,8 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
     monkeypatch, build_user, client_with_overrides
 ):
     async def _mock_store_refresh_token(
-        user_id: str, jti: str, expires_in_seconds: int
-    ):  # noqa: ARG001
+        _user_id: str, _jti: str, _expires_in_seconds: int
+    ):
         return None
 
     async def _mock_revoke_refresh_token(user_id: str, jti: str) -> bool:  # noqa: ARG001
@@ -158,8 +158,8 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     monkeypatch, build_user, client_with_overrides
 ):
     async def _mock_store_refresh_token(
-        user_id: str, jti: str, expires_in_seconds: int
-    ):  # noqa: ARG001
+        _user_id: str, _jti: str, _expires_in_seconds: int
+    ):
         raise RedisError("redis down")
 
     monkeypatch.setattr(

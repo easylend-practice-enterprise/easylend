@@ -99,7 +99,7 @@ async def seed_database():
                     (2, LockerStatus.AVAILABLE),
                     (3, LockerStatus.AVAILABLE),
                 ]:
-                    locker, created = await get_or_create(
+                    _locker, created = await get_or_create(
                         session,
                         Locker,
                         defaults={"locker_status": status},
@@ -166,7 +166,7 @@ async def seed_database():
                         "Category or Locker is missing. Cannot create the seed asset."
                     )
 
-                asset, created = await get_or_create(
+                _asset, created = await get_or_create(
                     session,
                     Asset,
                     defaults={

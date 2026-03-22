@@ -12,7 +12,7 @@ from app.db.redis import (
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     # Startup
     await check_redis_connection()
     yield

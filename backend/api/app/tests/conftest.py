@@ -54,7 +54,7 @@ class _QueuedSession:
         self.commit_calls: int = 0
         self.rollback_calls: int = 0
 
-    async def execute(self, _query):  # noqa: ARG002
+    async def execute(self, _query):
         value = self._queue.pop(0) if self._queue else None
         return _FakeResult(value)
 
@@ -70,8 +70,8 @@ class _QueuedSession:
             if hasattr(obj, pk_field) and getattr(obj, pk_field) is None:
                 setattr(obj, pk_field, uuid.uuid4())
         # Simulate the database: set default values for Assets
-        if hasattr(obj, "is_deleted") and getattr(obj, "is_deleted") is None:
-            setattr(obj, "is_deleted", False)
+        if hasattr(obj, "is_deleted") and obj.is_deleted is None:
+            obj.is_deleted = False
 
     def add(self, obj):
         self.added.append(obj)

@@ -16,6 +16,7 @@ Auth rules:
     elevated privileges.
 """
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -77,17 +78,16 @@ async def _get_category_or_404(db: AsyncSession, category_id: UUID) -> Category:
 
 @categories_router.get(
     "",
-    response_model=CategoryListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
     },
 )
 async def list_categories(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
     skip: int = _PAGINATION_SKIP,
     limit: int = _PAGINATION_LIMIT,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
 ) -> CategoryListResponse:
     """
     List all asset categories with pagination.
@@ -108,7 +108,6 @@ async def list_categories(
 
 @categories_router.post(
     "",
-    response_model=CategoryResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"description": "Category name already exists"},
@@ -118,8 +117,8 @@ async def list_categories(
 )
 async def create_category(
     payload: CategoryCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> CategoryResponse:
     """
     Create a new asset category.
@@ -136,13 +135,12 @@ async def create_category(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category name already exists.",
-        )
+        ) from None
     return CategoryResponse.model_validate(category)
 
 
 @categories_router.patch(
     "/{category_id}",
-    response_model=CategoryResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {"description": "Category name already exists"},
@@ -154,8 +152,8 @@ async def create_category(
 async def update_category(
     category_id: UUID,
     payload: CategoryUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> CategoryResponse:
     """
     Update an existing category.
@@ -177,7 +175,7 @@ async def update_category(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category name already exists.",
-        )
+        ) from None
     return CategoryResponse.model_validate(category)
 
 
@@ -201,7 +199,6 @@ async def _get_kiosk_or_404(db: AsyncSession, kiosk_id: UUID) -> Kiosk:
 
 @kiosks_router.get(
     "",
-    response_model=KioskListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -209,10 +206,10 @@ async def _get_kiosk_or_404(db: AsyncSession, kiosk_id: UUID) -> Kiosk:
     },
 )
 async def list_kiosks(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
     skip: int = _PAGINATION_SKIP,
     limit: int = _PAGINATION_LIMIT,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
 ) -> KioskListResponse:
     """
     List all registered kiosk devices with pagination.
@@ -232,7 +229,6 @@ async def list_kiosks(
 
 @kiosks_router.post(
     "",
-    response_model=KioskResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         401: {"description": "Not authenticated"},
@@ -241,8 +237,8 @@ async def list_kiosks(
 )
 async def create_kiosk(
     payload: KioskCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> KioskResponse:
     """
     Register a new kiosk device.
@@ -263,7 +259,6 @@ async def create_kiosk(
 
 @kiosks_router.patch(
     "/{kiosk_id}/status",
-    response_model=KioskResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -274,8 +269,8 @@ async def create_kiosk(
 async def update_kiosk_status(
     kiosk_id: UUID,
     payload: KioskStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> KioskResponse:
     """
     Update a kiosk's operational status.
@@ -314,7 +309,6 @@ async def _get_locker_or_404(db: AsyncSession, locker_id: UUID) -> Locker:
 
 @lockers_router.get(
     "",
-    response_model=LockerListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -322,10 +316,10 @@ async def _get_locker_or_404(db: AsyncSession, locker_id: UUID) -> Locker:
     },
 )
 async def list_lockers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
     skip: int = _PAGINATION_SKIP,
     limit: int = _PAGINATION_LIMIT,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
 ) -> LockerListResponse:
     """
     List all lockers across all kiosks with pagination.
@@ -348,7 +342,6 @@ async def list_lockers(
 
 @lockers_router.get(
     "/{locker_id}",
-    response_model=LockerResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -358,8 +351,8 @@ async def list_lockers(
 )
 async def get_locker_by_id(
     locker_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> LockerResponse:
     """
     Retrieve a single locker by its unique identifier.
@@ -372,7 +365,6 @@ async def get_locker_by_id(
 
 @lockers_router.post(
     "",
-    response_model=LockerResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"description": "Invalid kiosk_id or duplicate logical_number"},
@@ -382,8 +374,8 @@ async def get_locker_by_id(
 )
 async def create_locker(
     payload: LockerCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> LockerResponse:
     """
     Add a new locker to an existing kiosk.
@@ -415,13 +407,12 @@ async def create_locker(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A locker with this logical_number already exists for this kiosk.",
-        )
+        ) from None
     return LockerResponse.model_validate(locker)
 
 
 @lockers_router.patch(
     "/{locker_id}/status",
-    response_model=LockerResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -432,8 +423,8 @@ async def create_locker(
 async def update_locker_status(
     locker_id: UUID,
     payload: LockerStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> LockerResponse:
     """
     Update a locker's operational status.
@@ -476,25 +467,26 @@ async def _get_asset_or_404(db: AsyncSession, asset_id: UUID) -> Asset:
 
 @assets_router.get(
     "",
-    response_model=AssetListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
     },
 )
 async def list_assets(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
     skip: int = _PAGINATION_SKIP,
     limit: int = _PAGINATION_LIMIT,
-    asset_status: AssetStatus | None = Query(
-        None,
-        description=(
-            "Optional filter. Only return assets with this status. "
-            "Possible values: AVAILABLE, BORROWED, RESERVED, "
-            "PENDING_INSPECTION, MAINTENANCE, LOST."
+    asset_status: Annotated[
+        AssetStatus | None,
+        Query(
+            description=(
+                "Optional filter. Only return assets with this status. "
+                "Possible values: AVAILABLE, BORROWED, RESERVED, "
+                "PENDING_INSPECTION, MAINTENANCE, LOST."
+            )
         ),
-    ),
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    ] = None,
 ) -> AssetListResponse:
     """
     List assets with pagination and an optional status filter.
@@ -527,7 +519,6 @@ async def list_assets(
 
 @assets_router.get(
     "/{asset_id}",
-    response_model=AssetResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -536,8 +527,8 @@ async def list_assets(
 )
 async def get_asset_by_id(
     asset_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_user)],
 ) -> AssetResponse:
     """
     Retrieve a single asset by its unique identifier.
@@ -552,7 +543,6 @@ async def get_asset_by_id(
 
 @assets_router.post(
     "",
-    response_model=AssetResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {
@@ -564,8 +554,8 @@ async def get_asset_by_id(
 )
 async def create_asset(
     payload: AssetCreate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> AssetResponse:
     """
     Register a new physical asset in the system.
@@ -612,13 +602,12 @@ async def create_asset(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An asset with this aztec_code already exists.",
-        )
+        ) from None
     return AssetResponse.model_validate(asset)
 
 
 @assets_router.patch(
     "/{asset_id}",
-    response_model=AssetResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {
@@ -632,8 +621,8 @@ async def create_asset(
 async def update_asset(
     asset_id: UUID,
     payload: AssetUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> AssetResponse:
     """
     Update an existing asset.
@@ -686,7 +675,7 @@ async def update_asset(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An asset with this aztec_code already exists.",
-        )
+        ) from None
     return AssetResponse.model_validate(asset)
 
 
@@ -701,8 +690,8 @@ async def update_asset(
 )
 async def soft_delete_asset(
     asset_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> None:
     """
     Soft-delete an asset (sets `is_deleted = True`).

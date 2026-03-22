@@ -13,6 +13,7 @@ Business rules (Step 10a, hardware-free path):
 """
 
 from datetime import UTC, datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -96,17 +97,16 @@ async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
 
 @router.get(
     "",
-    response_model=LoanListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
     },
 )
 async def list_loans(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
     skip: int = _PAGINATION_SKIP,
     limit: int = _PAGINATION_LIMIT,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ) -> LoanListResponse:
     """
     List loans with pagination.
@@ -139,7 +139,6 @@ async def list_loans(
 
 @router.get(
     "/{loan_id}/status",
-    response_model=LoanStatusResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -149,8 +148,8 @@ async def list_loans(
 )
 async def get_loan_status(
     loan_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LoanStatusResponse:
     """
     Retrieve the current status of a single loan.
@@ -178,7 +177,6 @@ async def get_loan_status(
 
 @router.post(
     "/checkout",
-    response_model=LoanResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
@@ -189,8 +187,8 @@ async def get_loan_status(
 )
 async def checkout(
     payload: CheckoutRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LoanResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
@@ -218,7 +216,7 @@ async def checkout(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Asset is currently being processed. Please try again.",
-            )
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="A database error occurred.",
@@ -263,7 +261,7 @@ async def checkout(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Locker is currently being processed. Please try again.",
-            )
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="A database error occurred.",
@@ -307,7 +305,6 @@ async def checkout(
 
 @router.post(
     "/return/initiate",
-    response_model=LoanResponse,
     status_code=status.HTTP_200_OK,
     responses={
         400: {"description": "Loan is not in ACTIVE state"},
@@ -320,8 +317,8 @@ async def checkout(
 )
 async def return_initiate(
     payload: ReturnInitiateRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> LoanResponse:
     """
     Initiate the return process for an active loan.
@@ -369,7 +366,7 @@ async def return_initiate(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A return is already in progress for this loan. Please try again shortly.",
-            )
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="A database error occurred.",

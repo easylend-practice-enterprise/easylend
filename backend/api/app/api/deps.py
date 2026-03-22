@@ -1,5 +1,6 @@
 import secrets
 from datetime import UTC, datetime
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -16,8 +17,8 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
@@ -64,7 +65,7 @@ async def get_current_user(
     return user
 
 
-def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
+def get_current_admin(current_user: Annotated[User, Depends(get_current_user)]) -> User:
     if current_user.role is None or current_user.role.role_name.upper() != "ADMIN":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

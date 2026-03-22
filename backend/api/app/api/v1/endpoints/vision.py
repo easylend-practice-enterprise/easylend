@@ -1,6 +1,7 @@
 import logging
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -18,10 +19,10 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@router.post("/analyze", response_model=VisionAnalyzeResponse)
+@router.post("/analyze")
 async def analyze_image(
-    _: None = Depends(verify_vision_box_token),
-    file: UploadFile = File(...),
+    _: Annotated[None, Depends(verify_vision_box_token)],
+    file: Annotated[UploadFile, File()],
 ) -> VisionAnalyzeResponse:
     # 1. Valideer content type VOORDAT we in het geheugen inlezen
     if not (file.content_type or "").startswith("image/"):

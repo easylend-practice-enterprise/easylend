@@ -17,7 +17,7 @@ class RefreshTokenPayload(BaseModel):
 
 
 def _decode_token(token: str, required_claims: list[str]) -> dict:
-    claims_to_check = required_claims + ["type"]
+    claims_to_check = [*required_claims, "type"]
     try:
         return jwt.decode(
             token,

@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +14,6 @@ router = APIRouter(prefix="/roles", tags=["roles"])
 
 @router.get(
     "",
-    response_model=list[RoleResponse],
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -20,8 +21,8 @@ router = APIRouter(prefix="/roles", tags=["roles"])
     },
 )
 async def list_roles(
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, Depends(get_current_admin)],
 ) -> list[RoleResponse]:
     """
     Return all roles that can be assigned to users.

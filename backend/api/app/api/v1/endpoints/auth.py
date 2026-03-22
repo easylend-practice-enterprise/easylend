@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -112,7 +113,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
 @router.post("/nfc", status_code=status.HTTP_200_OK)
 async def nfc_login(
     body: NfcLoginRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> dict:
     """
     Validate an NFC badge before PIN verification.
@@ -123,10 +124,10 @@ async def nfc_login(
     return {"detail": "NFC badge recognized. Enter PIN."}
 
 
-@router.post("/pin", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@router.post("/pin", status_code=status.HTTP_200_OK)
 async def pin_login(
     body: PinLoginRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenResponse:
     """
     Verify the PIN and issue access and refresh tokens.
@@ -167,12 +168,11 @@ async def pin_login(
 
 @router.post(
     "/refresh",
-    response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
 )
 async def refresh_access_token(
     body: RefreshTokenRequest,
-    db: AsyncSession = Depends(get_db),
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> TokenResponse:
     """
     Rotate a valid refresh token and return a new token pair.
