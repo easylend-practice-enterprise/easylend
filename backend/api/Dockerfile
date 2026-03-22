@@ -29,7 +29,8 @@ RUN uv sync --locked
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create a non-root user with a writable home directory
-RUN addgroup --system appgroup && adduser --system --home /home/appuser --create-home --ingroup appgroup appuser
+RUN addgroup --system appgroup && adduser --system --home /home/appuser --ingroup appgroup appuser
+RUN mkdir -p /home/appuser
 RUN chown -R appuser:appgroup /app /home/appuser
 
 # Set HOME for libraries/tools that rely on user-scoped cache/config paths

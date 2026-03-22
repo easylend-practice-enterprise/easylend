@@ -33,7 +33,8 @@ RUN uv sync --locked
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create a non-root user with a writable home directory for runtime caches
-RUN addgroup --system appgroup && adduser --system --home /home/appuser --create-home --ingroup appgroup appuser
+RUN addgroup --system appgroup && adduser --system --home /home/appuser --ingroup appgroup appuser
+RUN mkdir -p /home/appuser
 RUN chown -R appuser:appgroup /app /home/appuser
 
 # Set HOME for libraries that write under ~/.cache or ~/.config
