@@ -80,12 +80,12 @@ async def analyze_image(
 
     if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
         logger.warning(
-            "Vision AI reported startup/unavailable state.",
+            "Vision AI service is temporarily unavailable.",
             extra={"upstream_status": response.status_code},
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vision AI service is starting up.",
+            detail="Vision AI service is temporarily unavailable.",
         )
 
     if response.status_code != status.HTTP_200_OK:

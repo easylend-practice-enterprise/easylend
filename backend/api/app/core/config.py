@@ -50,6 +50,14 @@ class Settings(BaseSettings):
                     "CRITICAL: JWT_SECRET_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
             if (
+                not self.VISION_API_KEY
+                or self.VISION_API_KEY == _DUMMY_SECRET
+                or len(self.VISION_API_KEY) < 16
+            ):
+                raise ValueError(
+                    "CRITICAL: VISION_API_KEY is missing, insecure, or too short in a non-dev environment!"
+                )
+            if (
                 not self.VISION_BOX_API_KEY
                 or self.VISION_BOX_API_KEY == _DUMMY_SECRET
                 or len(self.VISION_BOX_API_KEY) < 16

@@ -153,7 +153,7 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
         )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Vision AI service is starting up."
+    assert response.json()["detail"] == "Vision AI service is temporarily unavailable."
 
 
 def test_vision_analyze_maps_unexpected_upstream_errors_to_502(

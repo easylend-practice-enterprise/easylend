@@ -32,9 +32,12 @@ RUN uv sync --locked
 # Activeer de virtuele omgeving automatisch voor alle volgende commando's
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Create a non-root user and change ownership of the app directory
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
-RUN chown -R appuser:appgroup /app
+# Create a non-root user with a writable home directory for runtime caches
+RUN addgroup --system appgroup && adduser --system --home /home/appuser --create-home --ingroup appgroup appuser
+RUN chown -R appuser:appgroup /app /home/appuser
+
+# Set HOME for libraries that write under ~/.cache or ~/.config
+ENV HOME=/home/appuser
 
 # Switch to the non-root user
 USER appuser
