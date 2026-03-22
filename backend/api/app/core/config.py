@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     VISION_SERVICE_URL: str = "http://localhost:8001"
     VISION_API_KEY: str = _DUMMY_SECRET
     VISION_BOX_API_KEY: str = _DUMMY_SECRET
+    # Upload handling for vision analyze endpoint
+    UPLOADS_ENABLED: bool = True
+    UPLOAD_DIR: str = "uploads"
+    UPLOAD_RETENTION_DAYS: int = 7
     SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15

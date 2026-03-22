@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -15,6 +16,12 @@ from app.db.redis import (
 async def lifespan(_app: FastAPI):
     # Startup
     await check_redis_connection()
+    # Ensure uploads directory exists if enabled
+    from app.core.config import settings as _settings
+
+    if getattr(_settings, "UPLOADS_ENABLED", True):
+        with suppress(Exception):
+            Path(_settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown
     await redis_client.aclose()

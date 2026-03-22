@@ -31,7 +31,7 @@ class _MockAsyncClient:
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(self, _exc_type, _exc, _tb):
         return False
 
     async def post(self, url: str, *, headers: dict, files: dict):
@@ -51,10 +51,12 @@ class _MockAsyncClient:
 
 def test_vision_analyze_success(monkeypatch, client_with_overrides):
     captured: dict = {}
+    fixed_hex = "cafebabe"
     expected_payload = {
         "status": "success",
         "count": 1,
         "detections": [{"class_name": "laptop", "confidence": 0.98}],
+        "photo_url": f"/api/v1/images/{fixed_hex}.jpg",
     }
 
     def _async_client_factory(*, timeout: float):
@@ -70,6 +72,10 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides):
         vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
     )
     monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
+    # Make generated filename deterministic so test can assert photo_url
+    monkeypatch.setattr(
+        vision_endpoints.uuid, "uuid4", lambda: type("T", (), {"hex": fixed_hex})()
+    )
 
     with client_with_overrides(None) as client:
         response = client.post(

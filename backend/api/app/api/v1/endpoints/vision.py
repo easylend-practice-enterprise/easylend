@@ -5,6 +5,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import ValidationError
 
 from app.api.deps import verify_vision_box_token
@@ -15,8 +16,7 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 
 
 @router.post("/analyze")
@@ -46,17 +46,43 @@ async def analyze_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
 
-    # 2b. Genereer een veilige bestandsnaam en sla lokaal op
-    file_ext = (
-        file.filename.split(".")[-1]
-        if file.filename and "." in file.filename
-        else "jpg"
-    )
+    # 2b. Genereer een veilige bestandsnaam and map extension from content_type
+    content_type = (file.content_type or "").lower()
+    ext_map = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/bmp": "bmp",
+        "image/gif": "gif",
+        "image/tiff": "tiff",
+    }
+    file_ext = ext_map.get(content_type, "jpg")
     unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
     file_path = UPLOAD_DIR / unique_filename
 
-    file_path.write_bytes(image_data)
     photo_url = f"/api/v1/images/{unique_filename}"
+
+    # Persist uploads only when enabled
+    if not getattr(settings, "UPLOADS_ENABLED", True):
+        file_path = None
+    else:
+        try:
+            # Use a thread to perform blocking IO so we don't block the event loop
+            await run_in_threadpool(file_path.write_bytes, image_data)
+        except Exception as exc:
+            logger.exception("Failed to write uploaded image to disk")
+            # best-effort cleanup
+            from contextlib import suppress
+
+            with suppress(Exception):
+                if file_path and file_path.exists():
+                    file_path.unlink(missing_ok=True)
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to persist uploaded image",
+            ) from exc
 
     # 3. Request naar de AI Microservice (VM2) met de juiste VISION_API_KEY
     try:
@@ -127,10 +153,19 @@ async def analyze_image(
 
     try:
         payload = response.json()
-        payload["photo_url"] = photo_url
+        # attach photo_url only when persisted
+        if file_path is not None:
+            payload["photo_url"] = photo_url
         validated_data = VisionAnalyzeResponse(**payload)
     except (ValueError, ValidationError) as exc:
         logger.error("Vision AI returned invalid JSON or unexpected schema.")
+        # Cleanup persisted file on validation error
+        from contextlib import suppress
+
+        with suppress(Exception):
+            if file_path is not None and file_path.exists():
+                file_path.unlink(missing_ok=True)
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Vision AI service returned invalid data format.",
