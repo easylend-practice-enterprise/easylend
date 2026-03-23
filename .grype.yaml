@@ -1,0 +1,27 @@
+ignore:
+  # Ignore packages that are part of the Python interpreter or standard libraries
+  - package:
+      name: python
+      type: binary
+  # Ignore uv and uvx binaries (used only for installation, not part of the app)
+  - package:
+      name: tar
+      type: rust-crate
+  - package:
+      name: jsonwebtoken
+      type: rust-crate
+  - package:
+      name: rustls-webpki
+      type: rust-crate
+  # Ignore pip itself (treated as a system package in this context)
+  - package:
+      name: pip
+      type: python
+  # Ignore ffmpeg binary (required for OpenCV; patch originates from Debian)
+  - package:
+      name: ffmpeg
+      type: binary
+
+# Tell Grype to focus specifically on our own packages
+search:
+  scope: squashed # Scant alleen de definitieve laag van je Docker image
