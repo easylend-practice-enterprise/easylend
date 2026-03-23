@@ -1,6 +1,12 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
+
+# Force upgrade minimal OpenSSL runtime packages to patch CVE-2026-2673 via Debian security repo
+RUN echo "deb http://deb.debian.org/debian-security trixie-security main" > /etc/apt/sources.list.d/trixie-security.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade openssl libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Optimizations for uv and Docker
 ENV UV_COMPILE_BYTECODE=1
