@@ -24,4 +24,4 @@ ignore:
 
 # Tell Grype to focus specifically on our own packages
 search:
-  scope: squashed # Scant alleen de definitieve laag van je Docker image
+  scope: squashed # Scans only the final layer of the Docker image
