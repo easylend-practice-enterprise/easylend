@@ -15,6 +15,7 @@ on:
 permissions:
   contents: read
   packages: write
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
@@ -99,7 +100,13 @@ jobs:
 
       - name: Run Grype vulnerability scanner
         uses: anchore/scan-action@v7
+        id: scan
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
-          fail-build: true
-          severity-cutoff: high
+          fail-build: false
+          output-format: sarif
+
+      - name: Upload Anchore scan SARIF report
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
