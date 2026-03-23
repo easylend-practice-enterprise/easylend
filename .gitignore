@@ -60,6 +60,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Runtime uploads
+/backend/api/uploads/
 *.pt
 *.onnx
 datasets/
