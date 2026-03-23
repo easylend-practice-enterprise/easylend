@@ -4,7 +4,7 @@
 *.swp
 *.swo
 
-# VS Code (Negeer persoonlijke status, maar behoud team-settings)
+# VS Code (Ignore personal state, keep team settings)
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json

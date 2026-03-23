@@ -35,7 +35,7 @@ extend-select = [
     "E",
     "F",
 ] # datetimez, flake8-bandit (security), isort, pyupgrade, pycodestyle, pyflakes
-ignore = ["E501"] # Negeer zeurende 'Line too long' waarschuwingen
+ignore = ["E501"] # Ignore noisy 'Line too long' warnings
 
 [tool.ruff.lint.per-file-ignores]
-"**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden
+"**/*test_*.py" = ["S101"] # Ignore assert warnings in test files

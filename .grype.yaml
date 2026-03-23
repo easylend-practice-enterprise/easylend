@@ -1,0 +1,27 @@
+ignore:
+  # Ignore Python interpreter and standard libraries
+  - package:
+      name: python
+      type: binary
+  # Ignore Rust crates that are packaged with uv/uvx
+  - package:
+      name: tar
+      type: rust-crate
+  - package:
+      name: jsonwebtoken
+      type: rust-crate
+  - package:
+      name: rustls-webpki
+      type: rust-crate
+  # Ignore pip system package
+  - package:
+      name: pip
+      type: python
+  # Ignore ffmpeg binary (patched via OS, required for OpenCV)
+  - package:
+      name: ffmpeg
+      type: binary
+
+search:
+  # Scan the final squashed filesystem (all layers merged), avoiding packages only present in intermediate layers
+  scope: squashed

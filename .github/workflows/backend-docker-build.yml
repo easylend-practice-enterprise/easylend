@@ -59,7 +59,7 @@ jobs:
     name: Docker Build & Push
     needs: lint-and-test
     runs-on: ubuntu-latest
-    # LET OP: Deze rechten hebben we nodig voor de SARIF upload
+    # NOTE: These permissions are required for the SARIF upload
     permissions:
       contents: read
       packages: write
@@ -105,7 +105,7 @@ jobs:
 
       # --- START GRYPE SECURITY SCANS ---
 
-      # Scan 1: Genereer het SARIF bestand voor de GitHub Security Tab
+      # Scan 1: Generate the SARIF file for the GitHub Security tab
       - name: Run Grype (Generate SARIF)
         uses: anchore/scan-action@v7
         id: scan
@@ -117,13 +117,13 @@ jobs:
         env:
           GRYPE_DB_VULN_EXCLUSIONS: "os"
 
-      # Upload het SARIF bestand naar GitHub
+      # Upload the SARIF file to GitHub
       - name: Upload SARIF report
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
 
-      # Scan 2: Print de Tabel in de logs (voor directe feedback voor jullie)
+      # Scan 2: Print the table to the logs (for immediate feedback)
       - name: Run Grype (Print Table)
         uses: anchore/scan-action@v7
         with:
@@ -134,7 +134,7 @@ jobs:
         env:
           GRYPE_DB_VULN_EXCLUSIONS: "os"
 
-      # --- EINDE GRYPE SECURITY SCANS ---
+      # --- END GRYPE SECURITY SCANS ---
 
       - name: Push Docker Image to GHCR
         if: github.event_name == 'push'
