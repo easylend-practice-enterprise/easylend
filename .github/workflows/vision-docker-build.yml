@@ -138,8 +138,8 @@ jobs:
         if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
-          context: ./backend/api
-          file: ./backend/api/Dockerfile
+          context: ./backend/vision
+          file: ./backend/vision/Dockerfile
           push: true
           load: false
           tags: ${{ steps.meta.outputs.tags }}

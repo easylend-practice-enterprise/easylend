@@ -1,9 +1,9 @@
 ignore:
-  # Ignore packages that are part of the Python interpreter or standard libraries
+  # Ignore Python interpreter and standard libraries
   - package:
       name: python
       type: binary
-  # Ignore uv and uvx binaries (used only for installation, not part of the app)
+  # Ignore Rust crates that are packaged with uv/uvx
   - package:
       name: tar
       type: rust-crate
@@ -13,15 +13,15 @@ ignore:
   - package:
       name: rustls-webpki
       type: rust-crate
-  # Ignore pip itself (treated as a system package in this context)
+  # Ignore pip system package
   - package:
       name: pip
       type: python
-  # Ignore ffmpeg binary (required for OpenCV; patch originates from Debian)
+  # Ignore ffmpeg binary (patched via OS, required for OpenCV)
   - package:
       name: ffmpeg
       type: binary
 
-# Tell Grype to focus specifically on our own packages
 search:
-  scope: squashed # Scans only the final layer of the Docker image
+  # Scan the final squashed filesystem (all layers merged), avoiding packages only present in intermediate layers
+  scope: squashed
