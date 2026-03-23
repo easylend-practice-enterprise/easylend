@@ -97,19 +97,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=min
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        env:
-          # GITHUB_TOKEN needed for authentication with GHCR, including Trivy database updates
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Trivy must use GHCR
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
-          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v7
         with:
-          # latest or ci-test tag, depending on event type
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
-          format: "table"
-          exit-code: "1" # crash on vulnerabilities
-          ignore-unfixed: true
-          vuln-type: "library" # libraries only, not OS packages
-          severity: "CRITICAL,HIGH"
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
+          fail-build: true
+          severity-cutoff: high

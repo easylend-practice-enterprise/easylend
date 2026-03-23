@@ -1,113 +1,103 @@
 name: Vision AI - CI/CD Pipeline
 
 on:
-    push:
-        branches: ["main"]
-        paths:
-            - "backend/vision/**"
-            - ".github/workflows/vision-docker-build.yml"
-    pull_request:
-        branches: ["main"]
-        paths:
-            - "backend/vision/**"
-            - ".github/workflows/vision-docker-build.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/vision/**"
+      - ".github/workflows/vision-docker-build.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/vision/**"
+      - ".github/workflows/vision-docker-build.yml"
 
 permissions:
-    contents: read
-    packages: write
+  contents: read
+  packages: write
 
 env:
-    REGISTRY: ghcr.io
-    IMAGE_NAME: ${{ github.repository_owner }}/easylend-vision
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/easylend-vision
 
 jobs:
-    lint-and-test:
-        name: Code Quality & Unit Tests
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  lint-and-test:
+    name: Code Quality & Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v5
-              with:
-                  enable-cache: true
-                  cache-dependency-glob: "backend/vision/uv.lock"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/vision/uv.lock"
 
-            - name: Set up Python 3.12
-              run: uv python install 3.12
+      - name: Set up Python 3.12
+        run: uv python install 3.12
 
-            - name: Install dependencies
-              working-directory: ./backend/vision
-              run: uv sync
+      - name: Install dependencies
+        working-directory: ./backend/vision
+        run: uv sync
 
-            - name: Run Ruff (Linting)
-              working-directory: ./backend/vision
-              run: uv run ruff check .
+      - name: Run Ruff (Linting)
+        working-directory: ./backend/vision
+        run: uv run ruff check .
 
-            - name: Run Ruff (Formatting Check)
-              working-directory: ./backend/vision
-              run: uv run ruff format --check .
+      - name: Run Ruff (Formatting Check)
+        working-directory: ./backend/vision
+        run: uv run ruff format --check .
 
-            - name: Run Pytest (Unit Tests)
-              working-directory: ./backend/vision
-              run: uv run pytest
+      - name: Run Pytest (Unit Tests)
+        working-directory: ./backend/vision
+        run: uv run pytest
 
-    build-and-push-docker:
-        name: Docker Build & Push
-        needs: lint-and-test
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v6
+  build-and-push-docker:
+    name: Docker Build & Push
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-            - name: Log in to the Container registry
-              if: github.event_name == 'push'
-              uses: docker/login-action@v3
-              with:
-                  registry: ${{ env.REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to the Container registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Extract metadata (tags, labels) for Docker
-              id: meta
-              uses: docker/metadata-action@v5
-              with:
-                  images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-                  tags: |
-                      type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-                      type=raw,value=ci-test,enable=${{ github.event_name == 'pull_request' }}
-                      type=sha
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=ci-test,enable=${{ github.event_name == 'pull_request' }}
+            type=sha
 
-            - name: Build and push Docker Image
-              uses: docker/build-push-action@v6
-              with:
-                  context: ./backend/vision
-                  file: ./backend/vision/Dockerfile
-                  push: ${{ github.event_name == 'push' }}
-                  # load image into the local Docker daemon during PR for Trivy scan, and push to GHCR on main push
-                  load: ${{ github.event_name == 'pull_request' }}
-                  tags: ${{ steps.meta.outputs.tags }}
-                  labels: ${{ steps.meta.outputs.labels }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=min
+      - name: Build and push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/vision
+          file: ./backend/vision/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          # load image into the local Docker daemon during PR for Trivy scan, and push to GHCR on main push
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
 
-            - name: Run Trivy vulnerability scanner
-              uses: aquasecurity/trivy-action@master
-              env:
-                  # GITHUB_TOKEN needed for authentication with GHCR, including Trivy database updates
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  # Trivy must use GHCR
-                  TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
-                  TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
-              with:
-                  # latest or ci-test tag, depending on event type
-                  image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
-                  format: "table"
-                  exit-code: "1" # crash on vulnerabilities
-                  ignore-unfixed: true
-                  vuln-type: "library" # libraries only, not OS packages
-                  severity: "CRITICAL,HIGH"
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v7
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
+          fail-build: true
+          severity-cutoff: high
