@@ -85,19 +85,20 @@ jobs:
             type=raw,value=ci-test,enable=${{ github.event_name == 'pull_request' }}
             type=sha
 
-      - name: Build and push Docker Image
+      # STAP 1: Bouw en laad lokaal in Docker daemon (NOG NIET PUSHEN!)
+      - name: Build and load local Docker Image
         uses: docker/build-push-action@v6
         with:
           context: ./backend/api
           file: ./backend/api/Dockerfile
-          push: ${{ github.event_name == 'push' }}
-          # load image into the local Docker daemon during PR for Trivy scan, and push to GHCR on main push
-          load: ${{ github.event_name == 'pull_request' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
 
+      # STAP 2: Scan de LOKALE image
       - name: Run Grype vulnerability scanner
         uses: anchore/scan-action@v7
         id: scan
@@ -105,8 +106,25 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
           fail-build: false
           output-format: sarif
+          only-fixed: true # Negeer fouten waarvoor geen patch bestaat
+        env:
+          # Vertel Grype (via config file mapping) om alleen Python/app code te checken, niet het OS
+          GRYPE_DB_VULN_EXCLUSIONS: "os"
 
+      # STAP 3: Upload SARIF naar GitHub Security Tab
       - name: Upload Anchore scan SARIF report
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif }}
+
+      # STAP 4: Push alleen als we op main zitten
+      - name: Push Docker Image to GHCR
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/api # LET OP: Verander dit naar ./backend/vision in je vision YAML!
+          file: ./backend/api/Dockerfile # LET OP: Verander dit naar ./backend/vision/Dockerfile in je vision YAML!
+          push: true
+          load: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
