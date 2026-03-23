@@ -20,7 +20,7 @@ View our documentation for a detailed overview of the system:
 - `.github/`: GitHub Actions and CI/CD workflows (work in progress).
 - `backend/`:
   - `api/`: The REST API backend (FastAPI).
-  - `database/`: Docker Compose configurations for the infrastructure (PostgreSQL, Redis, pgAdmin, SQLBak).
+  - `database/`: Docker Compose configurations for the infrastructure (PostgreSQL, Redis, pgAdmin).
 - `docs/`: Architecture documentation and diagrams (Mermaid/SVG).
 - `kiosk-app/`: The Android/Frontend kiosk application (Flutter).
 - `simulation/`: Scripts for simulating hardware interactions and workflows.

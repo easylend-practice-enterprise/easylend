@@ -59,6 +59,13 @@ jobs:
     name: Docker Build & Push
     needs: lint-and-test
     runs-on: ubuntu-latest
+    # LET OP: Deze rechten hebben we nodig voor de SARIF upload
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+      security-events: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -84,32 +91,58 @@ jobs:
             type=raw,value=ci-test,enable=${{ github.event_name == 'pull_request' }}
             type=sha
 
-      - name: Build and push Docker Image
+      - name: Build and load local Docker Image
         uses: docker/build-push-action@v6
         with:
           context: ./backend/api
           file: ./backend/api/Dockerfile
-          push: ${{ github.event_name == 'push' }}
-          # load image into the local Docker daemon during PR for Trivy scan, and push to GHCR on main push
-          load: ${{ github.event_name == 'pull_request' }}
+          push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=min
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        env:
-          # GITHUB_TOKEN needed for authentication with GHCR, including Trivy database updates
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Trivy must use GHCR
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
-          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1
+      # --- START GRYPE SECURITY SCANS ---
+
+      # Scan 1: Genereer het SARIF bestand voor de GitHub Security Tab
+      - name: Run Grype (Generate SARIF)
+        uses: anchore/scan-action@v7
+        id: scan
         with:
-          # latest or ci-test tag, depending on event type
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
-          format: "table"
-          exit-code: "1" # crash on vulnerabilities
-          ignore-unfixed: true
-          vuln-type: "library" # libraries only, not OS packages
-          severity: "CRITICAL,HIGH"
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
+          fail-build: false
+          output-format: sarif
+          only-fixed: true
+        env:
+          GRYPE_DB_VULN_EXCLUSIONS: "os"
+
+      # Upload het SARIF bestand naar GitHub
+      - name: Upload SARIF report
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+
+      # Scan 2: Print de Tabel in de logs (voor directe feedback voor jullie)
+      - name: Run Grype (Print Table)
+        uses: anchore/scan-action@v7
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event_name == 'pull_request' && 'ci-test' || 'latest' }}
+          fail-build: false
+          output-format: table
+          only-fixed: true
+        env:
+          GRYPE_DB_VULN_EXCLUSIONS: "os"
+
+      # --- EINDE GRYPE SECURITY SCANS ---
+
+      - name: Push Docker Image to GHCR
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend/api
+          file: ./backend/api/Dockerfile
+          push: true
+          load: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

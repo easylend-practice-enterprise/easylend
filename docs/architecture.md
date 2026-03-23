@@ -257,4 +257,4 @@ erDiagram
 To ensure system health without heavy overhead, we use lightweight, isolated tooling:
 
 * **Monitoring:** Uptime Kuma runs internally in the Docker stack and monitors the FastAPI health endpoints and database connection.
-* **Backups (Disaster Recovery):** The database is backed up daily asynchronously via a headless SQLBak container to an off-site cloud location, completely outside the scope of the application logic.
+* **Backups (Disaster Recovery):** The database is backed up daily to an off-site cloud location, completely outside the scope of the application logic.

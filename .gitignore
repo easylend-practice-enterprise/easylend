@@ -42,7 +42,6 @@ ios/.symlinks/
 backend/database/pgdata/
 backend/database/pgadmin-data/
 backend/database/redis_data/
-backend/database/sqlbak_volume/
 uptime-kuma/data/
 
 # Logs & Tijdelijke bestanden
