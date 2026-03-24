@@ -62,9 +62,7 @@ def test_predict_rejects_non_image(client):
         files={"file": ("test.txt", BytesIO(b"not an image"), "text/plain")},
     )
     assert response.status_code == 400
-    assert (
-        "File must be a JPEG/PNG/WebP/BMP/GIF/TIFF image" in response.json()["detail"]
-    )
+    assert "File must be a JPEG/PNG/WebP image" in response.json()["detail"]
 
 
 def test_predict_rejects_oversize(client, monkeypatch):

@@ -24,7 +24,12 @@ async def analyze_image(
 ) -> VisionAnalyzeResponse:
     # 1. Validate content type BEFORE reading into memory
     content_type = file.content_type or ""
-    if not content_type.startswith("image/"):
+    allowed_content_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+    if content_type not in allowed_content_types:
         logger.warning(
             "Rejected non-image upload in vision analyze endpoint.",
             extra={
@@ -53,7 +58,7 @@ async def analyze_image(
         "image/png": "png",
         "image/webp": "webp",
     }
-    file_ext = content_type_ext_map.get(content_type, "jpg")
+    file_ext = content_type_ext_map[content_type]
     unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
 
     file_path = UPLOAD_DIR / unique_filename
@@ -141,7 +146,17 @@ async def analyze_image(
         ) from exc
 
     # 4. Save to disk ONLY after successful validation (prevents orphan files)
-    async with aiofiles.open(file_path, "wb") as buffer:
-        await buffer.write(image_data)
+    try:
+        async with aiofiles.open(file_path, "wb") as buffer:
+            await buffer.write(image_data)
+    except OSError as exc:
+        logger.error(
+            "Failed to save uploaded image to disk.",
+            extra={"error": str(exc), "file_path": str(file_path)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage service is temporarily unavailable.",
+        ) from exc
 
     return validated_data
