@@ -1,0 +1,33 @@
+ignore:
+  # Ignore Python interpreter and standard libraries
+  - package:
+      name: python
+      type: binary
+  # Ignore Rust crates that are packaged with uv/uvx
+  - package:
+      name: tar
+      type: rust-crate
+  - package:
+      name: jsonwebtoken
+      type: rust-crate
+  - package:
+      name: rustls-webpki
+      type: rust-crate
+  # Ignore pip system package
+  - package:
+      name: pip
+      type: python
+  # Ignore ffmpeg binary (patched via OS, required for OpenCV)
+  - package:
+      name: ffmpeg
+      type: binary
+  # VENDOR DELAY: CVE-2026-2673. We attempted to patch this via the trixie-security repo, 
+  # but Debian has not yet published OpenSSL 3.5.6. 
+  # Risk accepted until upstream releases the .deb package.
+  - package:
+      name: openssl
+      type: binary
+
+search:
+  # Scan the final squashed filesystem (all layers merged), avoiding packages only present in intermediate layers
+  scope: squashed

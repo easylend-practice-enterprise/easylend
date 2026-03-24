@@ -17,7 +17,7 @@ Because our services run on different Proxmox VMs, we use separate Docker Compos
 - PostgreSQL Database
 - Redis Cache
 - pgAdmin (Local only)
-- SQLBak & Watchtower (Prod only)
+- Watchtower (Prod only)
 
 ### 2. Vision AI Orchestration (Microservice)
 

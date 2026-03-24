@@ -3,7 +3,7 @@ name = "vision"
 version = "0.1.0"
 description = "AI Vision Service for EasyLend using YOLO"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.135.1",
     "opencv-python-headless>=4.13.0.92; sys_platform == 'linux'",
@@ -32,10 +32,10 @@ extend-select = [
     "E",
     "F",
 ] # datetimez, flake8-bandit (security), isort, pyupgrade, pycodestyle, pyflakes
-ignore = ["E501"] # Negeer zeurende 'Line too long' waarschuwingen
+ignore = ["E501"] # Ignore noisy 'Line too long' warnings
 
 [tool.ruff.lint.per-file-ignores]
-"**/*test_*.py" = ["S101"] # Negeer assert waarschuwingen in test bestanden
+"**/*test_*.py" = ["S101"] # Ignore assert warnings in test files
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

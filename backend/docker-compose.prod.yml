@@ -59,17 +59,6 @@ services:
     networks:
       - backend-net
 
-  sqlbak:
-    image: pranasnet/sqlbak
-    container_name: sqlbak
-    restart: unless-stopped
-    environment:
-      - sqlbak_key=${SQLBAK_TOKEN}
-    volumes:
-      - sqlbak_data:/opt/sqlbak
-    networks:
-      - backend-net
-
   watchtower:
     image: nickfedor/watchtower
     container_name: watchtower
@@ -91,7 +80,6 @@ services:
 volumes:
   pg_data:
   redis_data:
-  sqlbak_data:
 
 networks:
   backend-net:
