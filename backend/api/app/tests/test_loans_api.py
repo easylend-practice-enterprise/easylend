@@ -17,14 +17,33 @@ slot from the queue in FIFO order. Each test documents the exact slots used.
 
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import pytest
 from sqlalchemy.exc import OperationalError
 
+from app.core.websockets import manager
 from app.tests.conftest import (
     _bearer,
     _make_admin,
     _QueuedSession,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_hardware_manager(monkeypatch):
+    """
+    Automatically mock the WebSocket manager during loan tests so the
+    fail-fast hardware checks pass without needing a real Raspberry Pi.
+    """
+
+    class AlwaysConnectedDict(dict):
+        def __contains__(self, key):
+            return True
+
+    monkeypatch.setattr(manager, "active_connections", AlwaysConnectedDict())
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=True))
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers

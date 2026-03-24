@@ -10,6 +10,7 @@ class ConnectionManager:
         self.active_connections: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, kiosk_id: str) -> None:
+        await websocket.accept()
 
         # If a connection for this kiosk_id already exists, close it before replacing.
         existing_websocket = self.active_connections.get(kiosk_id)
