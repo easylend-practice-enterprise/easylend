@@ -17,6 +17,9 @@ async def visionbox_websocket_endpoint(
     kiosk_id: str,
     x_device_token: str | None = Header(default=None, alias="X-Device-Token"),
 ) -> None:
+    # 1. Accept the connection first so we can cleanly close it with a WS code if needed
+    await websocket.accept()
+
     if not x_device_token:
         logger.warning(
             f"Connection rejected: Missing X-Device-Token for kiosk_id={kiosk_id}"
@@ -34,6 +37,7 @@ async def visionbox_websocket_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    # 2. Token is valid, register with the manager
     await manager.connect(websocket, kiosk_id)
 
     try:

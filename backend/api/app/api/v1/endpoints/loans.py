@@ -21,6 +21,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
     Asset,
@@ -277,6 +278,15 @@ async def checkout(
             detail="Locker not found.",
         )
 
+    # --- 3b. Hardware Pre-flight Check ---
+    kiosk_id_str = str(locker.kiosk_id)
+    if kiosk_id_str not in manager.active_connections:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The Vision Box for this locker is currently offline. Cannot checkout.",
+        )
+
     # --- 4. Apply state mutations ---
     # Asset leaves the locker → locker becomes available again
     asset.asset_status = AssetStatus.BORROWED
@@ -296,6 +306,16 @@ async def checkout(
 
     await db.commit()
     await db.refresh(loan)
+
+    # --- 6. Trigger Hardware to open the door ---
+    await manager.send_command(
+        kiosk_id_str,
+        {
+            "action": "open_slot",
+            "locker_id": str(locker.logical_number),
+            "loan_id": str(loan.loan_id),
+        },
+    )
 
     return LoanResponse.model_validate(loan)
 
@@ -336,6 +356,14 @@ async def return_initiate(
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
+
+    # --- 0. Hardware Pre-flight Check ---
+    kiosk_id_str = str(payload.kiosk_id)
+    if kiosk_id_str not in manager.active_connections:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The chosen Vision Box is currently offline. Cannot return here.",
+        )
 
     # --- 1. Fetch and validate the loan (non-locking) ---
     loan = await _get_loan_or_404(db, payload.loan_id)
@@ -423,5 +451,15 @@ async def return_initiate(
 
     await db.commit()
     await db.refresh(loan)
+
+    # --- 4. Trigger Hardware to open the door ---
+    await manager.send_command(
+        kiosk_id_str,
+        {
+            "action": "open_slot",
+            "locker_id": str(locker.logical_number),
+            "loan_id": str(loan.loan_id),
+        },
+    )
 
     return LoanResponse.model_validate(loan)
