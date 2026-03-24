@@ -1,7 +1,7 @@
 from app.api.v1.endpoints import images
 from app.tests.conftest import FakeAsyncSession, _bearer, _make_admin
 
-# Gebruik een geldige UUID-bestandsnaam voor de test, want onze API eist dit nu!
+# Use a valid UUID-style filename for the test because the API now requires this format.
 VALID_TEST_FILENAME = "1234567890abcdef1234567890abcdef.jpg"
 
 
@@ -61,3 +61,12 @@ def test_get_image_not_found(client_with_overrides, monkeypatch, tmp_path):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Image not found"
+
+
+def test_get_image_requires_authentication(client_with_overrides):
+    """Requests without authentication should be rejected with 401 Not authenticated."""
+    with client_with_overrides(None) as client:
+        response = client.get(f"/api/v1/images/{VALID_TEST_FILENAME}")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Not authenticated"

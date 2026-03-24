@@ -45,7 +45,9 @@ async def analyze_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
 
-    # 2b. Generate a safe filename based on actual Content-Type
+    # 2b. Determine file extension from the declared content type (`UploadFile.content_type`).
+    # If stronger guarantees are required, inspect the file bytes to validate the actual image format
+    # before choosing an extension (e.g., to reject mismatched HEIC/WEBP uploads).
     content_type_ext_map = {
         "image/jpeg": "jpg",
         "image/png": "png",

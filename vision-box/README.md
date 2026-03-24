@@ -19,7 +19,8 @@ To prevent the backend from processing useless data (e.g., black or heavily over
 
 The Vision Box uses a hybrid communication approach, authenticated via a static `VISION_BOX_API_KEY`:
 
-* **WebSockets (WSS):** * Listens for `open_slot {locker_id, loan_id}` commands from the backend.
+* **WebSockets (WSS):**
+  * Listens for `open_slot {locker_id, loan_id}` commands from the backend.
   * Listens for `set_led {locker_id, color}` commands to indicate status (green/orange/red).
   * Sends a `slot_closed` event to the backend the moment the physical door shuts.
 * **HTTP POST (REST):**

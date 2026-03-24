@@ -49,7 +49,7 @@ class _MockAsyncClient:
         return self._response
 
 
-def test_vision_analyze_success(monkeypatch, client_with_overrides):
+def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     captured: dict = {}
     expected_payload = {
         "status": "success",
@@ -76,6 +76,9 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides):
         vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
     )
     monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
+
+    # Use a temporary upload directory so the test does not write to the real UPLOAD_DIR
+    monkeypatch.setattr(vision_endpoints, "UPLOAD_DIR", tmp_path)
 
     with client_with_overrides(None) as client:
         response = client.post(
