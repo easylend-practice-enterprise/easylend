@@ -150,8 +150,8 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 **Catalog** *(requires assets + categories: buildable in same ticket)*
 
 - [ ] `GET /api/v1/catalog` (all authenticated users)
-  - **Role == staff/student:** categorised pool — number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
-  - **Role == Admin:** admin view — all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
+  - **Role == staff/student:** categorised pool: number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
+  - **Role == Admin:** admin view: all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
 
 - [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`

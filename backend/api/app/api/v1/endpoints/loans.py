@@ -1,5 +1,5 @@
 """
-Loan Transaction endpoints — ELP-28
+Loan Transaction endpoints: ELP-28
 
 APIRouter: prefix="/loans", tags=["loans"]
 
@@ -90,7 +90,7 @@ async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
 
 
 # ---------------------------------------------------------------------------
-# GET /loans — List loans (paginated, role-scoped)
+# GET /loans: List loans (paginated, role-scoped)
 # ---------------------------------------------------------------------------
 
 
@@ -133,7 +133,7 @@ async def list_loans(
 
 
 # ---------------------------------------------------------------------------
-# GET /loans/{loan_id}/status — Fast polling endpoint
+# GET /loans/{loan_id}/status: Fast polling endpoint
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +172,7 @@ async def get_loan_status(
 
 
 # ---------------------------------------------------------------------------
-# POST /loans/checkout — Initiate a checkout
+# POST /loans/checkout: Initiate a checkout
 # ---------------------------------------------------------------------------
 
 
@@ -301,7 +301,7 @@ async def checkout(
 
 
 # ---------------------------------------------------------------------------
-# POST /loans/return/initiate — Begin the return flow
+# POST /loans/return/initiate: Begin the return flow
 # ---------------------------------------------------------------------------
 
 

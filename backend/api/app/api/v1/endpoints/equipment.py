@@ -1,5 +1,5 @@
 """
-Equipment CRUD endpoints — ELP-26
+Equipment CRUD endpoints: ELP-26
 
 Four APIRouters, one per entity, in dependency order:
     categories_router  → /categories
@@ -646,7 +646,7 @@ async def update_asset(
     - Re-assign an asset to a different category or locker.
     - Correct a typo in `name` or `aztec_code`.
 
-    `is_deleted` is deliberately **not** updatable here — use the
+    `is_deleted` is deliberately **not** updatable here: use the
     dedicated `DELETE /{asset_id}` endpoint for soft-deletion.
     """
     asset = await _get_asset_or_404(db, asset_id)

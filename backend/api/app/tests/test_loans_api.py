@@ -1,5 +1,5 @@
 """
-Tests for the Loan Transaction endpoints — ELP-28.
+Tests for the Loan Transaction endpoints: ELP-28.
 
 Coverage:
     1. Auth/RBAC guard        : 401 without token
@@ -10,7 +10,7 @@ Coverage:
     5. POST /loans/return/initiate  : happy path 200, unknown loan 404,
                                 wrong user 403, not active 400, no locker 503
 
-_QueuedSession execute() ordering — every `await db.execute(query)` pops one
+_QueuedSession execute() ordering: every `await db.execute(query)` pops one
 slot from the queue in FIFO order. Each test documents the exact slots used.
 `await db.refresh(obj)` assigns a UUID to `loan_id` when it is None.
 """
