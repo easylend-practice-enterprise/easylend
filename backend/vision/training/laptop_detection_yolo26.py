@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from ultralytics import YOLO
 
 # Dit wijst altijd naar de 'backend/vision' root map
@@ -8,7 +7,7 @@ VISION_ROOT = Path(__file__).parent.parent.resolve()
 
 def main():
     model = YOLO(
-        "yolov8m.pt"
+        "yolo26m.pt"
     )  # Base checkpoint used by our YOLO26 training configuration.
 
     model.train(
