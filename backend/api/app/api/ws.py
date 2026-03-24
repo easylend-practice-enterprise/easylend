@@ -46,4 +46,9 @@ async def visionbox_websocket_endpoint(
         manager.disconnect(kiosk_id)
     except Exception as e:
         logger.error(f"WebSocket error for kiosk_id={kiosk_id}: {str(e)}")
-        manager.disconnect(kiosk_id)
+        try:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except RuntimeError:
+            pass
+        finally:
+            manager.disconnect(kiosk_id)

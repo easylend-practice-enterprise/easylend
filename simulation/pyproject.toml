@@ -1,0 +1,21 @@
+[project]
+name = "simulation"
+version = "0.1.0"
+description = "Hardware simulation client for Vision Box"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv>=1.2.2",
+    "websockets>=16.0",
+]
+[dependency-groups]
+dev = ["pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff.lint]
+extend-select = ["DTZ", "S", "I", "UP", "E", "F"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/*test_*.py" = ["S101"]
