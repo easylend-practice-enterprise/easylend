@@ -18,10 +18,10 @@ async def get_image(
     """Serve an uploaded image by filename."""
     file_path = (UPLOAD_DIR / filename).resolve()
 
-    # Path Traversal preventie
+    # Path Traversal prevention
     if not file_path.is_relative_to(UPLOAD_DIR.resolve()):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
         )
 
     if not file_path.exists() or not file_path.is_file():

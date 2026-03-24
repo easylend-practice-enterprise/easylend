@@ -20,10 +20,17 @@ class ConnectionManager:
             logger.info(f"Hardware client disconnected: kiosk_id={kiosk_id}")
 
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
-        websocket = self.active_connections.get(kiosk_id)
-        if websocket:
-            await websocket.send_json(command)
-            return True
+        if kiosk_id in self.active_connections:
+            websocket = self.active_connections[kiosk_id]
+            try:
+                await websocket.send_json(command)
+                return True
+            except Exception:
+                logger.exception(
+                    "Failed to send command to kiosk_id=%s. Disconnecting.", kiosk_id
+                )
+                self.disconnect(kiosk_id)
+                return False
 
         logger.warning(
             f"Failed to send command. Client not online: kiosk_id={kiosk_id}"

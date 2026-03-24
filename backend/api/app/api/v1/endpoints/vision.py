@@ -1,6 +1,6 @@
 import logging
 import uuid
-from pathlib import Path, PurePath
+from pathlib import Path
 
 import aiofiles
 import httpx
@@ -23,12 +23,13 @@ async def analyze_image(
     _: None = Depends(verify_vision_box_token),
     file: UploadFile = File(...),
 ) -> VisionAnalyzeResponse:
-    # 1. Valideer content type VOORDAT we in het geheugen inlezen
-    if not (file.content_type or "").startswith("image/"):
+    # 1. Validate content type BEFORE reading into memory
+    content_type = file.content_type or ""
+    if not content_type.startswith("image/"):
         logger.warning(
             "Rejected non-image upload in vision analyze endpoint.",
             extra={
-                "upload_content_type": file.content_type,
+                "upload_content_type": content_type,
                 "upload_name": file.filename,
             },
         )
@@ -37,7 +38,7 @@ async def analyze_image(
             detail="Uploaded file must be an image.",
         )
 
-    # 2a. Lees in met een harde limiet (memory protection)
+    # 2a. Read with a hard limit (memory protection)
     image_data = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(image_data) > MAX_UPLOAD_SIZE:
         raise HTTPException(
@@ -45,25 +46,19 @@ async def analyze_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
 
-    # 2b. Genereer een veilige bestandsnaam en sla lokaal op (Copilot Fix)
-    safe_filename = PurePath(file.filename).name if file.filename else ""
-    file_ext = safe_filename.split(".")[-1] if "." in safe_filename else "jpg"
-
-    # Enforce strict alphanumeric extension to prevent traversal injections
-    if not file_ext.isalnum():
-        file_ext = "jpg"
-
+    # 2b. Generate a safe filename based on actual Content-Type
+    content_type_ext_map = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+    }
+    file_ext = content_type_ext_map.get(content_type, "jpg")
     unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
 
     file_path = UPLOAD_DIR / unique_filename
-
-    # Async disk write to prevent event loop blocking
-    async with aiofiles.open(file_path, "wb") as buffer:
-        await buffer.write(image_data)
-
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    # 3. Request naar de AI Microservice (VM2) met de juiste VISION_API_KEY
+    # 3. Request to the AI Microservice (VM2)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -73,7 +68,7 @@ async def analyze_image(
                     "file": (
                         file.filename or "upload",
                         image_data,
-                        file.content_type,
+                        content_type,
                     )
                 },
             )
@@ -140,5 +135,9 @@ async def analyze_image(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Vision AI service returned invalid data format.",
         ) from exc
+
+    # 4. Save to disk ONLY after successful validation (prevents orphan files)
+    async with aiofiles.open(file_path, "wb") as buffer:
+        await buffer.write(image_data)
 
     return validated_data

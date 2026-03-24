@@ -12,13 +12,16 @@ from app.db.redis import (
     redis_client,
 )
 
+# Runtime uploads directory used by endpoints that save files
+UPLOAD_DIR = Path("uploads")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await check_redis_connection()
     # Ensure runtime uploads directory exists (create at startup, not at import time)
-    Path("uploads").mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown
     await redis_client.aclose()
