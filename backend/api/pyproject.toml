@@ -18,7 +18,6 @@ dependencies = [
     "uvicorn[standard]>=0.41.0",
     "httpx>=0.28.1",
     "python-multipart>=0.0.22",
-    "python-dotenv>=1.2.1",
     "aiofiles>=25.1.0",
 ]
 

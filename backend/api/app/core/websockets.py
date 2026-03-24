@@ -11,6 +11,22 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, kiosk_id: str) -> None:
         await websocket.accept()
+
+        # If a connection for this kiosk_id already exists, close it before replacing.
+        existing_websocket = self.active_connections.get(kiosk_id)
+        if existing_websocket is not None and existing_websocket is not websocket:
+            try:
+                await existing_websocket.close()
+                logger.info(
+                    "Closed existing hardware client connection before reconnect: kiosk_id=%s",
+                    kiosk_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Error while closing existing hardware client connection: kiosk_id=%s",
+                    kiosk_id,
+                )
+
         self.active_connections[kiosk_id] = websocket
         logger.info(f"Hardware client connected: kiosk_id={kiosk_id}")
 

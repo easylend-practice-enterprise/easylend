@@ -1,20 +1,25 @@
 from app.api.v1.endpoints import images
 from app.tests.conftest import FakeAsyncSession, _bearer, _make_admin
 
+# Gebruik een geldige UUID-bestandsnaam voor de test, want onze API eist dit nu!
+VALID_TEST_FILENAME = "1234567890abcdef1234567890abcdef.jpg"
+
 
 def test_get_image_success(client_with_overrides, monkeypatch, tmp_path):
     # 1. Mock the UPLOAD_DIR to a temporary directory that is removed after the test
     monkeypatch.setattr(images, "UPLOAD_DIR", tmp_path)
 
     # 2. Create a fake photo file in that temporary directory
-    test_file = tmp_path / "test_photo.jpg"
+    test_file = tmp_path / VALID_TEST_FILENAME
     test_file.write_bytes(b"fake-image-bytes")
 
     # 3. Perform the request (client_with_overrides automatically logs us in as admin)
     admin = _make_admin()
     fake_db = FakeAsyncSession(admin)
     with client_with_overrides(fake_db) as client:
-        response = client.get("/api/v1/images/test_photo.jpg", headers=_bearer(admin))
+        response = client.get(
+            f"/api/v1/images/{VALID_TEST_FILENAME}", headers=_bearer(admin)
+        )
 
     # 4. Verify the file is served correctly
     assert response.status_code == 200

@@ -6,11 +6,11 @@ from app.core.config import settings
 
 
 class _MockResponse:
-    def __init__(self, status_code: int, payload: dict):
+    def __init__(self, status_code: int, payload: dict | list):
         self.status_code = status_code
         self._payload = payload
 
-    def json(self) -> dict:
+    def json(self) -> dict | list:
         return self._payload
 
 
@@ -57,10 +57,16 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides):
         "detections": [{"class_name": "laptop", "confidence": 0.98}],
     }
 
+    # Mock UUID so we get a predictable photo_url in the test
+    class MockUUID:
+        hex = "1234567890abcdef1234567890abcdef"
+
+    monkeypatch.setattr(vision_endpoints.uuid, "uuid4", lambda: MockUUID())
+
     def _async_client_factory(*, timeout: float):
         return _MockAsyncClient(
             timeout=timeout,
-            response=_MockResponse(200, expected_payload),
+            response=_MockResponse(200, expected_payload.copy()),
             captured=captured,
         )
 
@@ -79,7 +85,16 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides):
         )
 
     assert response.status_code == 200
-    assert response.json() == expected_payload
+
+    response_json = response.json()
+    assert response_json["status"] == expected_payload["status"]
+    assert response_json["count"] == expected_payload["count"]
+    # Verify the dynamically added photo_url based on our mocked UUID
+    assert (
+        response_json["photo_url"]
+        == "/api/v1/images/1234567890abcdef1234567890abcdef.jpg"
+    )
+
     assert captured["url"] == "http://vm2/predict"
     assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
     assert captured["files"]["file"] == ("sample.jpg", b"image-bytes", "image/jpeg")
@@ -230,6 +245,31 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
         return _MockAsyncClient(
             timeout=timeout,
             response=_MockInvalidJsonResponse(200, {}),
+        )
+
+    monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
+
+    with client_with_overrides(None) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 502
+    assert (
+        response.json()["detail"] == "Vision AI service returned invalid data format."
+    )
+
+
+def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overrides):
+    """Test that upstream returning a JSON array (list) instead of object is caught safely."""
+
+    def _async_client_factory(*, timeout: float):
+        return _MockAsyncClient(
+            timeout=timeout,
+            # Upstream incorrectly returns a list!
+            response=_MockResponse(200, [{"unexpected": "list"}]),
         )
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)

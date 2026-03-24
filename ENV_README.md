@@ -7,7 +7,6 @@
 ## Files
 
 - `.env.template` (repo root): canonical, commented template. Edit this to add or document variables.
-- `backend/.env.example`, `backend/api/.env.example`, `simulation/.env.example`: legacy examples (optional).
 - `.env` files: local runtime files (gitignored).
 
 ## Usage

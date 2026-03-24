@@ -1,19 +1,16 @@
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 
 from app.api.v1.router import router as v1_router
 from app.api.ws import ws_router
+from app.core.uploads import UPLOAD_DIR
 
 # Redis imports
 from app.db.redis import (
     check_redis_connection,
     redis_client,
 )
-
-# Runtime uploads directory used by endpoints that save files
-UPLOAD_DIR = Path("uploads")
 
 
 @asynccontextmanager

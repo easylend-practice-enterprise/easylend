@@ -1,6 +1,5 @@
 import logging
 import uuid
-from pathlib import Path
 
 import aiofiles
 import httpx
@@ -9,13 +8,13 @@ from pydantic import ValidationError
 
 from app.api.deps import verify_vision_box_token
 from app.core.config import settings
+from app.core.uploads import UPLOAD_DIR
 from app.schemas.vision import VisionAnalyzeResponse
 
 router = APIRouter(prefix="/vision", tags=["vision"])
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
-UPLOAD_DIR = Path("uploads")
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -127,9 +126,12 @@ async def analyze_image(
 
     try:
         payload = response.json()
+        if not isinstance(payload, dict):
+            raise TypeError("Expected dict payload from Vision AI service.")
+
         payload["photo_url"] = photo_url
         validated_data = VisionAnalyzeResponse(**payload)
-    except (ValueError, ValidationError) as exc:
+    except (TypeError, ValueError, ValidationError) as exc:
         logger.error("Vision AI returned invalid JSON or unexpected schema.")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
