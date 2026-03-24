@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -16,6 +17,8 @@ from app.db.redis import (
 async def lifespan(app: FastAPI):
     # Startup
     await check_redis_connection()
+    # Ensure runtime uploads directory exists (create at startup, not at import time)
+    Path("uploads").mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown
     await redis_client.aclose()

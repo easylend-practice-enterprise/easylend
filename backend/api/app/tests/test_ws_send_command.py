@@ -17,7 +17,7 @@ def test_send_command_to_connected_client() -> None:
         headers={"X-Device-Token": settings.SIMULATION_API_KEY},
     ) as websocket:
         # Send a command from server to client
-        sent = asyncio.get_event_loop().run_until_complete(
+        sent = asyncio.run(
             manager.send_command(kiosk_id, {"action": "open_locker", "locker_id": "42"})
         )
 

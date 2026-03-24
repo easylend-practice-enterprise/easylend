@@ -1,7 +1,8 @@
 import logging
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePath
 
+import aiofiles
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import ValidationError
@@ -15,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
 UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -45,16 +45,22 @@ async def analyze_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
 
-    # 2b. Genereer een veilige bestandsnaam en sla lokaal op
-    file_ext = (
-        file.filename.split(".")[-1]
-        if file.filename and "." in file.filename
-        else "jpg"
-    )
+    # 2b. Genereer een veilige bestandsnaam en sla lokaal op (Copilot Fix)
+    safe_filename = PurePath(file.filename).name if file.filename else ""
+    file_ext = safe_filename.split(".")[-1] if "." in safe_filename else "jpg"
+
+    # Enforce strict alphanumeric extension to prevent traversal injections
+    if not file_ext.isalnum():
+        file_ext = "jpg"
+
     unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
+
     file_path = UPLOAD_DIR / unique_filename
 
-    file_path.write_bytes(image_data)
+    # Async disk write to prevent event loop blocking
+    async with aiofiles.open(file_path, "wb") as buffer:
+        await buffer.write(image_data)
+
     photo_url = f"/api/v1/images/{unique_filename}"
 
     # 3. Request naar de AI Microservice (VM2) met de juiste VISION_API_KEY

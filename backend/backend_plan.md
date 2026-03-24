@@ -213,21 +213,21 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 
 **WebSockets (Vision Box control):**
 
-- Set up a WebSocket manager in FastAPI (`/ws/visionbox`)
-- Send `open_slot {locker_id, loan_id}` after checkout approval
-- Send `set_led {locker_id, color}` based on AI result or error
-- Receive `slot_closed` event from Vision Box
-- **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
+- [x] Set up a WebSocket manager in FastAPI (`/ws/visionbox/{kiosk_id}`) with static token auth.
+- [ ] Send `open_slot {locker_id, loan_id}` after checkout approval
+- [ ] Send `set_led {locker_id, color}` based on AI result or error
+- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic
+- [ ] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
 
 **AI Evaluation endpoint (for Vision Box):**
 
 - [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 AI safely (ELP-94 completed).
 - [ ] Save photo in `/app/uploads` --> generate `photo_url`
-- Process result:
+- [ ] Process result:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
-- Store in `ai_evaluations` table including `photo_url` and `model_version`
+- [ ] Store in `ai_evaluations` table including `photo_url` and `model_version`
 
 ## Step 10c: Admin Quarantine Dashboard
 

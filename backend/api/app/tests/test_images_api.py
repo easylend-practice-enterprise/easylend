@@ -3,39 +3,47 @@ from app.tests.conftest import FakeAsyncSession, _bearer, _make_admin
 
 
 def test_get_image_success(client_with_overrides, monkeypatch, tmp_path):
-    # 1. Mock de UPLOAD_DIR naar een tijdelijke map die na de test verdwijnt
+    # 1. Mock the UPLOAD_DIR to a temporary directory that is removed after the test
     monkeypatch.setattr(images, "UPLOAD_DIR", tmp_path)
 
-    # 2. Maak een nep-foto aan in die tijdelijke map
+    # 2. Create a fake photo file in that temporary directory
     test_file = tmp_path / "test_photo.jpg"
     test_file.write_bytes(b"fake-image-bytes")
 
-    # 3. Voer het request uit (client_with_overrides logt ons automatisch in als admin)
+    # 3. Perform the request (client_with_overrides automatically logs us in as admin)
     admin = _make_admin()
     fake_db = FakeAsyncSession(admin)
     with client_with_overrides(fake_db) as client:
         response = client.get("/api/v1/images/test_photo.jpg", headers=_bearer(admin))
 
-    # 4. Controleer of de file netjes geserveerd wordt
+    # 4. Verify the file is served correctly
     assert response.status_code == 200
     assert response.content == b"fake-image-bytes"
     assert response.headers["content-type"] == "image/jpeg"
 
 
 def test_get_image_path_traversal_blocked(client_with_overrides, monkeypatch, tmp_path):
+    """
+    Test that path traversal attempts are rejected.
+    FastAPI's router strictly requires a flat {filename} and rejects slashes.
+    HTTP clients also normalize '..' out of URLs.
+    Therefore, the expected and most secure behavior is a 404 Not Found.
+    """
     monkeypatch.setattr(images, "UPLOAD_DIR", tmp_path)
 
     admin = _make_admin()
     fake_db = FakeAsyncSession(admin)
     with client_with_overrides(fake_db) as client:
-        # We proberen stiekem uit de map te breken met ../
-        response = client.get(
+        # Attempt URL-encoded path traversal (e.g., moving up directories)
+        response_encoded = client.get(
             "/api/v1/images/..%2F..%2Fetc%2Fpasswd", headers=_bearer(admin)
         )
+        # Try literal dots (attempt to escape the directory)
+        response_dots = client.get("/api/v1/images/..", headers=_bearer(admin))
 
-    # FastAPI's router snijdt gevaarlijke paden zelf al af voordat het bij ons endpoint komt.
-    # Verwacht gedrag van het framework is 404 Not Found.
-    assert response.status_code == 404
+    # The framework should block these before they reach our code.
+    assert response_encoded.status_code == 404
+    assert response_dots.status_code == 404
 
 
 def test_get_image_not_found(client_with_overrides, monkeypatch, tmp_path):
