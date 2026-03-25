@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from ultralytics import YOLO
 
 # Dit wijst altijd naar de 'backend/vision' root map
