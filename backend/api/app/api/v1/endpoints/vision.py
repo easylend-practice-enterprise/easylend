@@ -39,7 +39,7 @@ async def analyze_image(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file must be an image.",
+            detail="Uploaded file must be a JPEG/PNG/WebP image.",
         )
 
     # 2a. Read with a hard limit (memory protection)

@@ -155,7 +155,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 - [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
-- [ ] Remaining gap in this step: `GET /api/v1/catalog`
+- [ ] Remaining gap in this step: `GET /api/v1/catalog` (Planned for Sprint 1)
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
@@ -183,20 +183,21 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
 - [x] `POST /api/v1/loans/checkout`: lend an asset, assign a locker
-  - **Concurrency:** Use `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
+  - **Concurrency:** Uses `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
   - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
-- [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker.
+- [ ] **State transition:** Must set initial state to `RESERVED` and return HTTP `202 Accepted`.
+- [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker via `SKIP LOCKED`.
   - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
 - [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
 - [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
-- [ ] **Timeout Worker (Hardware-aware):** A background task cancels loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
+- [ ] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
 - [ ] Status update asset + locker + audit log entry
 
 - [x] Implemented in `backend/api/app/api/v1/endpoints/loans.py`
 - [x] API tests available in `backend/api/app/tests/test_loans_api.py` (including lock-contention and authorization paths)
 
-## Step 10b: Hardware & AI Integration
+## Step 10b: Hardware & AI Integration (Dual-Model)
 
 **Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a*
 
@@ -205,7 +206,7 @@ By far the most complex part. Couples the transaction logic with physical hardwa
 **Decision: Photo storage (`photo_url`):**
 We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within the scope of the prototype and is extremely fast.
 
-- Photos are written to disk and the API serves them via a new endpoint: `GET /api/v1/images/{filename}`.
+- [x] Photos are written to disk and the API serves them via a new endpoint: `GET /api/v1/images/{filename}`.
   - **Security:** implementation must:
     - Enforce a safe filename strategy (UUIDs, no raw user input).
     - Normalise and validate the path to prevent path traversal (`../`).
@@ -214,16 +215,19 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 **WebSockets (Vision Box control):**
 
 - [x] Set up a WebSocket manager in FastAPI (`/ws/visionbox/{kiosk_id}`) with static token auth.
-- [ ] Send `open_slot {locker_id, loan_id}` after checkout approval
+- [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
+- [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
 - [ ] Send `set_led {locker_id, color}` based on AI result or error
-- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic
+- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic.
 - [ ] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
 
-**AI Evaluation endpoint (for Vision Box):**
+**AI Evaluation endpoint (Dual-Model YOLO):**
 
-- [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 AI safely (ELP-94 completed).
-- [ ] Save photo in `/app/uploads` --> generate `photo_url`
-- [ ] Process result:
+- [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 safely.
+- [ ] **Dual-Model Upgrade:** Vision API must run both Object Detection (is it present?) and Segmentation (is it damaged?).
+- [x] Save photo in `/app/uploads` --> generate `photo_url`
+- [ ] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
+- [ ] Process result in Main API:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).

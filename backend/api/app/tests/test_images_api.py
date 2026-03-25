@@ -30,8 +30,8 @@ def test_get_image_success(client_with_overrides, monkeypatch, tmp_path):
 def test_get_image_path_traversal_blocked(client_with_overrides, monkeypatch, tmp_path):
     """
     Test that path traversal attempts are rejected.
-    FastAPI's router strictly requires a flat {filename} and rejects slashes.
-    HTTP clients also normalize '..' out of URLs.
+    FastAPI's router strictly requires a flat {filename} and rejects encoded slashes.
+    Application-level regex validation rejects literal '..' segments.
     Therefore, the expected and most secure behavior is a 404 Not Found.
     """
     monkeypatch.setattr(images, "UPLOAD_DIR", tmp_path)

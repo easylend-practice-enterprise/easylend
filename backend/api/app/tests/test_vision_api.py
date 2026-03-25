@@ -117,7 +117,7 @@ def test_vision_analyze_rejects_non_image_file(monkeypatch, client_with_override
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Uploaded file must be an image."
+    assert response.json()["detail"] == "Uploaded file must be a JPEG/PNG/WebP image."
 
 
 def test_vision_analyze_requires_valid_device_token(client_with_overrides):

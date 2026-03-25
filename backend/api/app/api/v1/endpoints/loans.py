@@ -304,11 +304,8 @@ async def checkout(
     )
     db.add(loan)
 
-    await db.commit()
-    await db.refresh(loan)
-
-    # --- 6. Trigger Hardware to open the door ---
-    await manager.send_command(
+    # --- 6. Trigger Hardware to open the door (BEFORE COMMIT) ---
+    command_ok = await manager.send_command(
         kiosk_id_str,
         {
             "action": "open_slot",
@@ -316,6 +313,15 @@ async def checkout(
             "loan_id": str(loan.loan_id),
         },
     )
+    if not command_ok:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
+        )
+
+    await db.commit()
+    await db.refresh(loan)
 
     return LoanResponse.model_validate(loan)
 
@@ -449,11 +455,8 @@ async def return_initiate(
     loan.return_locker_id = locker.locker_id
     loan.loan_status = LoanStatus.RETURNING
 
-    await db.commit()
-    await db.refresh(loan)
-
-    # --- 4. Trigger Hardware to open the door ---
-    await manager.send_command(
+    # --- 4. Trigger Hardware to open the door (BEFORE COMMIT) ---
+    command_ok = await manager.send_command(
         kiosk_id_str,
         {
             "action": "open_slot",
@@ -461,5 +464,14 @@ async def return_initiate(
             "loan_id": str(loan.loan_id),
         },
     )
+    if not command_ok:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
+        )
+
+    await db.commit()
+    await db.refresh(loan)
 
     return LoanResponse.model_validate(loan)
