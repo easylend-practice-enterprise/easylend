@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.exc import OperationalError
 
+import app.api.v1.endpoints.loans as loans_endpoints
 from app.core.websockets import manager
 from app.tests.conftest import (
     _bearer,
@@ -43,6 +44,23 @@ def mock_hardware_manager(monkeypatch):
 
     monkeypatch.setattr(manager, "active_connections", AlwaysConnectedDict())
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def mock_idempotency_redis(monkeypatch):
+    """Use per-test in-memory Redis emulation for idempotency keys."""
+
+    class _FakeRedis:
+        def __init__(self):
+            self._keys: set[str] = set()
+
+        async def exists(self, key: str) -> int:
+            return 1 if key in self._keys else 0
+
+        async def setex(self, key: str, ttl: int, value: str):  # noqa: ARG002
+            self._keys.add(key)
+
+    monkeypatch.setattr(loans_endpoints, "redis_client", _FakeRedis())
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +119,12 @@ def _make_loan(**kwargs) -> SimpleNamespace:
         returned_at=None,
         loan_status=kwargs.get("loan_status", "ACTIVE"),
     )
+
+
+def _with_idempotency(headers: dict, key: str) -> dict:
+    merged = dict(headers)
+    merged["Idempotency-Key"] = key
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +215,7 @@ def test_checkout_returns_401_without_token(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": "AZT-001"},
+            headers={"Idempotency-Key": "checkout-401"},
         )
     assert response.status_code == 401
 
@@ -201,6 +226,7 @@ def test_return_initiate_returns_401_without_token(client_with_overrides):
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
+            headers={"Idempotency-Key": "return-401"},
         )
     assert response.status_code == 401
 
@@ -325,8 +351,8 @@ def test_get_loan_status_returns_200_for_admin_on_any_loan(client_with_overrides
 # ---------------------------------------------------------------------------
 
 
-def test_checkout_returns_201_on_happy_path(client_with_overrides):
-    """POST /checkout with a valid aztec_code creates a loan and returns 201.
+def test_checkout_returns_202_on_happy_path(client_with_overrides):
+    """POST /checkout with a valid aztec_code creates a loan and returns 202.
 
     DB execute order:
     [1] get_current_user      → student
@@ -344,12 +370,12 @@ def test_checkout_returns_201_on_happy_path(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": asset.aztec_code},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-happy"),
         )
 
-    assert response.status_code == 201
+    assert response.status_code == 202
     data = response.json()
-    assert data["loan_status"] == "ACTIVE"
+    assert data["loan_status"] == "RESERVED"
     assert data["asset_id"] == str(asset.asset_id)
     assert data["checkout_locker_id"] == str(locker_id)
     # Verify side-effects: asset cleared from locker, locker freed
@@ -373,7 +399,7 @@ def test_checkout_returns_400_when_asset_not_found(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": "DOES-NOT-EXIST"},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-not-found"),
         )
 
     assert response.status_code == 400
@@ -396,7 +422,7 @@ def test_checkout_returns_400_when_asset_not_available(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": borrowed_asset.aztec_code},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-not-available"),
         )
 
     assert response.status_code == 400
@@ -414,7 +440,7 @@ def test_checkout_returns_400_when_asset_has_no_locker(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": orphaned_asset.aztec_code},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-no-locker"),
         )
 
     assert response.status_code == 400
@@ -438,7 +464,7 @@ def test_checkout_returns_409_on_lock_contention(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": "AZT-LOCKED"},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-lock-contention"),
         )
 
     assert response.status_code == 409
@@ -456,12 +482,43 @@ def test_checkout_returns_409_on_locker_lock_contention(client_with_overrides):
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": asset.aztec_code},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "checkout-locker-contention"),
         )
 
     assert response.status_code == 409
     assert "currently being processed" in response.json()["detail"]
     assert locking_db.commit_calls == 0
+
+
+def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_overrides):
+    """Second checkout request with the same Idempotency-Key returns 409."""
+
+    student = _make_student()
+    locker_id = uuid.uuid4()
+    asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
+    locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
+    idem_key = "checkout-idempotent-dup"
+
+    first_db = _QueuedSession(student, asset, locker)
+    with client_with_overrides(first_db) as client:
+        first_response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
+            headers=_with_idempotency(_bearer(student), idem_key),
+        )
+
+    second_db = _QueuedSession(student)
+    with client_with_overrides(second_db) as client:
+        second_response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
+            headers=_with_idempotency(_bearer(student), idem_key),
+        )
+
+    assert first_response.status_code == 202
+    assert second_response.status_code == 409
+    assert second_response.json()["detail"] == "Request already processing"
+    assert second_db.commit_calls == 0
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +547,7 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-happy"),
         )
 
     assert response.status_code == 200
@@ -517,7 +574,7 @@ def test_return_initiate_returns_404_for_unknown_loan(client_with_overrides):
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(_VALID_KIOSK_ID)},
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-unknown-loan"),
         )
 
     assert response.status_code == 404
@@ -539,7 +596,7 @@ def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
-            headers=_bearer(student_b),
+            headers=_with_idempotency(_bearer(student_b), "return-wrong-user"),
         )
 
     assert response.status_code == 403
@@ -563,7 +620,7 @@ def test_return_initiate_returns_400_when_loan_not_active(client_with_overrides)
                 "loan_id": str(completed_loan.loan_id),
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-not-active"),
         )
 
     assert response.status_code == 400
@@ -592,7 +649,7 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
                 "loan_id": str(active_loan.loan_id),
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-no-locker"),
         )
 
     assert response.status_code == 503
@@ -620,7 +677,7 @@ def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
                 "loan_id": str(active_loan.loan_id),
                 "kiosk_id": str(uuid.uuid4()),  # non-existent kiosk
             },
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-unknown-kiosk"),
         )
 
     assert response.status_code == 404
@@ -641,7 +698,7 @@ def test_return_initiate_returns_409_on_loan_lock_contention(client_with_overrid
                 "loan_id": str(active_loan.loan_id),
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-loan-lock"),
         )
 
     assert response.status_code == 409
@@ -664,7 +721,7 @@ def test_return_initiate_returns_409_when_loan_state_changed_concurrently(
                 "loan_id": str(active_loan.loan_id),
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
-            headers=_bearer(student),
+            headers=_with_idempotency(_bearer(student), "return-loan-state-changed"),
         )
 
     assert response.status_code == 409

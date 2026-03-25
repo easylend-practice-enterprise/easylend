@@ -15,7 +15,7 @@ Business rules (Step 10a, hardware-free path):
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ from app.db.models import (
     LockerStatus,
     User,
 )
+from app.db.redis import redis_client
 from app.schemas.loan import (
     CheckoutRequest,
     LoanListResponse,
@@ -73,10 +74,21 @@ _PAGINATION_LIMIT = Query(
 )
 
 _IS_ADMIN_ROLE = "ADMIN"
+_IDEMPOTENCY_TTL_SECONDS = 86400
 
 
 def _is_admin(user: User) -> bool:
     return user.role is not None and user.role.role_name.upper() == _IS_ADMIN_ROLE
+
+
+async def _guard_idempotency(idempotency_key: str) -> None:
+    redis_key = f"idempotency:{idempotency_key}"
+    if await redis_client.exists(redis_key):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Request already processing",
+        )
+    await redis_client.setex(redis_key, _IDEMPOTENCY_TTL_SECONDS, "processing")
 
 
 async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
@@ -180,7 +192,7 @@ async def get_loan_status(
 @router.post(
     "/checkout",
     response_model=LoanResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
         401: {"description": "Not authenticated"},
@@ -192,6 +204,7 @@ async def checkout(
     payload: CheckoutRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
@@ -201,11 +214,14 @@ async def checkout(
     locked, a **409 Conflict** is returned immediately (no retry).
 
     **State transitions (hardware-free path):**
+    - `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)
     - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
     - `Asset.locker_id`: cleared to `None` (asset leaves the locker)
     - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
-    - New `Loan` record created with `loan_status = ACTIVE`
+    - New `Loan` record created with `loan_status = RESERVED`
     """
+    await _guard_idempotency(idempotency_key)
+
     # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
     try:
         result = await db.execute(
@@ -299,7 +315,7 @@ async def checkout(
         user_id=current_user.user_id,
         asset_id=asset.asset_id,
         checkout_locker_id=checkout_locker_id,
-        loan_status=LoanStatus.ACTIVE,
+        loan_status=LoanStatus.RESERVED,
         borrowed_at=datetime.now(UTC),
     )
     db.add(loan)
@@ -348,6 +364,7 @@ async def return_initiate(
     payload: ReturnInitiateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Initiate the return process for an active loan.
@@ -362,6 +379,7 @@ async def return_initiate(
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
+    await _guard_idempotency(idempotency_key)
 
     # --- 0. Hardware Pre-flight Check ---
     kiosk_id_str = str(payload.kiosk_id)
