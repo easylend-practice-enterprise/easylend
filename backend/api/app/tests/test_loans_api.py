@@ -727,3 +727,38 @@ def test_return_initiate_returns_409_when_loan_state_changed_concurrently(
     assert response.status_code == 409
     assert "no longer in a state" in response.json()["detail"]
     assert fake_db.commit_calls == 0
+
+
+def test_return_initiate_returns_409_for_duplicate_idempotency_key(
+    client_with_overrides,
+):
+    """POST /return/initiate with a reused Idempotency-Key returns 409."""
+    student = _make_student()
+    loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
+
+    # Queue slots:
+    # First request:  [1] auth user, [2] loan, [3] locked loan, [4] kiosk, [5] locker
+    # Second request: [6] auth user (idempotency 409 happens before endpoint DB queries)
+    fake_db = _QueuedSession(
+        student, loan, loan, SimpleNamespace(), free_locker, student
+    )
+
+    with client_with_overrides(fake_db) as client:
+        payload = {
+            "loan_id": str(loan.loan_id),
+            "kiosk_id": str(_VALID_KIOSK_ID),
+        }
+        headers = _with_idempotency(_bearer(student), "duplicate-return-key-123")
+
+        response1 = client.post(
+            "/api/v1/loans/return/initiate", json=payload, headers=headers
+        )
+        assert response1.status_code == 200
+
+        response2 = client.post(
+            "/api/v1/loans/return/initiate", json=payload, headers=headers
+        )
+        assert response2.status_code == 409
+        assert "Request already processing" in response2.json()["detail"]
+    assert fake_db.commit_calls == 1

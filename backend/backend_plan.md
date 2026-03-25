@@ -184,10 +184,10 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 - [x] `POST /api/v1/loans/checkout`: lend an asset, assign a locker
   - **Concurrency:** Uses `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
-  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
-- [ ] **State transition:** Must set initial state to `RESERVED` and return HTTP `202 Accepted`.
+  - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
+- [x] **State transition:** Must set initial state to `RESERVED` and return HTTP `202 Accepted`.
 - [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker via `SKIP LOCKED`.
-  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
+  - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
 - [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
 - [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
 - [ ] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
@@ -289,7 +289,8 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 3. **After steps 10a-10c (transactions + hardware + AI)**
 
    - [x] Concurrency test for checkout (no double assignment)
-   - [ ] Idempotency test for checkout/return
+   - [x] Idempotency test for checkout
+   - [ ] Idempotency test for return
    - [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
 4. **After steps 11-13 (sanitisation/rate-limit/audit)**
