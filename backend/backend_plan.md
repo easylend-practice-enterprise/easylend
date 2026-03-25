@@ -182,6 +182,51 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
+### Concrete Sub-checklist (Execution Order)
+
+1. Close **Step 10a** completely first.
+2. Then close **Step 10b MVP behavior**.
+3. Then close **Step 10 testing milestones**.
+4. Finally mark **Step 10** as done.
+
+**What this means for the current open bullets:**
+
+1. Finish 10a now (small, high impact)
+
+- [ ] Timeout worker for `RESERVED` loans.
+- [ ] Status update asset + locker + audit log entry.
+- [x] Return idempotency test (checkout idempotency already done).
+
+1. Finish 10b MVP control loop next
+
+- [ ] Send `set_led` commands.
+- [ ] Handle `slot_closed` event routing.
+- [ ] Add unreachable Vision Box fallback behavior + audit log.
+
+1. Then finish 10b AI robustness items
+
+- [ ] Dual-model detection + segmentation.
+- [ ] `/update-model` dual URL webhook behavior.
+- [ ] Main API result processing paths.
+- [ ] Persist `ai_evaluations`.
+
+1. Finalize testing milestones for 10a-10c
+
+- [x] Return idempotency test.
+- [ ] Fallback tests (AI timeout, no active WSS).
+- [ ] Add/extend tests for `slot_closed` and `set_led` paths.
+
+### Branch Scope (ELP-60-hardware-integration)
+
+- **Required to finish ELP-60 MVP:**
+  - 10a complete
+  - 10b MVP control loop complete
+  - fallback tests complete
+- **Can be split to follow-up branch if timeline is tight:**
+  - dual-model detection/segmentation
+  - dual-model webhook update
+  - `ai_evaluations` persistence and related hardening
+
 - [x] `POST /api/v1/loans/checkout`: lend an asset, assign a locker
   - **Concurrency:** Uses `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
   - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
@@ -290,10 +335,11 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
    - [x] Concurrency test for checkout (no double assignment)
    - [x] Idempotency test for checkout
-   - [ ] Idempotency test for return
-   - [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
-4. **After steps 11-13 (sanitisation/rate-limit/audit)**
+- [x] Idempotency test for return
+- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+
+1. **After steps 11-13 (sanitisation/rate-limit/audit)**
 
    - Input validation tests (boundaries/regex)
    - Rate-limit tests (IP and token based)
