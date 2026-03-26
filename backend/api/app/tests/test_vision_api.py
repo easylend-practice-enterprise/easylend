@@ -1,8 +1,48 @@
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
 from app.api.v1.endpoints import vision as vision_endpoints
 from app.core.config import settings
+from app.tests.conftest import _QueuedSession
+
+
+def _vision_form_data(
+    *, loan_id: uuid.UUID | None = None, evaluation_type: str
+) -> dict:
+    return {
+        "loan_id": str(loan_id or uuid.uuid4()),
+        "evaluation_type": evaluation_type,
+    }
+
+
+def _make_loan(**kwargs) -> SimpleNamespace:
+    return SimpleNamespace(
+        loan_id=kwargs.get("loan_id", uuid.uuid4()),
+        asset_id=kwargs.get("asset_id", uuid.uuid4()),
+        checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
+        return_locker_id=kwargs.get("return_locker_id"),
+        loan_status=kwargs.get("loan_status", "RESERVED"),
+    )
+
+
+def _make_asset(**kwargs) -> SimpleNamespace:
+    return SimpleNamespace(
+        asset_id=kwargs.get("asset_id", uuid.uuid4()),
+        asset_status=kwargs.get("asset_status", "BORROWED"),
+    )
+
+
+def _make_locker(**kwargs) -> SimpleNamespace:
+    return SimpleNamespace(
+        locker_id=kwargs.get("locker_id", uuid.uuid4()),
+        kiosk_id=kwargs.get("kiosk_id", uuid.uuid4()),
+        logical_number=kwargs.get("logical_number", 1),
+        locker_status=kwargs.get("locker_status", "OCCUPIED"),
+    )
 
 
 class _MockResponse:
@@ -76,14 +116,31 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
         vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
     )
     monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
+    monkeypatch.setattr(
+        vision_endpoints.manager, "send_command", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(vision_endpoints, "log_audit_event", AsyncMock())
 
     # Use a temporary upload directory so the test does not write to the real UPLOAD_DIR
     monkeypatch.setattr(vision_endpoints, "UPLOAD_DIR", tmp_path)
 
-    with client_with_overrides(None) as client:
+    loan_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    asset_id = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    checkout_locker_id = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -109,10 +166,11 @@ def test_vision_analyze_rejects_non_image_file(monkeypatch, client_with_override
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.txt", b"not-an-image", "text/plain")},
         )
 
@@ -121,9 +179,10 @@ def test_vision_analyze_rejects_non_image_file(monkeypatch, client_with_override
 
 
 def test_vision_analyze_requires_valid_device_token(client_with_overrides):
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -143,10 +202,11 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -163,10 +223,11 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -183,10 +244,11 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -205,10 +267,11 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -228,10 +291,11 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -252,10 +316,11 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -277,10 +342,11 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(None) as client:
+    with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            data=_vision_form_data(evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 

@@ -1,14 +1,29 @@
 import logging
 import uuid
+from uuid import UUID
 
 import aiofiles
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import verify_vision_box_token
+from app.core.audit import log_audit_event
 from app.core.config import settings
 from app.core.uploads import UPLOAD_DIR
+from app.core.websockets import manager
+from app.db.database import get_db
+from app.db.models import (
+    Asset,
+    AssetStatus,
+    EvaluationType,
+    Loan,
+    LoanStatus,
+    Locker,
+    LockerStatus,
+)
 from app.schemas.vision import VisionAnalyzeResponse
 
 router = APIRouter(prefix="/vision", tags=["vision"])
@@ -20,6 +35,9 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
 async def analyze_image(
     _: None = Depends(verify_vision_box_token),
+    db: AsyncSession = Depends(get_db),
+    loan_id: UUID = Form(...),
+    evaluation_type: EvaluationType = Form(...),
     file: UploadFile = File(...),
 ) -> VisionAnalyzeResponse:
     # 1. Validate content type BEFORE reading into memory
@@ -158,5 +176,97 @@ async def analyze_image(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Storage service is temporarily unavailable.",
         ) from exc
+
+    # 5. Apply transaction outcome to domain state
+    loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
+    loan = loan_result.scalar_one_or_none()
+    if loan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Loan not found.",
+        )
+
+    asset_result = await db.execute(
+        select(Asset).where(Asset.asset_id == loan.asset_id)
+    )
+    asset = asset_result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found.",
+        )
+
+    locker_id_for_eval = (
+        loan.checkout_locker_id
+        if evaluation_type == EvaluationType.CHECKOUT
+        else loan.return_locker_id
+    )
+    locker_result = await db.execute(
+        select(Locker).where(Locker.locker_id == locker_id_for_eval)
+    )
+    locker = locker_result.scalar_one_or_none()
+    if locker is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Locker not found.",
+        )
+
+    detections = validated_data.detections or []
+    has_any_detection = validated_data.count > 0 and len(detections) > 0
+    has_damage = any(
+        "damage" in detection.class_name.lower() for detection in detections
+    )
+
+    led_color = "green"
+    outcome = "SUCCESS"
+
+    if evaluation_type == EvaluationType.CHECKOUT:
+        if has_any_detection:
+            loan.loan_status = LoanStatus.FRAUD_SUSPECTED
+            asset.asset_status = AssetStatus.AVAILABLE
+            locker.locker_status = LockerStatus.AVAILABLE
+            led_color = "red"
+            outcome = "FRAUD_SUSPECTED"
+        else:
+            loan.loan_status = LoanStatus.ACTIVE
+            led_color = "green"
+            outcome = "ACTIVE"
+    else:  # EvaluationType.RETURN
+        if has_damage:
+            loan.loan_status = LoanStatus.PENDING_INSPECTION
+            asset.asset_status = AssetStatus.PENDING_INSPECTION
+            locker.locker_status = LockerStatus.MAINTENANCE
+            led_color = "red"
+            outcome = "PENDING_INSPECTION"
+        else:
+            loan.loan_status = LoanStatus.COMPLETED
+            asset.asset_status = AssetStatus.AVAILABLE
+            locker.locker_status = LockerStatus.AVAILABLE
+            led_color = "green"
+            outcome = "COMPLETED"
+
+    await manager.send_command(
+        str(locker.kiosk_id),
+        {
+            "action": "set_led",
+            "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+            "color": led_color,
+        },
+    )
+
+    await log_audit_event(
+        db,
+        action_type="VISION_EVALUATION_PROCESSED",
+        payload={
+            "loan_id": str(loan.loan_id),
+            "asset_id": str(asset.asset_id),
+            "locker_id": str(locker.locker_id),
+            "evaluation_type": evaluation_type.value,
+            "outcome": outcome,
+            "photo_url": validated_data.photo_url,
+        },
+    )
+
+    await db.commit()
 
     return validated_data
