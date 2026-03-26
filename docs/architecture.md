@@ -214,7 +214,7 @@ erDiagram
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
         timestamp returned_at "Nullable"
-        enum loan_status "RESERVED, ACTIVE, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
     
     AI_EVALUATIONS {
@@ -243,7 +243,7 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
         jsonb payload
         varchar previous_hash
         varchar current_hash
