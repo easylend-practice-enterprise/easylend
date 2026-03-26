@@ -150,12 +150,12 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 **Catalog** *(requires assets + categories: buildable in same ticket)*
 
 - [ ] `GET /api/v1/catalog` (all authenticated users)
-  - **Role == staff/student:** categorised pool — number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
-  - **Role == Admin:** admin view — all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
+  - **Role == staff/student:** categorised pool: number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
+  - **Role == Admin:** admin view: all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
 
 - [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
-- [ ] Remaining gap in this step: `GET /api/v1/catalog`
+- [ ] Remaining gap in this step: `GET /api/v1/catalog` (Planned for Sprint 1)
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
@@ -182,21 +182,68 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
+### Concrete Sub-checklist (Execution Order)
+
+1. Close **Step 10a** completely first.
+2. Then close **Step 10b MVP behavior**.
+3. Then close **Step 10 testing milestones**.
+4. Finally mark **Step 10** as done.
+
+**What this means for the current open bullets:**
+
+1. Finish 10a now (small, high impact)
+
+- [x] Timeout worker for `RESERVED` loans.
+- [x] Status update asset + locker + audit log entry.
+- [x] Return idempotency test (checkout idempotency already done).
+
+1. Finish 10b MVP control loop next
+
+- [x] Send `set_led` commands.
+- [ ] Handle `slot_closed` event routing in backend WebSocket endpoint (currently TODO; MVP uses hardware-triggered `POST /vision/analyze` after `slot_closed`).
+- [x] Add unreachable Vision Box fallback behavior + audit log. (Covered by existing fail-fast `503` checks in checkout/return plus timeout worker and audit outcome logging.)
+
+1. Then finish 10b AI robustness items
+
+- [ ] Dual-model detection + segmentation.
+- [ ] `/update-model` dual URL webhook behavior.
+- [ ] Main API result processing paths.
+- [ ] Persist `ai_evaluations`.
+
+1. Finalize testing milestones for 10a-10c
+
+- [x] Return idempotency test.
+- [ ] Fallback tests (AI timeout, no active WSS).
+- [x] Add/extend tests for `set_led` and vision outcome branches.
+- [ ] Add dedicated backend WebSocket `slot_closed` routing test (pending implementation in `app/api/ws.py`).
+
+### Branch Scope (ELP-60-hardware-integration)
+
+- **Required to finish ELP-60 MVP:**
+  - 10a complete
+  - 10b MVP control loop complete
+  - fallback tests complete
+- **Can be split to follow-up branch if timeline is tight:**
+  - dual-model detection/segmentation
+  - dual-model webhook update
+  - `ai_evaluations` persistence and related hardening
+
 - [x] `POST /api/v1/loans/checkout`: lend an asset, assign a locker
-  - **Concurrency:** Use `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
-  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
-- [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker.
-  - [ ] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
+  - **Concurrency:** Uses `SELECT ... FOR UPDATE NOWAIT` to guarantee that 2 users can never be assigned the same asset simultaneously.
+  - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (e.g. a UUID). The API checks Redis to see if this key has been used recently to prevent a glitchy tablet (double-taps) from accidentally starting two loans.
+- [x] **State transition:** Must set initial state to `RESERVED` and return HTTP `202 Accepted`.
+- [x] `POST /api/v1/loans/return/initiate`: start the return process, search for a free locker via `SKIP LOCKED`.
+  - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
 - [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
 - [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
-- [ ] **Timeout Worker (Hardware-aware):** A background task cancels loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
+- [x] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
-- [ ] Status update asset + locker + audit log entry
+- [x] Status update asset + locker + audit log entry
 
 - [x] Implemented in `backend/api/app/api/v1/endpoints/loans.py`
 - [x] API tests available in `backend/api/app/tests/test_loans_api.py` (including lock-contention and authorization paths)
 
-## Step 10b: Hardware & AI Integration
+## Step 10b: Hardware & AI Integration (Dual-Model)
 
 **Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a*
 
@@ -205,7 +252,7 @@ By far the most complex part. Couples the transaction logic with physical hardwa
 **Decision: Photo storage (`photo_url`):**
 We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within the scope of the prototype and is extremely fast.
 
-- Photos are written to disk and the API serves them via a new endpoint: `GET /api/v1/images/{filename}`.
+- [x] Photos are written to disk and the API serves them via a new endpoint: `GET /api/v1/images/{filename}`.
   - **Security:** implementation must:
     - Enforce a safe filename strategy (UUIDs, no raw user input).
     - Normalise and validate the path to prevent path traversal (`../`).
@@ -213,21 +260,24 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 
 **WebSockets (Vision Box control):**
 
-- Set up a WebSocket manager in FastAPI (`/ws/visionbox`)
-- Send `open_slot {locker_id, loan_id}` after checkout approval
-- Send `set_led {locker_id, color}` based on AI result or error
-- Receive `slot_closed` event from Vision Box
-- **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
+- [x] Set up a WebSocket manager in FastAPI (`/ws/visionbox/{kiosk_id}`) with static token auth.
+- [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
+- [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
+- [x] Send `set_led {locker_id, color}` based on AI result or error
+- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (Backend WS handler still has TODO; current MVP relies on hardware-triggered `POST /api/v1/vision/analyze` after `slot_closed`.)
+- [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit. (MVP covered by existing fail-fast `503` in checkout/return plus timeout worker + audit outcome logging.)
 
-**AI Evaluation endpoint (for Vision Box):**
+**AI Evaluation endpoint (Dual-Model YOLO):**
 
-- [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 AI safely (ELP-94 completed).
-- [ ] Save photo in `/app/uploads` --> generate `photo_url`
-- Process result:
+- [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 safely.
+- [ ] **Dual-Model Upgrade:** Vision API must run both Object Detection (is it present?) and Segmentation (is it damaged?).
+- [x] Save photo in `/app/uploads` --> generate `photo_url`
+- [ ] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
+- [x] Process result in Main API:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
-- Store in `ai_evaluations` table including `photo_url` and `model_version`
+- [ ] Store in `ai_evaluations` table including `photo_url` and `model_version`
 
 ## Step 10c: Admin Quarantine Dashboard
 
@@ -285,10 +335,12 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 3. **After steps 10a-10c (transactions + hardware + AI)**
 
    - [x] Concurrency test for checkout (no double assignment)
-   - [ ] Idempotency test for checkout/return
-   - [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+   - [x] Idempotency test for checkout
 
-4. **After steps 11-13 (sanitisation/rate-limit/audit)**
+- [x] Idempotency test for return
+- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+
+1. **After steps 11-13 (sanitisation/rate-limit/audit)**
 
    - Input validation tests (boundaries/regex)
    - Rate-limit tests (IP and token based)
@@ -297,6 +349,8 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 ## Step 13: Hash-Chaining Audit Logs
 
 **Ticket:** ELP-29 · **Status:** ❌ Open · *Requires: step 10a (transactions)*
+
+- [x] Foundation helper added: `app/core/audit.py` (`log_audit_event`, genesis hash, hash computation)
 
 - Each audit log entry contains `prev_hash` of the previous entry
 - SHA-256 over `(prev_hash + entry_data)` --> `current_hash`

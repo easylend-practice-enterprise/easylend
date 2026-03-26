@@ -16,7 +16,7 @@ Instead of real hardware, the simulation communicates directly with the API via 
 ## Connection to the API
 
 ```text
-WSS: wss://<api-host>/ws/visionbox
+WSS: wss://<api-host>/ws/visionbox/{kiosk_id}
 Headers: X-Device-Token: <static_key>
 ```
 

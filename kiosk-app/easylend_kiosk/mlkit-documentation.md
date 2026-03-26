@@ -1,4 +1,4 @@
-# Google ML Kit Barcode Scanning (Aztec) — Documentation
+# Google ML Kit Barcode Scanning (Aztec): Documentation
 
 How the scanner works (implementation notes)
 
@@ -18,7 +18,7 @@ Troubleshooting
 
 - If `InputImageRotationValue.fromRawValue(...)` returns `null`, you may need to inspect camera `sensorOrientation` and map it manually.
 - If scanning returns no results: verify camera permission, inspect image format (YUV420 vs NV21), and test with sample Aztec images.
-- On some devices the `camera` plugin uses different `ImageFormatGroup` values—ensure `InputImageFormatValue.fromRawValue(image.format.raw)` resolves correctly.
+- On some devices the `camera` plugin uses different `ImageFormatGroup` values, ensure `InputImageFormatValue.fromRawValue(image.format.raw)` resolves correctly.
 
 Extending the scanner
 

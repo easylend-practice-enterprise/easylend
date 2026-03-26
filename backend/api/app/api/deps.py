@@ -22,7 +22,7 @@ async def get_current_user(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated.",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

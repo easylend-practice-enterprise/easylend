@@ -1,5 +1,5 @@
 """
-Tests for the Equipment CRUD endpoints — ELP-26.
+Tests for the Equipment CRUD endpoints: ELP-26.
 
 Coverage:
     1. RBAC / Auth      : unauthenticated → 401, medewerker → 403
@@ -9,7 +9,7 @@ Coverage:
     5. Assets           : POST (admin, 201), GET list filter, GET by id, PUT,
                            DELETE soft-delete (204), DELETE invalid id (404)
 
-_QueuedSession execute() ordering — every `await db.execute(query)` pops one
+_QueuedSession execute() ordering: every `await db.execute(query)` pops one
 slot from the queue in FIFO order. Each test documents the exact slots used.
 `await db.refresh(obj)` mutates the object in-place to assign missing UUIDs.
 """
@@ -171,7 +171,7 @@ def test_create_category_returns_201_for_admin(client_with_overrides):
     admin = _make_admin()
 
     # Queue: admin for auth, then refresh() is a no-op, response reflects new_cat
-    # Because create_category does db.add() + commit() + refresh() — no extra executes.
+    # Because create_category does db.add() + commit() + refresh(): no extra executes.
     fake_db = _QueuedSession(admin)
     # Patch db.add so we can inspect the object that was added.
     with client_with_overrides(fake_db) as client:
@@ -341,7 +341,7 @@ def test_create_locker_returns_201_for_admin(client_with_overrides):
 
     DB execute order:
     [1] get_current_user   → admin
-    [2] kiosk_exists check → kiosk_id (scalar — exists)
+    [2] kiosk_exists check → kiosk_id (scalar: exists)
     """
     admin = _make_admin()
     kiosk_id = uuid.uuid4()
@@ -633,7 +633,7 @@ def test_soft_delete_asset_returns_204_for_admin(client_with_overrides):
         )
 
     assert response.status_code == 204
-    assert response.content == b""  # 204 No Content — empty body
+    assert response.content == b""  # 204 No Content: empty body
     assert asset.is_deleted is True  # setattr mutated in-place by soft_delete_asset
     assert fake_db.commit_calls == 1
 

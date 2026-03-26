@@ -182,16 +182,13 @@ def predict(
         "image/jpeg",
         "image/png",
         "image/webp",
-        "image/bmp",
-        "image/gif",
-        "image/tiff",
     }
     max_size = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MiB default
 
     if not file.content_type or file.content_type not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a JPEG/PNG/WebP/BMP/GIF/TIFF image",
+            detail="File must be a JPEG/PNG/WebP image",
         )
 
     if model is None:

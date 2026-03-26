@@ -6,6 +6,8 @@ services:
     container_name: easylend_vision_api
     ports:
       - "8000:8000"
+    volumes:
+      - ./models:/app/models
     environment:
       - MODEL_PATH=models/best.pt
       - VISION_API_KEY=${VISION_API_KEY}

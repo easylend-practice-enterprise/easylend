@@ -127,3 +127,27 @@ uv run alembic downgrade -1
 ```
 
 *(Note: In PostgreSQL, `Enum` types are sometimes not automatically removed during a downgrade. When setting up a completely fresh local environment, it can be faster to reset your Docker container with `docker compose down -v`).*
+
+## Hardware Integration Security & Stability
+
+The backend interacts with the physical Vision Box (Raspberry Pi) via WebSockets and HTTP POST. To ensure system stability and security (Zero Trust Architecture), the following patterns are enforced:
+
+### 1. Strict M2M Validation
+
+Even though the Vision Box communicates over a secure VPN, the `/api/v1/vision/analyze` endpoint strictly validates incoming files:
+
+- **MIME Type Check:** Rejects non-image payloads immediately. Strict allowlist limited to `image/jpeg`, `image/png`, and `image/webp`.
+- **Memory Limits:** Enforces a hard 10MB limit during the read phase to prevent Out-Of-Memory (OOM) crashes caused by malfunctioning edge cameras.
+
+### 2. Async & Deferred File Storage
+
+Images are stored on a local Docker volume (`/app/uploads`) to be served later for audit purposes.
+
+- **Non-Blocking I/O:** Disk writes are performed asynchronously using `aiofiles` to keep the FastAPI event loop unblocked.
+- **Deferred Write:** Files are only written to disk *after* a successful response from the VM2 AI service. This prevents the accumulation of orphaned files if the AI service is down or rejects the image.
+
+### 3. WebSocket Connection Resilience
+
+Network drops between the server and the hardware are expected.
+
+- **Safe Transmission:** All `manager.send_command()` calls in `websockets.py` are wrapped in a `try...except` block. If the socket is dead, the exception is caught, the kiosk is safely removed from `active_connections`, and the server continues running without crashing the current transaction thread.

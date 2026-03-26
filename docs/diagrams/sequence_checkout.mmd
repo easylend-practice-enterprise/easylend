@@ -5,33 +5,59 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
     participant AI as YOLO26 AI Service (VM2)
+    participant Redis as Redis Cache
 
     User->>App: Selects asset from catalog
-    App->>API: POST /api/v1/loans/checkout {asset_id} [JWT, Idempotency-Key]
-    
-    API->>VB: Check WSS connection
-    alt Vision Box offline
-        API-->>App: 503 Service Unavailable (Hardware offline)
-        App-->>User: "Locker currently out of service"
-    else Vision Box online
-        API->>DB: BEGIN transaction
-        API->>DB: SELECT * FROM assets WHERE asset_id = ? AND asset_status = 'AVAILABLE' AND is_deleted = FALSE FOR UPDATE NOWAIT
-        DB-->>API: Asset + locker_id
+    App->>API: POST /api/v1/loans/checkout {aztec_code} [JWT, Idempotency-Key]
 
-        alt Asset not available (or DB locked)
-            API-->>App: 409 Conflict
-            App-->>User: "Item is currently not available"
-        else Asset available
-            API->>DB: INSERT INTO loans {loan_status: 'RESERVED'}
-            API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
-            API->>DB: COMMIT
-            API-->>App: 202 Accepted {loan_id, locker_number}
-            App-->>User: Show loader: "Go to locker #N"
+    API->>Redis: EXISTS idempotency:{key}
+    alt Duplicate Idempotency-Key
+        API-->>App: 409 Conflict {"Request already processing"}
+    else Key not seen
+        API->>Redis: SETEX idempotency:{key} 86400 "processing"
+
+        API->>DB: BEGIN transaction
+        API->>DB: SELECT asset BY aztec_code FOR UPDATE NOWAIT
+
+        alt Asset row lock contention
+            API-->>App: 409 Conflict {"Asset is currently being processed"}
+            App-->>User: "Item is currently being processed"
+        else Asset loaded
+            alt Asset missing/deleted/not available/no locker
+                API-->>App: 400 Bad Request
+            else Asset valid
+                API->>DB: SELECT locker BY locker_id FOR UPDATE NOWAIT
+
+                alt Locker row lock contention
+                    API-->>App: 409 Conflict {"Locker is currently being processed"}
+                else Locker missing
+                    API-->>App: 404 Not Found
+                else Locker valid
+                    API->>VB: Check WSS connection for kiosk
+
+                    alt Vision Box offline
+                        API-->>App: 503 Service Unavailable (Hardware offline)
+                        App-->>User: "Locker currently out of service"
+                    else Vision Box online
+                        API->>DB: INSERT INTO loans {loan_status: 'RESERVED'}
+                        API->>DB: UPDATE assets SET asset_status = 'BORROWED', locker_id = NULL
+                        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' (if occupied)
+
+                        Note over API,VB: open_slot is sent before DB commit
+                        API->>VB: WSS: open_slot {logical_number, loan_id}
+
+                        alt Hardware command failed
+                            API->>DB: ROLLBACK
+                            API-->>App: 503 Service Unavailable
+                        else Hardware command accepted
+                            API->>DB: COMMIT
+                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
+                            App-->>User: Show loader: "Go to locker #N"
+                        end
+                    end
+                end
+            end
         end
-        
-        Note over API,VB: API controls the Vision Box in real time
-        API->>VB: WSS: open_slot {locker_id, loan_id}
 
         VB->>VB: GPIO: open slot + LED green
 

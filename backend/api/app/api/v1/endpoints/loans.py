@@ -1,5 +1,5 @@
 """
-Loan Transaction endpoints — ELP-28
+Loan Transaction endpoints: ELP-28
 
 APIRouter: prefix="/loans", tags=["loans"]
 
@@ -15,12 +15,13 @@ Business rules (Step 10a, hardware-free path):
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
     Asset,
@@ -32,6 +33,7 @@ from app.db.models import (
     LockerStatus,
     User,
 )
+from app.db.redis import redis_client
 from app.schemas.loan import (
     CheckoutRequest,
     LoanListResponse,
@@ -72,10 +74,23 @@ _PAGINATION_LIMIT = Query(
 )
 
 _IS_ADMIN_ROLE = "ADMIN"
+_IDEMPOTENCY_TTL_SECONDS = 86400
 
 
 def _is_admin(user: User) -> bool:
     return user.role is not None and user.role.role_name.upper() == _IS_ADMIN_ROLE
+
+
+async def _guard_idempotency(idempotency_key: str) -> None:
+    redis_key = f"idempotency:{idempotency_key}"
+    was_set = await redis_client.set(
+        redis_key, "processing", ex=_IDEMPOTENCY_TTL_SECONDS, nx=True
+    )
+    if not was_set:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate request with this idempotency key is already being processed or has completed.",
+        )
 
 
 async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
@@ -90,7 +105,7 @@ async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
 
 
 # ---------------------------------------------------------------------------
-# GET /loans — List loans (paginated, role-scoped)
+# GET /loans: List loans (paginated, role-scoped)
 # ---------------------------------------------------------------------------
 
 
@@ -133,7 +148,7 @@ async def list_loans(
 
 
 # ---------------------------------------------------------------------------
-# GET /loans/{loan_id}/status — Fast polling endpoint
+# GET /loans/{loan_id}/status: Fast polling endpoint
 # ---------------------------------------------------------------------------
 
 
@@ -172,14 +187,14 @@ async def get_loan_status(
 
 
 # ---------------------------------------------------------------------------
-# POST /loans/checkout — Initiate a checkout
+# POST /loans/checkout: Initiate a checkout
 # ---------------------------------------------------------------------------
 
 
 @router.post(
     "/checkout",
     response_model=LoanResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
         401: {"description": "Not authenticated"},
@@ -191,6 +206,7 @@ async def checkout(
     payload: CheckoutRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
@@ -200,108 +216,150 @@ async def checkout(
     locked, a **409 Conflict** is returned immediately (no retry).
 
     **State transitions (hardware-free path):**
+    - `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)
     - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
     - `Asset.locker_id`: cleared to `None` (asset leaves the locker)
     - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
-    - New `Loan` record created with `loan_status = ACTIVE`
+    - New `Loan` record created with `loan_status = RESERVED`
     """
-    # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
+        )
+
+    await _guard_idempotency(idempotency_key)
+    redis_key = f"idempotency:{idempotency_key}"
+
     try:
-        result = await db.execute(
-            select(Asset)
-            .where(Asset.aztec_code == payload.aztec_code)
-            .with_for_update(nowait=True)
-        )
-    except OperationalError as exc:
-        await db.rollback()
-        if _is_lock_not_available_error(exc):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Asset is currently being processed. Please try again.",
+        # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
+        try:
+            result = await db.execute(
+                select(Asset)
+                .where(Asset.aztec_code == payload.aztec_code)
+                .with_for_update(nowait=True)
             )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A database error occurred.",
-        ) from exc
-
-    asset = result.scalar_one_or_none()
-
-    # --- 2. Validate asset ---
-    if asset is None or asset.is_deleted:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Asset not found.",
-        )
-
-    if asset.asset_status != AssetStatus.AVAILABLE:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Asset is not available for checkout.",
-        )
-
-    if asset.locker_id is None:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Asset has no assigned locker and cannot be checked out.",
-        )
-
-    checkout_locker_id: UUID = asset.locker_id
-
-    # --- 3. Lock the locker row so we can safely mutate its status ---
-    try:
-        locker_result = await db.execute(
-            select(Locker)
-            .where(Locker.locker_id == checkout_locker_id)
-            .with_for_update(nowait=True)
-        )
-    except OperationalError as exc:
-        await db.rollback()
-        if _is_lock_not_available_error(exc):
+        except OperationalError as exc:
+            await db.rollback()
+            if _is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Asset is currently being processed. Please try again.",
+                )
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Locker is currently being processed. Please try again.",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
+        asset = result.scalar_one_or_none()
+
+        # --- 2. Validate asset ---
+        if asset is None or asset.is_deleted:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Asset not found.",
             )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A database error occurred.",
-        ) from exc
-    locker = locker_result.scalar_one_or_none()
 
-    if locker is None:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Locker not found.",
+        if asset.asset_status != AssetStatus.AVAILABLE:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Asset is not available for checkout.",
+            )
+
+        if asset.locker_id is None:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Asset has no assigned locker and cannot be checked out.",
+            )
+
+        checkout_locker_id: UUID = asset.locker_id
+
+        # --- 3. Lock the locker row so we can safely mutate its status ---
+        try:
+            locker_result = await db.execute(
+                select(Locker)
+                .where(Locker.locker_id == checkout_locker_id)
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            await db.rollback()
+            if _is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Locker is currently being processed. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        locker = locker_result.scalar_one_or_none()
+
+        if locker is None:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Locker not found.",
+            )
+
+        # --- 3b. Hardware Pre-flight Check ---
+        kiosk_id_str = str(locker.kiosk_id)
+        if kiosk_id_str not in manager.active_connections:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The Vision Box for this locker is currently offline. Cannot checkout.",
+            )
+
+        # --- 4. Apply state mutations ---
+        # Asset leaves the locker → locker becomes available again
+        asset.asset_status = AssetStatus.BORROWED
+        asset.locker_id = None
+        if locker.locker_status == LockerStatus.OCCUPIED:
+            locker.locker_status = LockerStatus.AVAILABLE
+
+        # --- 5. Create loan record ---
+        loan = Loan(
+            user_id=current_user.user_id,
+            asset_id=asset.asset_id,
+            checkout_locker_id=checkout_locker_id,
+            loan_status=LoanStatus.RESERVED,
+            reserved_at=datetime.now(UTC),
         )
+        db.add(loan)
+        await db.flush()
 
-    # --- 4. Apply state mutations ---
-    # Asset leaves the locker → locker becomes available again
-    asset.asset_status = AssetStatus.BORROWED
-    asset.locker_id = None
-    if locker.locker_status == LockerStatus.OCCUPIED:
-        locker.locker_status = LockerStatus.AVAILABLE
+        # --- 6. Trigger Hardware to open the door (BEFORE COMMIT) ---
+        command_ok = await manager.send_command(
+            kiosk_id_str,
+            {
+                "action": "open_slot",
+                "locker_id": str(locker.logical_number),
+                "loan_id": str(loan.loan_id),
+                "evaluation_type": "CHECKOUT",
+            },
+        )
+        if not command_ok:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
+            )
 
-    # --- 5. Create loan record ---
-    loan = Loan(
-        user_id=current_user.user_id,
-        asset_id=asset.asset_id,
-        checkout_locker_id=checkout_locker_id,
-        loan_status=LoanStatus.ACTIVE,
-        borrowed_at=datetime.now(UTC),
-    )
-    db.add(loan)
+        await db.commit()
+        await db.refresh(loan)
 
-    await db.commit()
-    await db.refresh(loan)
-
-    return LoanResponse.model_validate(loan)
+        return LoanResponse.model_validate(loan)
+    except Exception:
+        # Clean up idempotency key on any error to allow retries
+        await redis_client.delete(redis_key)
+        raise
 
 
 # ---------------------------------------------------------------------------
-# POST /loans/return/initiate — Begin the return flow
+# POST /loans/return/initiate: Begin the return flow
 # ---------------------------------------------------------------------------
 
 
@@ -322,6 +380,7 @@ async def return_initiate(
     payload: ReturnInitiateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Initiate the return process for an active loan.
@@ -336,92 +395,129 @@ async def return_initiate(
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
-
-    # --- 1. Fetch and validate the loan (non-locking) ---
-    loan = await _get_loan_or_404(db, payload.loan_id)
-
-    if not _is_admin(current_user) and loan.user_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to return this loan.",
-        )
-
-    if loan.loan_status != LoanStatus.ACTIVE:
+    if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Loan is not active and cannot be returned.",
+            detail="Idempotency-Key header is required",
         )
 
-    # --- 1b. Lock the loan row and enforce atomic state transition ---
+    await _guard_idempotency(idempotency_key)
+    redis_key = f"idempotency:{idempotency_key}"
+
     try:
-        locked_loan_result = await db.execute(
-            select(Loan)
-            .where(
-                Loan.loan_id == payload.loan_id,
-                Loan.loan_status == LoanStatus.ACTIVE,
-                Loan.return_locker_id.is_(None),
-            )
-            .with_for_update(nowait=True)
+        # --- 0. Validate that the kiosk exists (BEFORE hardware check) ---
+        kiosk_result = await db.execute(
+            select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
         )
-    except OperationalError as exc:
-        await db.rollback()
-        if _is_lock_not_available_error(exc):
+        kiosk = kiosk_result.scalar_one_or_none()
+        if kiosk is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Kiosk not found.",
+            )
+
+        # --- 0b. Hardware Pre-flight Check ---
+        kiosk_id_str = str(payload.kiosk_id)
+        if kiosk_id_str not in manager.active_connections:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The chosen Vision Box is currently offline. Cannot return here.",
+            )
+
+        # --- 1. Fetch and validate the loan (non-locking) ---
+        loan = await _get_loan_or_404(db, payload.loan_id)
+
+        if not _is_admin(current_user) and loan.user_id != current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to return this loan.",
+            )
+
+        if loan.loan_status != LoanStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Loan is not active and cannot be returned.",
+            )
+
+        # --- 1b. Lock the loan row and enforce atomic state transition ---
+        try:
+            locked_loan_result = await db.execute(
+                select(Loan)
+                .where(
+                    Loan.loan_id == payload.loan_id,
+                    Loan.loan_status == LoanStatus.ACTIVE,
+                    Loan.return_locker_id.is_(None),
+                )
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            await db.rollback()
+            if _is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A return is already in progress for this loan. Please try again shortly.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
+        locked_loan = locked_loan_result.scalar_one_or_none()
+        if locked_loan is None:
+            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A return is already in progress for this loan. Please try again shortly.",
+                detail="Loan is no longer in a state that can be returned.",
             )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A database error occurred.",
-        ) from exc
+        loan = locked_loan
 
-    locked_loan = locked_loan_result.scalar_one_or_none()
-    if locked_loan is None:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Loan is no longer in a state that can be returned.",
+        # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
+        locker_result = await db.execute(
+            select(Locker)
+            .where(
+                Locker.kiosk_id == payload.kiosk_id,
+                Locker.locker_status == LockerStatus.AVAILABLE,
+            )
+            .order_by(Locker.logical_number)
+            .limit(1)
+            .with_for_update(skip_locked=True)
         )
-    loan = locked_loan
+        locker = locker_result.scalar_one_or_none()
 
-    # --- 1c. Validate that the kiosk exists ---
-    kiosk_result = await db.execute(
-        select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
-    )
-    kiosk = kiosk_result.scalar_one_or_none()
-    if kiosk is None:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Kiosk not found.",
+        if locker is None:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No available lockers at this kiosk. Please try again shortly.",
+            )
+
+        # --- 3. Reserve the locker and update the loan ---
+        locker.locker_status = LockerStatus.OCCUPIED
+        loan.return_locker_id = locker.locker_id
+        loan.loan_status = LoanStatus.RETURNING
+
+        # --- 4. Trigger Hardware to open the door (BEFORE COMMIT) ---
+        command_ok = await manager.send_command(
+            kiosk_id_str,
+            {
+                "action": "open_slot",
+                "locker_id": str(locker.logical_number),
+                "loan_id": str(loan.loan_id),
+                "evaluation_type": "RETURN",
+            },
         )
+        if not command_ok:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
+            )
 
-    # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
-    locker_result = await db.execute(
-        select(Locker)
-        .where(
-            Locker.kiosk_id == payload.kiosk_id,
-            Locker.locker_status == LockerStatus.AVAILABLE,
-        )
-        .order_by(Locker.logical_number)
-        .limit(1)
-        .with_for_update(skip_locked=True)
-    )
-    locker = locker_result.scalar_one_or_none()
+        await db.commit()
+        await db.refresh(loan)
 
-    if locker is None:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No available lockers at this kiosk. Please try again shortly.",
-        )
-
-    # --- 3. Reserve the locker and update the loan ---
-    locker.locker_status = LockerStatus.OCCUPIED
-    loan.return_locker_id = locker.locker_id
-    loan.loan_status = LoanStatus.RETURNING
-
-    await db.commit()
-    await db.refresh(loan)
-
-    return LoanResponse.model_validate(loan)
+        return LoanResponse.model_validate(loan)
+    except Exception:
+        # Clean up idempotency key on any error to allow retries
+        await redis_client.delete(redis_key)
+        raise
