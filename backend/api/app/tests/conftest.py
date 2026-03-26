@@ -1,12 +1,55 @@
+import os
+
+# Ensure the application picks up the test environment before importing
+# any app modules that construct global resources (like the Redis client
+# or DB engine). This prevents background workers or transports from
+# starting during pytest runs.
+os.environ.setdefault("ENVIRONMENT", "test")
+
 import uuid
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core import security
-from app.db.database import get_db
-from app.main import app
+import app.db.redis as _redis_mod
+
+
+# During tests, replace the real async Redis client with a lightweight
+# fake to avoid the real client's background transport tasks which can
+# raise "Future exception was never retrieved" warnings during pytest
+# teardown. Apply the fake before importing `app.main` so modules that
+# import the module-level `redis_client` will see the fake instance.
+class _GlobalFakeRedis:
+    async def ping(self):
+        return True
+
+    async def setex(self, *a, **kw):  # noqa: ARG002
+        return None
+
+    async def set(self, *a, **kw):  # noqa: ARG002
+        return True
+
+    async def exists(self, *a, **kw):  # noqa: ARG002
+        return 0
+
+    async def delete(self, *a, **kw):  # noqa: ARG002
+        return 0
+
+    async def scan(self, cursor, match=None):
+        return (0, [])
+
+    async def aclose(self):
+        return None
+
+
+_redis_mod.redis_client = _GlobalFakeRedis()
+
+# The application-level imports that reference `app` and `get_db` are
+# performed inside the fixtures and helper functions below so that the
+# Redis fake is installed before the application and its modules are
+# imported by pytest. This keeps runtime behaviour correct while avoiding
+# top-level import-order violations.
 
 
 class _FakeResult:
@@ -82,6 +125,8 @@ class _QueuedSession:
 
 
 def _make_admin() -> SimpleNamespace:
+    from app.core import security
+
     return SimpleNamespace(
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
@@ -99,6 +144,8 @@ def _make_admin() -> SimpleNamespace:
 
 
 def _make_medewerker() -> SimpleNamespace:
+    from app.core import security
+
     return SimpleNamespace(
         user_id=uuid.uuid4(),
         role_id=uuid.uuid4(),
@@ -117,6 +164,8 @@ def _make_medewerker() -> SimpleNamespace:
 
 def _bearer(user: SimpleNamespace) -> dict:
     """Generate a valid Authorization header with a real JWT for the given user."""
+    from app.core import security
+
     token = security.create_access_token(user_id=user.user_id, role=user.role.role_name)
     return {"Authorization": f"Bearer {token}"}
 
@@ -142,6 +191,8 @@ class FakeAsyncSession:
 
 
 def _build_user(*, pin: str = "123456"):
+    from app.core import security
+
     return SimpleNamespace(
         user_id=uuid.uuid4(),
         nfc_tag_id="NFC-001",
@@ -161,6 +212,9 @@ def build_user():
 @pytest.fixture
 def client_with_overrides():
     def _build(fake_db):
+        from app.db.database import get_db
+        from app.main import app
+
         async def _override_get_db():
             yield fake_db
 
@@ -168,4 +222,6 @@ def client_with_overrides():
         return TestClient(app)
 
     yield _build
+    from app.main import app
+
     app.dependency_overrides.clear()

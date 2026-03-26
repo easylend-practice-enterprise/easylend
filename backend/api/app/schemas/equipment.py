@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.models import AssetStatus, KioskStatus, LockerStatus
+from app.db.models import AssetStatus, KioskStatus, LoanStatus, LockerStatus
 
 # ---------------------------------------------------------------------------
 # CATEGORY
@@ -194,3 +194,29 @@ class AssetResponse(AssetBase):
 class AssetListResponse(BaseModel):
     items: list[AssetResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# CATALOG VIEWS
+# ---------------------------------------------------------------------------
+
+
+class CatalogUserView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    category_id: UUID
+    category_name: str
+    available_count: int
+
+
+class CatalogAdminView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    asset_id: UUID
+    asset_name: str
+    category_id: UUID
+    asset_status: AssetStatus
+    locker_id: UUID | None = None
+    is_deleted: bool
+    loan_status: LoanStatus | None = None
+    borrower_email: str | None = None

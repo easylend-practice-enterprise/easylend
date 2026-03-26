@@ -25,12 +25,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, get_current_user
 from app.db.database import get_db
-from app.db.models import Asset, AssetStatus, Category, Kiosk, Locker, User
+from app.db.models import (
+    Asset,
+    AssetStatus,
+    Category,
+    Kiosk,
+    Loan,
+    LoanStatus,
+    Locker,
+    User,
+)
 from app.schemas.equipment import (
     AssetCreate,
     AssetListResponse,
     AssetResponse,
     AssetUpdate,
+    CatalogAdminView,
+    CatalogUserView,
     CategoryCreate,
     CategoryListResponse,
     CategoryResponse,
@@ -459,6 +470,95 @@ async def update_locker_status(
 # ---------------------------------------------------------------------------
 # ASSETS
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# CATALOG
+# ---------------------------------------------------------------------------
+
+catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+@catalog_router.get(
+    "",
+    response_model=list[CatalogAdminView] | list[CatalogUserView],
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def get_catalog(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CatalogAdminView] | list[CatalogUserView]:
+    """Role-aware catalog view.
+
+    - Admins: return one row per asset including active/reserved loan context.
+    - Non-admins: return grouped counts per category of AVAILABLE assets.
+    """
+    # Admin path: per-asset detail with loan context (if any)
+    if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
+        loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
+        query = (
+            select(Asset, Loan.loan_status, User.email)
+            .outerjoin(
+                Loan,
+                (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
+            )
+            .outerjoin(User, User.user_id == Loan.user_id)
+            .where(Asset.is_deleted.is_(False))
+            .order_by(Asset.name)
+        )
+        result = await db.execute(query)
+        rows = result.all()
+
+        admin_items: list[CatalogAdminView] = []
+        for asset, loan_status, borrower_email in rows:
+            admin_items.append(
+                CatalogAdminView.model_validate(
+                    {
+                        "asset_id": asset.asset_id,
+                        "asset_name": asset.name,
+                        "category_id": asset.category_id,
+                        "asset_status": asset.asset_status,
+                        "locker_id": asset.locker_id,
+                        "is_deleted": asset.is_deleted,
+                        "loan_status": loan_status,
+                        "borrower_email": borrower_email,
+                    }
+                )
+            )
+        return admin_items
+
+    # Non-admin path: categories with available counts
+    query = (
+        select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
+        .outerjoin(
+            Asset,
+            (Asset.category_id == Category.category_id)
+            & (Asset.asset_status == AssetStatus.AVAILABLE)
+            & (Asset.is_deleted.is_(False)),
+        )
+        .group_by(Category.category_id, Category.category_name)
+        .order_by(Category.category_name)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    user_items: list[CatalogUserView] = []
+    for category_id, name, available_count in rows:
+        user_items.append(
+            CatalogUserView.model_validate(
+                {
+                    "category_id": category_id,
+                    "category_name": name,
+                    "available_count": int(available_count or 0),
+                }
+            )
+        )
+
+    return user_items
+
 
 assets_router = APIRouter(prefix="/assets", tags=["assets"])
 
