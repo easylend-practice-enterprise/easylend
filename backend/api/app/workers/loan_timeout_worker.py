@@ -1,26 +1,18 @@
 import asyncio
-import hashlib
-import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.audit import log_audit_event
 from app.db.database import AsyncSessionLocal
-from app.db.models import AuditLog, Loan, LoanStatus, Locker, LockerStatus
+from app.db.models import Loan, LoanStatus, Locker, LockerStatus
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MINUTES = 3
 DEFAULT_INTERVAL_SECONDS = 60
-_GENESIS_AUDIT_HASH = "0" * 64
-
-
-def _compute_audit_hash(previous_hash: str, action_type: str, payload: dict) -> str:
-    payload_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    digest_input = f"{previous_hash}|{action_type}|{payload_json}"
-    return hashlib.sha256(digest_input.encode("utf-8")).hexdigest()
 
 
 async def process_reserved_loan_timeouts(
@@ -44,14 +36,6 @@ async def process_reserved_loan_timeouts(
     if not timed_out_loans:
         return 0
 
-    last_audit_result = await db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(1)
-    )
-    last_audit = last_audit_result.scalar_one_or_none()
-    previous_hash = (
-        last_audit.current_hash if last_audit is not None else _GENESIS_AUDIT_HASH
-    )
-
     for loan in timed_out_loans:
         loan.loan_status = LoanStatus.COMPLETED
 
@@ -70,19 +54,11 @@ async def process_reserved_loan_timeouts(
             "locker_id": locker_id,
             "cutoff": cutoff.isoformat(),
         }
-        action_type = "LOAN_RESERVED_TIMEOUT"
-        current_hash = _compute_audit_hash(previous_hash, action_type, payload)
-
-        db.add(
-            AuditLog(
-                user_id=None,
-                action_type=action_type,
-                payload=payload,
-                previous_hash=previous_hash,
-                current_hash=current_hash,
-            )
+        await log_audit_event(
+            db,
+            action_type="LOAN_RESERVED_TIMEOUT",
+            payload=payload,
         )
-        previous_hash = current_hash
 
     await db.commit()
     return len(timed_out_loans)

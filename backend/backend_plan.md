@@ -193,7 +193,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 1. Finish 10a now (small, high impact)
 
-- [ ] Timeout worker for `RESERVED` loans.
+- [x] Timeout worker for `RESERVED` loans.
 - [ ] Status update asset + locker + audit log entry.
 - [x] Return idempotency test (checkout idempotency already done).
 
@@ -236,6 +236,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 - [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
 - [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
 - [ ] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
+- [x] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
 - [ ] Status update asset + locker + audit log entry
 
@@ -348,6 +349,8 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 ## Step 13: Hash-Chaining Audit Logs
 
 **Ticket:** ELP-29 · **Status:** ❌ Open · *Requires: step 10a (transactions)*
+
+- [x] Foundation helper added: `app/core/audit.py` (`log_audit_event`, genesis hash, hash computation)
 
 - Each audit log entry contains `prev_hash` of the previous entry
 - SHA-256 over `(prev_hash + entry_data)` --> `current_hash`
