@@ -156,6 +156,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 - [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
 - [x] Remaining gap in this step: `GET /api/v1/catalog` (Planned for Sprint 1)
+- [x] `GET /api/v1/catalog` endpoint implemented and covered by tests
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
