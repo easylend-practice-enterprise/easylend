@@ -713,3 +713,48 @@ def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
         )
     assert response.status_code == 200
     assert response.json()["locker_status"] == "MAINTENANCE"
+
+
+def test_get_catalog_as_student_sees_grouped_counts(client_with_overrides):
+    """GET /catalog as a non-admin returns grouped counts per category."""
+    medewerker = _make_medewerker()
+    cat1_id = uuid.uuid4()
+    cat2_id = uuid.uuid4()
+
+    # The fake DB queue: [get_current_user -> medewerker, grouped query -> list of tuples]
+    grouped_rows = [(cat1_id, "Laptops", 2), (cat2_id, "Adapters", 0)]
+    fake_db = _QueuedSession(medewerker, grouped_rows)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.get("/api/v1/catalog", headers=_bearer(medewerker))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    # Find the laptops row
+    laptops = next((r for r in data if r.get("category_id") == str(cat1_id)), None)
+    assert laptops is not None
+    assert laptops["name"] == "Laptops"
+    assert laptops["available_count"] == 2
+
+
+def test_get_catalog_as_admin_sees_asset_details(client_with_overrides):
+    """GET /catalog as admin returns per-asset rows including loan context."""
+    admin = _make_admin()
+    asset = _make_asset(name="Dell XPS", asset_status="BORROWED")
+
+    # Queue: [get_current_user -> admin, admin query -> list of tuples (asset, loan_status, borrower_email)]
+    admin_rows = [(asset, "ACTIVE", "borrower@example.com")]
+    fake_db = _QueuedSession(admin, admin_rows)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.get("/api/v1/catalog", headers=_bearer(admin))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    first = data[0]
+    assert first["asset_id"] == str(asset.asset_id)
+    assert first["name"] == "Dell XPS"
+    assert first["loan_status"] == "ACTIVE"
+    assert first["borrower_email"] == "borrower@example.com"
