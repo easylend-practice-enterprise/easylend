@@ -199,9 +199,9 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 1. Finish 10b MVP control loop next
 
-- [ ] Send `set_led` commands.
-- [ ] Handle `slot_closed` event routing.
-- [ ] Add unreachable Vision Box fallback behavior + audit log.
+- [x] Send `set_led` commands.
+- [ ] Handle `slot_closed` event routing in backend WebSocket endpoint (currently TODO; MVP uses hardware-triggered `POST /vision/analyze` after `slot_closed`).
+- [x] Add unreachable Vision Box fallback behavior + audit log. (Covered by existing fail-fast `503` checks in checkout/return plus timeout worker and audit outcome logging.)
 
 1. Then finish 10b AI robustness items
 
@@ -214,7 +214,8 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 - [x] Return idempotency test.
 - [ ] Fallback tests (AI timeout, no active WSS).
-- [x] Add/extend tests for `slot_closed` and `set_led` paths. (Vision outcome branch tests validate `set_led`; `slot_closed` routing remains hardware-triggered to call `/vision/analyze`.)
+- [x] Add/extend tests for `set_led` and vision outcome branches.
+- [ ] Add dedicated backend WebSocket `slot_closed` routing test (pending implementation in `app/api/ws.py`).
 
 ### Branch Scope (ELP-60-hardware-integration)
 
@@ -235,7 +236,6 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
   - [x] **Pro-feature (Idempotency):** Requires an `Idempotency-Key` in the header (against double-taps).
 - [x] `GET /api/v1/loans/{loan_id}/status`: polling endpoint for the current transaction status.
 - [x] `GET /api/v1/loans`: list endpoint (admin sees all, non-admin sees own loans)
-- [ ] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
 - [x] Status update asset + locker + audit log entry
@@ -264,7 +264,7 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
 - [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
 - [x] Send `set_led {locker_id, color}` based on AI result or error
-- [x] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (MVP routing is hardware-driven: after `slot_closed`, Vision Box calls `POST /api/v1/vision/analyze`.)
+- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (Backend WS handler still has TODO; current MVP relies on hardware-triggered `POST /api/v1/vision/analyze` after `slot_closed`.)
 - [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit. (MVP covered by existing fail-fast `503` in checkout/return plus timeout worker + audit outcome logging.)
 
 **AI Evaluation endpoint (Dual-Model YOLO):**
