@@ -25,11 +25,13 @@ async def process_reserved_loan_timeouts(
     cutoff = reference_now - timedelta(minutes=timeout_minutes)
 
     timed_out_loans_result = await db.execute(
-        select(Loan).where(
+        select(Loan)
+        .where(
             Loan.loan_status == LoanStatus.RESERVED,
             Loan.reserved_at.is_not(None),
             Loan.reserved_at < cutoff,
         )
+        .with_for_update(skip_locked=True)
     )
     timed_out_loans = timed_out_loans_result.scalars().all()
 
