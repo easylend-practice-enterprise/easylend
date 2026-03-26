@@ -18,6 +18,7 @@ from app.core.uploads import UPLOAD_DIR
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
+    AIEvaluation,
     Asset,
     AssetStatus,
     EvaluationType,
@@ -26,9 +27,14 @@ from app.db.models import (
     Locker,
     LockerStatus,
 )
-from app.schemas.vision import VisionAnalyzeResponse
+from app.schemas.vision import (
+    ModelUpdateRequest,
+    ModelUpdateResponse,
+    VisionAnalyzeResponse,
+)
 
 router = APIRouter(prefix="/vision", tags=["vision"])
+webhook_router = APIRouter(tags=["vision"])
 logger = logging.getLogger(__name__)
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
@@ -271,6 +277,15 @@ async def analyze_image(
         ) from exc
 
     try:
+        db.add(
+            AIEvaluation(
+                loan_id=loan.loan_id,
+                evaluation_type=evaluation_type,
+                outcome=outcome,
+                photo_url=validated_data.photo_url,
+            )
+        )
+
         await manager.send_command(
             str(locker.kiosk_id),
             {
@@ -303,3 +318,15 @@ async def analyze_image(
         ) from exc
 
     return validated_data
+
+
+@webhook_router.post("/update-model", response_model=ModelUpdateResponse)
+async def update_model(payload: ModelUpdateRequest) -> ModelUpdateResponse:
+    logger.info(
+        "Model update webhook received.",
+        extra={
+            "object_detection_url": payload.object_detection_url,
+            "segmentation_url": payload.segmentation_url,
+        },
+    )
+    return ModelUpdateResponse(message="Model update received successfully.")

@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 
@@ -39,9 +40,20 @@ async def visionbox_websocket_endpoint(
 
     try:
         while True:
-            data = await websocket.receive_json()
+            raw_message = await websocket.receive_text()
+            try:
+                data = json.loads(raw_message)
+            except json.JSONDecodeError:
+                logger.warning(
+                    f"Ignored non-JSON event from kiosk_id={kiosk_id}: {raw_message}"
+                )
+                continue
+
             logger.info(f"Received event from kiosk_id={kiosk_id}: {data}")
-            # TODO: Process incoming hardware events (e.g., slot_closed)
+
+            if isinstance(data, dict) and data.get("event") == "slot_closed":
+                locker_id = data.get("locker_id", "unknown")
+                logger.info(f"Slot closed event received for locker_id={locker_id}")
 
     except WebSocketDisconnect:
         manager.disconnect(kiosk_id, websocket)

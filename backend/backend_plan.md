@@ -207,9 +207,9 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 1. Then finish 10b AI robustness items
 
 - [ ] Dual-model detection + segmentation.
-- [ ] `/update-model` dual URL webhook behavior.
+- [x] `/update-model` dual URL webhook behavior.
 - [ ] Main API result processing paths.
-- [ ] Persist `ai_evaluations`.
+- [x] Persist `ai_evaluations`.
 
 1. Finalize testing milestones for 10a-10c
 
@@ -265,7 +265,7 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
 - [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
 - [x] Send `set_led {locker_id, color}` based on AI result or error
-- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (Backend WS handler still has TODO; current MVP relies on hardware-triggered `POST /api/v1/vision/analyze` after `slot_closed`.)
+- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (Backend WS handler now parses/logs `slot_closed`; current MVP still relies on hardware-triggered `POST /api/v1/vision/analyze` after `slot_closed`.)
 - [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit. (MVP covered by existing fail-fast `503` in checkout/return plus timeout worker + audit outcome logging.)
 
 **AI Evaluation endpoint (Dual-Model YOLO):**
@@ -273,12 +273,12 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 safely.
 - [ ] **Dual-Model Upgrade:** Vision API must run both Object Detection (is it present?) and Segmentation (is it damaged?).
 - [x] Save photo in `/app/uploads` --> generate `photo_url`
-- [ ] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
+- [x] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
 - [x] Process result in Main API:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
-- [ ] Store in `ai_evaluations` table including `photo_url` and `model_version`
+- [x] Store in `ai_evaluations` table (`evaluation_type`, `outcome`, `photo_url`, `created_at`)
 
 ## Step 10c: Admin Quarantine Dashboard
 

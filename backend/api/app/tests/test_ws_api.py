@@ -46,3 +46,10 @@ def test_websocket_valid_simulation_token() -> None:
         "/ws/visionbox/kiosk_2", headers={"X-Device-Token": settings.SIMULATION_API_KEY}
     ) as websocket:
         websocket.send_json({"action": "ping"})
+
+
+def test_websocket_slot_closed_event_is_accepted() -> None:
+    with client.websocket_connect(
+        "/ws/visionbox/kiosk_3", headers={"X-Device-Token": settings.VISION_BOX_API_KEY}
+    ) as websocket:
+        websocket.send_text('{"event":"slot_closed","locker_id":"12"}')

@@ -7,6 +7,7 @@ import pytest
 
 from app.api.v1.endpoints import vision as vision_endpoints
 from app.core.config import settings
+from app.db.models import AIEvaluation
 from app.tests.conftest import _QueuedSession
 
 
@@ -165,6 +166,12 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     assert captured["url"] == "http://vm2/predict"
     assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
     assert captured["files"]["file"] == ("sample.jpg", b"image-bytes", "image/jpeg")
+
+    assert len(fake_db.added) == 1
+    assert isinstance(fake_db.added[0], AIEvaluation)
+    assert fake_db.added[0].loan_id == loan_id
+    assert fake_db.added[0].evaluation_type == "CHECKOUT"
+    assert fake_db.added[0].outcome == "FRAUD_SUSPECTED"
 
 
 def test_checkout_success_branch_sets_active_and_green_led(
@@ -632,3 +639,17 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
     assert response.status_code == 500
     assert response.json()["detail"] == "Failed to finalize vision evaluation."
     assert list(tmp_path.iterdir()) == []
+
+
+def test_update_model_accepts_dual_model_urls(client_with_overrides):
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.post(
+            "/api/v1/update-model",
+            json={
+                "object_detection_url": "https://models.example.com/object.pt",
+                "segmentation_url": "https://models.example.com/segmentation.pt",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Model update received successfully."
