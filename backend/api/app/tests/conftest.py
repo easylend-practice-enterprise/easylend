@@ -4,9 +4,40 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
+import app.db.redis as _redis_mod
 from app.core import security
 from app.db.database import get_db
 from app.main import app
+
+
+# During tests, replace the real async Redis client with a lightweight
+# fake to avoid the real client's background transport tasks which can
+# raise "Future exception was never retrieved" warnings during pytest
+# teardown.
+class _GlobalFakeRedis:
+    async def ping(self):
+        return True
+
+    async def setex(self, *a, **kw):  # noqa: ARG002
+        return None
+
+    async def set(self, *a, **kw):  # noqa: ARG002
+        return True
+
+    async def exists(self, *a, **kw):  # noqa: ARG002
+        return 0
+
+    async def delete(self, *a, **kw):  # noqa: ARG002
+        return 0
+
+    async def scan(self, cursor, match=None):
+        return (0, [])
+
+    async def aclose(self):
+        return None
+
+
+_redis_mod.redis_client = _GlobalFakeRedis()
 
 
 class _FakeResult:

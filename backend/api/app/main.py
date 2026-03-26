@@ -21,7 +21,11 @@ from app.workers.loan_timeout_worker import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    await check_redis_connection()
+    # Avoid touching the real Redis client during tests (prevents background
+    # async tasks from being created which can raise un-retrieved Future
+    # exceptions). Only check Redis in non-test environments.
+    if settings.ENVIRONMENT != "test":
+        await check_redis_connection()
     timeout_worker_task = None
     timeout_worker_stop_event = None
     if settings.ENVIRONMENT != "test":
@@ -41,7 +45,10 @@ async def lifespan(app: FastAPI):
             timeout_worker_task,
             timeout_worker_stop_event,
         )
-    await redis_client.aclose()
+    # Close Redis client only outside of tests to avoid background-transport
+    # shutdown races during pytest session teardown.
+    if settings.ENVIRONMENT != "test":
+        await redis_client.aclose()
 
 
 app = FastAPI(

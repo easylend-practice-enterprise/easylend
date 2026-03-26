@@ -715,7 +715,7 @@ def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
     assert response.json()["locker_status"] == "MAINTENANCE"
 
 
-def test_get_catalog_as_student_sees_grouped_counts(client_with_overrides):
+def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
     """GET /catalog as a non-admin returns grouped counts per category."""
     medewerker = _make_medewerker()
     cat1_id = uuid.uuid4()

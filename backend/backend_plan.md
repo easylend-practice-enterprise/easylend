@@ -331,7 +331,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
    - [x] Authorisation tests per role (admin/staff/kiosk)
    - [x] Happy-path + forbidden-path per endpoint
 
-- [x] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
+- [x] `GET /api/v1/catalog` endpoint implemented and covered by tests
 
 1. **After steps 10a-10c (transactions + hardware + AI)**
 

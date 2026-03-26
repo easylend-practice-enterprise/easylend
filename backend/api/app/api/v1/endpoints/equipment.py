@@ -510,18 +510,10 @@ async def get_catalog(
             .order_by(Asset.name)
         )
         result = await db.execute(query)
-        rows = result.scalars().all()
+        rows = result.all()
 
         admin_items: list[CatalogAdminView] = []
-        for row in rows:
-            # Tests stub rows as tuples: (asset_obj, loan_status, borrower_email)
-            if isinstance(row, (list, tuple)):
-                asset, loan_status, borrower_email = row
-            else:
-                asset = row
-                loan_status = None
-                borrower_email = None
-
+        for asset, loan_status, borrower_email in rows:
             admin_items.append(
                 CatalogAdminView.model_validate(
                     {
@@ -551,19 +543,10 @@ async def get_catalog(
         .order_by(Category.category_name)
     )
     result = await db.execute(query)
-    rows = result.scalars().all()
+    rows = result.all()
 
     user_items: list[CatalogUserView] = []
-    for row in rows:
-        if isinstance(row, (list, tuple)):
-            category_id, name, available_count = row
-        else:
-            # In tests the simplified stub may return SimpleNamespace objects
-            # but the query we mock returns tuples; defensively handle both.
-            category_id = getattr(row, "category_id", None)
-            name = getattr(row, "category_name", None)
-            available_count = getattr(row, "available_count", None)
-
+    for category_id, name, available_count in rows:
         user_items.append(
             CatalogUserView.model_validate(
                 {
