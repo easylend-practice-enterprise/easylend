@@ -572,6 +572,29 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
     assert second_db.commit_calls == 0
 
 
+def test_checkout_fails_if_vision_box_offline(client_with_overrides, monkeypatch):
+    student = _make_student()
+    locker_id = uuid.uuid4()
+    asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
+    locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
+
+    monkeypatch.setattr(manager, "active_connections", {})
+
+    fake_db = _QueuedSession(student, asset, locker)
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
+            headers=_with_idempotency(_bearer(student), "checkout-vision-offline"),
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "The Vision Box for this locker is currently offline. Cannot checkout."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 5. POST /loans/return/initiate
 # ---------------------------------------------------------------------------
