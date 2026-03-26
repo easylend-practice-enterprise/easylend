@@ -337,6 +337,7 @@ async def checkout(
                 "action": "open_slot",
                 "locker_id": str(locker.logical_number),
                 "loan_id": str(loan.loan_id),
+                "evaluation_type": "CHECKOUT",
             },
         )
         if not command_ok:
@@ -501,6 +502,7 @@ async def return_initiate(
                 "action": "open_slot",
                 "locker_id": str(locker.logical_number),
                 "loan_id": str(loan.loan_id),
+                "evaluation_type": "RETURN",
             },
         )
         if not command_ok:
