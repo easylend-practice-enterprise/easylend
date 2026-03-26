@@ -3,14 +3,13 @@ import logging
 import secrets
 import uuid
 
-from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.websockets import manager
-from app.db.database import get_db
-from app.db.models import Loan, Locker, LockerStatus
+from app.db.database import AsyncSessionLocal
+from app.db.models import Locker, LockerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,6 @@ async def visionbox_websocket_endpoint(
     websocket: WebSocket,
     kiosk_id: str,
     x_device_token: str | None = Header(default=None, alias="X-Device-Token"),
-    db: AsyncSession = Depends(get_db),
 ) -> None:
     if not x_device_token:
         logger.warning(
@@ -59,37 +57,33 @@ async def visionbox_websocket_endpoint(
 
             if isinstance(data, dict) and data.get("event") == "slot_closed":
                 locker_id_raw = data.get("locker_id")
-                loan_id_raw = data.get("loan_id")
                 logger.info(f"Slot closed event received for locker_id={locker_id_raw}")
 
                 try:
-                    locker_id = uuid.UUID(str(locker_id_raw)) if locker_id_raw else None
-                    loan_id = uuid.UUID(str(loan_id_raw)) if loan_id_raw else None
+                    locker_id = uuid.UUID(str(locker_id_raw))
+                except ValueError:
+                    logger.warning(
+                        "Invalid UUID for slot_closed locker_id from kiosk_id=%s: %s",
+                        kiosk_id,
+                        locker_id_raw,
+                    )
+                    continue
 
-                    if locker_id is not None:
+                try:
+                    async with AsyncSessionLocal() as db:
                         locker_result = await db.execute(
                             select(Locker).where(Locker.locker_id == locker_id)
                         )
                         locker = locker_result.scalar_one_or_none()
                         if locker is not None:
                             locker.locker_status = LockerStatus.OCCUPIED
-
-                    if loan_id is not None:
-                        await db.execute(select(Loan).where(Loan.loan_id == loan_id))
-
-                    await db.commit()
+                            await db.commit()
                 except Exception as exc:
                     logger.exception(
                         "Failed to process slot_closed event for kiosk_id=%s: %s",
                         kiosk_id,
                         str(exc),
                     )
-                    try:
-                        await db.rollback()
-                    except Exception:
-                        logger.exception(
-                            "Failed to rollback DB transaction after slot_closed error."
-                        )
                     continue
 
     except WebSocketDisconnect:

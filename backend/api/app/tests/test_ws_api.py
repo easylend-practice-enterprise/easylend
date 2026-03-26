@@ -1,5 +1,6 @@
 import uuid
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi import status
@@ -8,7 +9,6 @@ from starlette.testclient import WebSocketDenialResponse
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import settings
-from app.db.database import get_db
 from app.main import app
 from app.tests.conftest import _QueuedSession
 
@@ -54,24 +54,26 @@ def test_websocket_valid_simulation_token() -> None:
 
 
 def test_websocket_slot_closed_event_is_accepted() -> None:
+    locker_id = str(uuid.uuid4())
     with client.websocket_connect(
         "/ws/visionbox/kiosk_3", headers={"X-Device-Token": settings.VISION_BOX_API_KEY}
     ) as websocket:
-        websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
+        websocket.send_text(f'{{"event":"slot_closed","locker_id":"{locker_id}"}}')
 
 
 def test_websocket_slot_closed_event_updates_locker() -> None:
     locker_id = uuid.uuid4()
-    loan_id = uuid.uuid4()
     locker = SimpleNamespace(locker_id=locker_id, locker_status="AVAILABLE")
-    loan = SimpleNamespace(loan_id=loan_id)
-    fake_db = _QueuedSession(locker, loan)
+    fake_db = _QueuedSession(locker)
 
-    async def _override_get_db():
-        yield fake_db
+    class _FakeSessionCtx:
+        async def __aenter__(self):
+            return fake_db
 
-    app.dependency_overrides[get_db] = _override_get_db
-    try:
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+    with patch("app.api.ws.AsyncSessionLocal", return_value=_FakeSessionCtx()):
         with client.websocket_connect(
             "/ws/visionbox/kiosk_4",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
@@ -80,11 +82,8 @@ def test_websocket_slot_closed_event_updates_locker() -> None:
                 {
                     "event": "slot_closed",
                     "locker_id": str(locker_id),
-                    "loan_id": str(loan_id),
                 }
             )
-    finally:
-        app.dependency_overrides.pop(get_db, None)
 
     assert fake_db.commit_calls == 1
     assert locker.locker_status == "OCCUPIED"
