@@ -249,6 +249,36 @@ def test_return_initiate_returns_401_without_token(client_with_overrides):
     assert response.status_code == 401
 
 
+def test_checkout_returns_400_when_idempotency_header_missing(client_with_overrides):
+    """POST /loans/checkout with auth but no Idempotency-Key header → 400."""
+    student = _make_student()
+    with client_with_overrides(_QueuedSession(student)) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": "AZT-001"},
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Idempotency-Key header is required"
+
+
+def test_return_initiate_returns_400_when_idempotency_header_missing(
+    client_with_overrides,
+):
+    """POST /loans/return/initiate with auth but no Idempotency-Key header → 400."""
+    student = _make_student()
+    with client_with_overrides(_QueuedSession(student)) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Idempotency-Key header is required"
+
+
 # ---------------------------------------------------------------------------
 # 2. GET /loans
 # ---------------------------------------------------------------------------
@@ -535,7 +565,10 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
 
     assert first_response.status_code == 202
     assert second_response.status_code == 409
-    assert second_response.json()["detail"] == "Request already processing"
+    assert (
+        second_response.json()["detail"]
+        == "Duplicate request with this idempotency key is already being processed or has completed."
+    )
     assert second_db.commit_calls == 0
 
 
@@ -775,5 +808,8 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
             "/api/v1/loans/return/initiate", json=payload, headers=headers
         )
         assert response2.status_code == 409
-        assert "Request already processing" in response2.json()["detail"]
+        assert (
+            response2.json()["detail"]
+            == "Duplicate request with this idempotency key is already being processed or has completed."
+        )
     assert fake_db.commit_calls == 1

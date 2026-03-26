@@ -208,6 +208,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
 
     assert response.status_code == 200
     assert loan.loan_status == "ACTIVE"
+    assert getattr(loan, "borrowed_at", None) is not None
     assert asset.asset_status == "BORROWED"
     assert locker.locker_status == "AVAILABLE"
 
@@ -321,6 +322,7 @@ def test_return_success_branch_sets_completed_and_green_led(
 
     assert response.status_code == 200
     assert loan.loan_status == "COMPLETED"
+    assert getattr(loan, "returned_at", None) is not None
     assert asset.asset_status == "AVAILABLE"
     assert asset.locker_id == return_locker_id
     assert locker.locker_status == "OCCUPIED"
@@ -379,6 +381,7 @@ def test_return_damage_branch_sets_pending_inspection_and_red_led(
     assert response.status_code == 200
     assert loan.loan_status == "PENDING_INSPECTION"
     assert asset.asset_status == "PENDING_INSPECTION"
+    assert asset.locker_id == return_locker_id
     assert locker.locker_status == "MAINTENANCE"
 
     send_command_mock.assert_awaited_once_with(
@@ -587,3 +590,45 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
     assert (
         response.json()["detail"] == "Vision AI service returned invalid data format."
     )
+
+
+def test_vision_analyze_cleans_up_file_when_finalize_fails(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    payload = {
+        "status": "success",
+        "count": 0,
+        "detections": [],
+    }
+    _mock_success_upstream(monkeypatch, payload)
+    _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    class _FailingCommitSession(_QueuedSession):
+        async def commit(self):
+            raise RuntimeError("commit failed")
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locker = _make_locker(locker_id=locker_id)
+    fake_db = _FailingCommitSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to finalize vision evaluation."
+    assert list(tmp_path.iterdir()) == []

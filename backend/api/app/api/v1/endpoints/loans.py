@@ -89,7 +89,7 @@ async def _guard_idempotency(idempotency_key: str) -> None:
     if not was_set:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Request already processing",
+            detail="Duplicate request with this idempotency key is already being processed or has completed.",
         )
 
 
@@ -206,7 +206,7 @@ async def checkout(
     payload: CheckoutRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
@@ -222,6 +222,12 @@ async def checkout(
     - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
     - New `Loan` record created with `loan_status = RESERVED`
     """
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
+        )
+
     await _guard_idempotency(idempotency_key)
     redis_key = f"idempotency:{idempotency_key}"
 
@@ -372,7 +378,7 @@ async def return_initiate(
     payload: ReturnInitiateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> LoanResponse:
     """
     Initiate the return process for an active loan.
@@ -387,6 +393,12 @@ async def return_initiate(
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
     """
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
+        )
+
     await _guard_idempotency(idempotency_key)
     redis_key = f"idempotency:{idempotency_key}"
 

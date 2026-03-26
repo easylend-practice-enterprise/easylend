@@ -23,7 +23,7 @@ async def log_audit_event(
     user_id: UUID | None = None,
 ) -> AuditLog:
     last_audit_result = await db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(1)
+        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(1).with_for_update()
     )
     last_audit = last_audit_result.scalar_one_or_none()
     previous_hash = (

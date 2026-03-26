@@ -17,14 +17,19 @@ To prevent the backend from processing useless data (e.g., black or heavily over
 
 ## 3. Communication Protocol
 
-The Vision Box uses a hybrid communication approach, authenticated via a static `VISION_BOX_API_KEY`:
+The Vision Box uses a hybrid communication approach. **Authentication** is strictly enforced via a static API key. You must include the following header in BOTH your WebSocket connection and HTTP POST requests:
+`X-Device-Token: <YOUR_VISION_BOX_API_KEY>`
 
 * **WebSockets (WSS):**
-  * Listens for `open_slot {locker_id, loan_id}` commands from the backend.
+  * Listens for `open_slot {locker_id, loan_id, evaluation_type}` commands from the backend. *(Note: Save the `loan_id` and `evaluation_type` in memory; you will need them later).*
   * Listens for `set_led {locker_id, color}` commands to indicate status (green/orange/red).
   * Sends a `slot_closed` event to the backend the moment the physical door shuts.
 * **HTTP POST (REST):**
-  * Immediately after the `slot_closed` event and edge validation, it sends the image payload to `/api/v1/vision/analyze` for AI processing and fraud detection.
+  * Immediately after the `slot_closed` event and edge validation, it sends the image to `POST /api/v1/vision/analyze`.
+  * **Payload Format:** Must be sent as `multipart/form-data` containing three required fields:
+    1. `file`: The `.jpg` image payload.
+    2. `loan_id`: The UUID of the loan (retrieved from the previous WSS command).
+    3. `evaluation_type`: Either `"CHECKOUT"` or `"RETURN"` (retrieved from the previous WSS command).
 
 ## 4. Fallback & Error Handling
 

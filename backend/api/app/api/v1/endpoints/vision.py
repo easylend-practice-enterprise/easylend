@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import aiofiles
@@ -216,23 +217,6 @@ async def analyze_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Locker not found.",
         )
-    if evaluation_type == EvaluationType.CHECKOUT:
-        if loan.loan_status != LoanStatus.RESERVED:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
-            )
-    else:  # EvaluationType.RETURN
-        if loan.loan_status != LoanStatus.RETURNING:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
-            )
-        if loan.return_locker_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Return locker must be assigned before evaluation.",
-            )
 
     detections = validated_data.detections or []
     has_any_detection = validated_data.count > 0 and len(detections) > 0
@@ -259,6 +243,7 @@ async def analyze_image(
         if has_damage:
             loan.loan_status = LoanStatus.PENDING_INSPECTION
             asset.asset_status = AssetStatus.PENDING_INSPECTION
+            asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.MAINTENANCE
             led_color = "red"
             outcome = "PENDING_INSPECTION"
@@ -285,28 +270,36 @@ async def analyze_image(
             detail="Storage service is temporarily unavailable.",
         ) from exc
 
-    await manager.send_command(
-        str(locker.kiosk_id),
-        {
-            "action": "set_led",
-            "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
-            "color": led_color,
-        },
-    )
+    try:
+        await manager.send_command(
+            str(locker.kiosk_id),
+            {
+                "action": "set_led",
+                "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+                "color": led_color,
+            },
+        )
 
-    await log_audit_event(
-        db,
-        action_type="VISION_EVALUATION_PROCESSED",
-        payload={
-            "loan_id": str(loan.loan_id),
-            "asset_id": str(asset.asset_id),
-            "locker_id": str(locker.locker_id),
-            "evaluation_type": evaluation_type.value,
-            "outcome": outcome,
-            "photo_url": validated_data.photo_url,
-        },
-    )
+        await log_audit_event(
+            db,
+            action_type="VISION_EVALUATION_PROCESSED",
+            payload={
+                "loan_id": str(loan.loan_id),
+                "asset_id": str(asset.asset_id),
+                "locker_id": str(locker.locker_id),
+                "evaluation_type": evaluation_type.value,
+                "outcome": outcome,
+                "photo_url": validated_data.photo_url,
+            },
+        )
 
-    await db.commit()
+        await db.commit()
+    except Exception as exc:
+        Path(file_path).unlink(missing_ok=True)
+        logger.exception("Failed while finalizing vision evaluation transaction.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to finalize vision evaluation.",
+        ) from exc
 
     return validated_data
