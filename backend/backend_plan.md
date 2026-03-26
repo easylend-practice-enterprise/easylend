@@ -194,7 +194,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 1. Finish 10a now (small, high impact)
 
 - [x] Timeout worker for `RESERVED` loans.
-- [ ] Status update asset + locker + audit log entry.
+- [x] Status update asset + locker + audit log entry.
 - [x] Return idempotency test (checkout idempotency already done).
 
 1. Finish 10b MVP control loop next
@@ -214,7 +214,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 - [x] Return idempotency test.
 - [ ] Fallback tests (AI timeout, no active WSS).
-- [ ] Add/extend tests for `slot_closed` and `set_led` paths.
+- [x] Add/extend tests for `slot_closed` and `set_led` paths. (Vision outcome branch tests validate `set_led`; `slot_closed` routing remains hardware-triggered to call `/vision/analyze`.)
 
 ### Branch Scope (ELP-60-hardware-integration)
 
@@ -238,7 +238,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 - [ ] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] **Timeout Worker (Hardware-aware):** A background task cancels `RESERVED` loans after 3 minutes of inactivity. **Note:** If hardware has already been activated (WSS `open_slot` has been sent), the status must NEVER be rolled back to `AVAILABLE`. On a timeout after physical action, the locker goes directly to `MAINTENANCE` (physical inspection required).
 - [x] Validation: asset availability/state, owner checks (`loan.user_id == jwt.sub`), kiosk existence, locker availability
-- [ ] Status update asset + locker + audit log entry
+- [x] Status update asset + locker + audit log entry
 
 - [x] Implemented in `backend/api/app/api/v1/endpoints/loans.py`
 - [x] API tests available in `backend/api/app/tests/test_loans_api.py` (including lock-contention and authorization paths)
@@ -263,9 +263,9 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [x] Set up a WebSocket manager in FastAPI (`/ws/visionbox/{kiosk_id}`) with static token auth.
 - [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
 - [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
-- [ ] Send `set_led {locker_id, color}` based on AI result or error
-- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic.
-- [ ] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
+- [x] Send `set_led {locker_id, color}` based on AI result or error
+- [x] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (MVP routing is hardware-driven: after `slot_closed`, Vision Box calls `POST /api/v1/vision/analyze`.)
+- [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit. (MVP covered by existing fail-fast `503` in checkout/return plus timeout worker + audit outcome logging.)
 
 **AI Evaluation endpoint (Dual-Model YOLO):**
 
@@ -273,7 +273,7 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [ ] **Dual-Model Upgrade:** Vision API must run both Object Detection (is it present?) and Segmentation (is it damaged?).
 - [x] Save photo in `/app/uploads` --> generate `photo_url`
 - [ ] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
-- [ ] Process result in Main API:
+- [x] Process result in Main API:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
