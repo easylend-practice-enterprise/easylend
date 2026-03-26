@@ -44,7 +44,7 @@ async def visionbox_websocket_endpoint(
             # TODO: Process incoming hardware events (e.g., slot_closed)
 
     except WebSocketDisconnect:
-        manager.disconnect(kiosk_id)
+        manager.disconnect(kiosk_id, websocket)
     except Exception as e:
         logger.error(f"WebSocket error for kiosk_id={kiosk_id}: {str(e)}")
         try:
@@ -52,4 +52,4 @@ async def visionbox_websocket_endpoint(
         except RuntimeError:
             pass
         finally:
-            manager.disconnect(kiosk_id)
+            manager.disconnect(kiosk_id, websocket)

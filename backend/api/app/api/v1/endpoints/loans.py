@@ -329,6 +329,7 @@ async def checkout(
             reserved_at=datetime.now(UTC),
         )
         db.add(loan)
+        await db.flush()
 
         # --- 6. Trigger Hardware to open the door (BEFORE COMMIT) ---
         command_ok = await manager.send_command(

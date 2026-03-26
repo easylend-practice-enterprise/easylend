@@ -30,9 +30,10 @@ class ConnectionManager:
         self.active_connections[kiosk_id] = websocket
         logger.info(f"Hardware client connected: kiosk_id={kiosk_id}")
 
-    def disconnect(self, kiosk_id: str) -> None:
-        # pop() safely removes the key if it exists, returning None otherwise
-        if self.active_connections.pop(kiosk_id, None) is not None:
+    def disconnect(self, kiosk_id: str, websocket: WebSocket) -> None:
+        # Only disconnect if this exact websocket is still the active one for kiosk_id.
+        if self.active_connections.get(kiosk_id) is websocket:
+            self.active_connections.pop(kiosk_id)
             logger.info(f"Hardware client disconnected: kiosk_id={kiosk_id}")
 
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
@@ -45,7 +46,7 @@ class ConnectionManager:
                 logger.exception(
                     "Failed to send command to kiosk_id=%s. Disconnecting.", kiosk_id
                 )
-                self.disconnect(kiosk_id)
+                self.disconnect(kiosk_id, websocket)
                 return False
 
         logger.warning(

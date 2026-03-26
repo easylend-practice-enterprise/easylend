@@ -64,6 +64,10 @@ class _QueuedSession:
     async def rollback(self):
         self.rollback_calls += 1
 
+    async def flush(self):
+        # No-op for tests; present to mirror AsyncSession interface.
+        return None
+
     async def refresh(self, obj):
         # Simulate the database: generate a UUID for empty Primary Keys
         for pk_field in ["category_id", "kiosk_id", "locker_id", "asset_id", "loan_id"]:
