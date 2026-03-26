@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.audit import log_audit_event
 from app.db.database import AsyncSessionLocal
-from app.db.models import Loan, LoanStatus, Locker, LockerStatus
+from app.db.models import Asset, AssetStatus, Loan, LoanStatus, Locker, LockerStatus
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,15 @@ async def process_reserved_loan_timeouts(
         if locker is not None:
             locker.locker_status = LockerStatus.MAINTENANCE
             locker_id = str(locker.locker_id)
+
+        # Fetch the asset to prevent it from being orphaned
+        asset_result = await db.execute(
+            select(Asset).where(Asset.asset_id == loan.asset_id)
+        )
+        asset = asset_result.scalar_one_or_none()
+        if asset is not None:
+            asset.asset_status = AssetStatus.PENDING_INSPECTION
+            asset.locker_id = locker.locker_id if locker is not None else None
 
         payload = {
             "event": "reserved_loan_timeout",

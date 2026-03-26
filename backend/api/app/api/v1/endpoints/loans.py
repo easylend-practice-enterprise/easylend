@@ -83,12 +83,14 @@ def _is_admin(user: User) -> bool:
 
 async def _guard_idempotency(idempotency_key: str) -> None:
     redis_key = f"idempotency:{idempotency_key}"
-    if await redis_client.exists(redis_key):
+    was_set = await redis_client.set(
+        redis_key, "processing", ex=_IDEMPOTENCY_TTL_SECONDS, nx=True
+    )
+    if not was_set:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Request already processing",
         )
-    await redis_client.setex(redis_key, _IDEMPOTENCY_TTL_SECONDS, "processing")
 
 
 async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
@@ -389,7 +391,18 @@ async def return_initiate(
     redis_key = f"idempotency:{idempotency_key}"
 
     try:
-        # --- 0. Hardware Pre-flight Check ---
+        # --- 0. Validate that the kiosk exists (BEFORE hardware check) ---
+        kiosk_result = await db.execute(
+            select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
+        )
+        kiosk = kiosk_result.scalar_one_or_none()
+        if kiosk is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Kiosk not found.",
+            )
+
+        # --- 0b. Hardware Pre-flight Check ---
         kiosk_id_str = str(payload.kiosk_id)
         if kiosk_id_str not in manager.active_connections:
             raise HTTPException(
@@ -443,18 +456,6 @@ async def return_initiate(
                 detail="Loan is no longer in a state that can be returned.",
             )
         loan = locked_loan
-
-        # --- 1c. Validate that the kiosk exists ---
-        kiosk_result = await db.execute(
-            select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
-        )
-        kiosk = kiosk_result.scalar_one_or_none()
-        if kiosk is None:
-            await db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Kiosk not found.",
-            )
 
         # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
         locker_result = await db.execute(

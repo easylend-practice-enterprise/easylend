@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
 import aiofiles
@@ -182,6 +183,25 @@ async def analyze_image(
             detail="Asset not found.",
         )
 
+    # 4b. Validate state machine BEFORE querying locker (prevents 404 before 409)
+    if evaluation_type == EvaluationType.CHECKOUT:
+        if loan.loan_status != LoanStatus.RESERVED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
+            )
+    else:  # EvaluationType.RETURN
+        if loan.loan_status != LoanStatus.RETURNING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
+            )
+        if loan.return_locker_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Return locker must be assigned before evaluation.",
+            )
+
     locker_id_for_eval = (
         loan.checkout_locker_id
         if evaluation_type == EvaluationType.CHECKOUT
@@ -196,8 +216,6 @@ async def analyze_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Locker not found.",
         )
-
-    # 4b. Validate state machine before mutating
     if evaluation_type == EvaluationType.CHECKOUT:
         if loan.loan_status != LoanStatus.RESERVED:
             raise HTTPException(
@@ -234,6 +252,7 @@ async def analyze_image(
             outcome = "FRAUD_SUSPECTED"
         else:
             loan.loan_status = LoanStatus.ACTIVE
+            loan.borrowed_at = datetime.now(UTC)
             led_color = "green"
             outcome = "ACTIVE"
     else:  # EvaluationType.RETURN
@@ -245,6 +264,7 @@ async def analyze_image(
             outcome = "PENDING_INSPECTION"
         else:
             loan.loan_status = LoanStatus.COMPLETED
+            loan.returned_at = datetime.now(UTC)
             asset.asset_status = AssetStatus.AVAILABLE
             asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.OCCUPIED

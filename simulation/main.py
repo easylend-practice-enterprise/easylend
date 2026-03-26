@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 API_URL = os.environ.get(
-    "VISIONBOX_WS_URL", "ws://localhost:8000/ws/visionbox/kiosk_sim_1"
+    "VISIONBOX_WS_URL",
+    "ws://localhost:8000/ws/visionbox/00000000-0000-0000-0000-000000000000",
 )
 # Prefer an environment-provided simulation API key to match the backend's .env
 DEVICE_TOKEN = os.environ.get("SIMULATION_API_KEY", "local-dev-sim-key-123")  # noqa: S105
