@@ -1,0 +1,30 @@
+[project]
+name = "vision-box"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "asyncio>=4.0.0",
+    "numpy>=2.4.3",
+    "opencv-python-headless>=4.13.0.92",
+    "requests>=2.33.0",
+    "websockets>=16.0",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.28.1", "pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff.lint]
+extend-select = [
+    "DTZ",
+    "S",
+    "I",
+    "UP",
+    "E",
+    "F",
+] # datetimez, flake8-bandit (security), isort, pyupgrade, pycodestyle, pyflakes
+ignore = ["E501"] # Ignore noisy 'Line too long' warnings
