@@ -734,7 +734,7 @@ def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
     # Find the laptops row
     laptops = next((r for r in data if r.get("category_id") == str(cat1_id)), None)
     assert laptops is not None
-    assert laptops["name"] == "Laptops"
+    assert laptops["category_name"] == "Laptops"
     assert laptops["available_count"] == 2
 
 
@@ -755,6 +755,14 @@ def test_get_catalog_as_admin_sees_asset_details(client_with_overrides):
     assert isinstance(data, list)
     first = data[0]
     assert first["asset_id"] == str(asset.asset_id)
-    assert first["name"] == "Dell XPS"
+    assert first["asset_name"] == "Dell XPS"
     assert first["loan_status"] == "ACTIVE"
     assert first["borrower_email"] == "borrower@example.com"
+
+
+def test_get_catalog_returns_401_without_token(client_with_overrides):
+    """GET /catalog without Authorization header returns 401."""
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.get("/api/v1/catalog")
+
+    assert response.status_code == 401

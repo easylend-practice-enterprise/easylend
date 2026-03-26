@@ -518,7 +518,7 @@ async def get_catalog(
                 CatalogAdminView.model_validate(
                     {
                         "asset_id": asset.asset_id,
-                        "name": asset.name,
+                        "asset_name": asset.name,
                         "category_id": asset.category_id,
                         "asset_status": asset.asset_status,
                         "locker_id": asset.locker_id,
@@ -551,7 +551,7 @@ async def get_catalog(
             CatalogUserView.model_validate(
                 {
                     "category_id": category_id,
-                    "name": name,
+                    "category_name": name,
                     "available_count": int(available_count or 0),
                 }
             )

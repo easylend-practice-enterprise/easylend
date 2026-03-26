@@ -205,7 +205,7 @@ class CatalogUserView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     category_id: UUID
-    name: str
+    category_name: str
     available_count: int
 
 
@@ -213,7 +213,7 @@ class CatalogAdminView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     asset_id: UUID
-    name: str
+    asset_name: str
     category_id: UUID
     asset_status: AssetStatus
     locker_id: UUID | None = None
