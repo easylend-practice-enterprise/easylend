@@ -220,25 +220,3 @@ class CatalogAdminView(BaseModel):
     is_deleted: bool
     loan_status: LoanStatus | None = None
     borrower_email: str | None = None
-
-
-class CatalogItem(BaseModel):
-    """Flexible union schema used for the `/catalog` endpoint responses.
-
-    Contains the superset of fields returned for both admin (per-asset)
-    and non-admin (grouped counts by category) views. Fields are optional
-    so a single response_model can be reused for both roles.
-    """
-
-    model_config = ConfigDict(from_attributes=True)
-
-    category_id: UUID | None = None
-    name: str | None = None
-    available_count: int | None = None
-
-    asset_id: UUID | None = None
-    asset_status: AssetStatus | None = None
-    locker_id: UUID | None = None
-    is_deleted: bool | None = None
-    loan_status: LoanStatus | None = None
-    borrower_email: str | None = None

@@ -40,7 +40,8 @@ from app.schemas.equipment import (
     AssetListResponse,
     AssetResponse,
     AssetUpdate,
-    CatalogItem,
+    CatalogAdminView,
+    CatalogUserView,
     CategoryCreate,
     CategoryListResponse,
     CategoryResponse,
@@ -480,7 +481,7 @@ catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 @catalog_router.get(
     "",
-    response_model=list[CatalogItem],
+    response_model=list[CatalogAdminView] | list[CatalogUserView],
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -489,7 +490,7 @@ catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 async def get_catalog(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[CatalogItem]:
+) -> list[CatalogAdminView] | list[CatalogUserView]:
     """Role-aware catalog view.
 
     - Admins: return one row per asset including active/reserved loan context.
@@ -511,7 +512,7 @@ async def get_catalog(
         result = await db.execute(query)
         rows = result.scalars().all()
 
-        items: list[CatalogItem] = []
+        admin_items: list[CatalogAdminView] = []
         for row in rows:
             # Tests stub rows as tuples: (asset_obj, loan_status, borrower_email)
             if isinstance(row, (list, tuple)):
@@ -521,8 +522,8 @@ async def get_catalog(
                 loan_status = None
                 borrower_email = None
 
-            items.append(
-                CatalogItem.model_validate(
+            admin_items.append(
+                CatalogAdminView.model_validate(
                     {
                         "asset_id": asset.asset_id,
                         "name": asset.name,
@@ -535,7 +536,7 @@ async def get_catalog(
                     }
                 )
             )
-        return items
+        return admin_items
 
     # Non-admin path: categories with available counts
     query = (
@@ -552,7 +553,7 @@ async def get_catalog(
     result = await db.execute(query)
     rows = result.scalars().all()
 
-    items: list[CatalogItem] = []
+    user_items: list[CatalogUserView] = []
     for row in rows:
         if isinstance(row, (list, tuple)):
             category_id, name, available_count = row
@@ -563,8 +564,8 @@ async def get_catalog(
             name = getattr(row, "category_name", None)
             available_count = getattr(row, "available_count", None)
 
-        items.append(
-            CatalogItem.model_validate(
+        user_items.append(
+            CatalogUserView.model_validate(
                 {
                     "category_id": category_id,
                     "name": name,
@@ -573,7 +574,7 @@ async def get_catalog(
             )
         )
 
-    return items
+    return user_items
 
 
 assets_router = APIRouter(prefix="/assets", tags=["assets"])

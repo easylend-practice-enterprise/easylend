@@ -149,13 +149,13 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 **Catalog** *(requires assets + categories: buildable in same ticket)*
 
-- [ ] `GET /api/v1/catalog` (all authenticated users)
+- [x] `GET /api/v1/catalog` (all authenticated users)
   - **Role == staff/student:** categorised pool: number of available assets per category (`asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id`).
   - **Role == Admin:** admin view: all assets with current `loan_status` and borrower info via JOIN on `loans` and `users`.
 
 - [x] CRUD + RBAC implementation is in `backend/api/app/api/v1/endpoints/equipment.py`
 - [x] API tests for roles + happy/forbidden paths are in `backend/api/app/tests/test_equipment_api.py`
-- [ ] Remaining gap in this step: `GET /api/v1/catalog` (Planned for Sprint 1)
+- [x] Remaining gap in this step: `GET /api/v1/catalog` (Planned for Sprint 1)
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
@@ -330,9 +330,10 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
    - [x] Authorisation tests per role (admin/staff/kiosk)
    - [x] Happy-path + forbidden-path per endpoint
-   - [ ] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
 
-3. **After steps 10a-10c (transactions + hardware + AI)**
+- [x] `GET /api/v1/catalog` coverage pending (endpoint not implemented yet)
+
+1. **After steps 10a-10c (transactions + hardware + AI)**
 
    - [x] Concurrency test for checkout (no double assignment)
    - [x] Idempotency test for checkout
