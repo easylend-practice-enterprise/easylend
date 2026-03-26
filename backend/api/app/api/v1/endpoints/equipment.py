@@ -478,10 +478,21 @@ async def update_locker_status(
 
 catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 
+CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
+
 
 @catalog_router.get(
     "",
-    response_model=list[CatalogAdminView] | list[CatalogUserView],
+    response_model=CatalogResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@catalog_router.get(
+    "/",
+    include_in_schema=False,
+    response_model=CatalogResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -490,7 +501,7 @@ catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 async def get_catalog(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> list[CatalogAdminView] | list[CatalogUserView]:
+) -> CatalogResponse:
     """Role-aware catalog view.
 
     - Admins: return one row per asset including active/reserved loan context.
