@@ -12,7 +12,7 @@ def main():
         data=str(
             VISION_ROOT
             / "datasets"
-            / "laptop_damage_segmentation_YOLO26-seg"
+            / "laptop_damage_detection_YOLO26-seg"
             / "data.yaml"
         ),
         epochs=100,
