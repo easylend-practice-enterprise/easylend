@@ -163,21 +163,7 @@ async def analyze_image(
             detail="Vision AI service returned invalid data format.",
         ) from exc
 
-    # 4. Save to disk ONLY after successful validation (prevents orphan files)
-    try:
-        async with aiofiles.open(file_path, "wb") as buffer:
-            await buffer.write(image_data)
-    except OSError as exc:
-        logger.error(
-            "Failed to save uploaded image to disk.",
-            extra={"error": str(exc), "file_path": str(file_path)},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Storage service is temporarily unavailable.",
-        ) from exc
-
-    # 5. Apply transaction outcome to domain state
+    # 4. Apply transaction outcome to domain state (BEFORE writing file)
     loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
     loan = loan_result.scalar_one_or_none()
     if loan is None:
@@ -211,6 +197,25 @@ async def analyze_image(
             detail="Locker not found.",
         )
 
+    # 4b. Validate state machine before mutating
+    if evaluation_type == EvaluationType.CHECKOUT:
+        if loan.loan_status != LoanStatus.RESERVED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
+            )
+    else:  # EvaluationType.RETURN
+        if loan.loan_status != LoanStatus.RETURNING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
+            )
+        if loan.return_locker_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Return locker must be assigned before evaluation.",
+            )
+
     detections = validated_data.detections or []
     has_any_detection = validated_data.count > 0 and len(detections) > 0
     has_damage = any(
@@ -241,9 +246,24 @@ async def analyze_image(
         else:
             loan.loan_status = LoanStatus.COMPLETED
             asset.asset_status = AssetStatus.AVAILABLE
-            locker.locker_status = LockerStatus.AVAILABLE
+            asset.locker_id = locker.locker_id
+            locker.locker_status = LockerStatus.OCCUPIED
             led_color = "green"
             outcome = "COMPLETED"
+
+    # 5. Save to disk ONLY after successful validation and state mutations
+    try:
+        async with aiofiles.open(file_path, "wb") as buffer:
+            await buffer.write(image_data)
+    except OSError as exc:
+        logger.error(
+            "Failed to save uploaded image to disk.",
+            extra={"error": str(exc), "file_path": str(file_path)},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage service is temporarily unavailable.",
+        ) from exc
 
     await manager.send_command(
         str(locker.kiosk_id),

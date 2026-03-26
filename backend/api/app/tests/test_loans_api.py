@@ -60,6 +60,12 @@ def mock_idempotency_redis(monkeypatch):
         async def setex(self, key: str, ttl: int, value: str):  # noqa: ARG002
             self._keys.add(key)
 
+        async def delete(self, key: str) -> int:
+            if key in self._keys:
+                self._keys.discard(key)
+                return 1
+            return 0
+
     monkeypatch.setattr(loans_endpoints, "redis_client", _FakeRedis())
 
 

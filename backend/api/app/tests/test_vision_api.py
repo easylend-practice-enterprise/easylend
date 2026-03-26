@@ -33,6 +33,7 @@ def _make_asset(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         asset_status=kwargs.get("asset_status", "BORROWED"),
+        locker_id=kwargs.get("locker_id"),
     )
 
 
@@ -321,7 +322,8 @@ def test_return_success_branch_sets_completed_and_green_led(
     assert response.status_code == 200
     assert loan.loan_status == "COMPLETED"
     assert asset.asset_status == "AVAILABLE"
-    assert locker.locker_status == "AVAILABLE"
+    assert asset.locker_id == return_locker_id
+    assert locker.locker_status == "OCCUPIED"
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),

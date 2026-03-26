@@ -14,7 +14,7 @@ def _make_loan(**kwargs) -> SimpleNamespace:
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
         checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
         loan_status=kwargs.get("loan_status", "RESERVED"),
-        borrowed_at=kwargs.get("borrowed_at"),
+        reserved_at=kwargs.get("reserved_at"),
     )
 
 
@@ -32,7 +32,7 @@ async def test_process_reserved_loan_timeouts_updates_loan_locker_and_audit():
     loan = _make_loan(
         checkout_locker_id=locker_id,
         loan_status="RESERVED",
-        borrowed_at=now - timedelta(minutes=5),
+        reserved_at=now - timedelta(minutes=5),
     )
     locker = _make_locker(locker_id=locker_id, locker_status="AVAILABLE")
 
@@ -45,7 +45,7 @@ async def test_process_reserved_loan_timeouts_updates_loan_locker_and_audit():
     processed_count = await process_reserved_loan_timeouts(fake_db, now=now)
 
     assert processed_count == 1
-    assert loan.loan_status == LoanStatus.COMPLETED
+    assert loan.loan_status == LoanStatus.PENDING_INSPECTION
     assert locker.locker_status == LockerStatus.MAINTENANCE
     assert fake_db.commit_calls == 1
     assert len(fake_db.added) == 1

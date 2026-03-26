@@ -27,8 +27,8 @@ async def process_reserved_loan_timeouts(
     timed_out_loans_result = await db.execute(
         select(Loan).where(
             Loan.loan_status == LoanStatus.RESERVED,
-            Loan.borrowed_at.is_not(None),
-            Loan.borrowed_at < cutoff,
+            Loan.reserved_at.is_not(None),
+            Loan.reserved_at < cutoff,
         )
     )
     timed_out_loans = timed_out_loans_result.scalars().all()
@@ -37,7 +37,7 @@ async def process_reserved_loan_timeouts(
         return 0
 
     for loan in timed_out_loans:
-        loan.loan_status = LoanStatus.COMPLETED
+        loan.loan_status = LoanStatus.PENDING_INSPECTION
 
         locker_result = await db.execute(
             select(Locker).where(Locker.locker_id == loan.checkout_locker_id)
