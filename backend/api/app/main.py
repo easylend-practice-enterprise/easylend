@@ -11,16 +11,27 @@ from app.db.redis import (
     check_redis_connection,
     redis_client,
 )
+from app.workers.loan_timeout_worker import (
+    start_reserved_loan_timeout_worker,
+    stop_reserved_loan_timeout_worker,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await check_redis_connection()
+    timeout_worker_task, timeout_worker_stop_event = (
+        start_reserved_loan_timeout_worker()
+    )
     # Ensure runtime uploads directory exists (create at startup, not at import time)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown
+    await stop_reserved_loan_timeout_worker(
+        timeout_worker_task,
+        timeout_worker_stop_event,
+    )
     await redis_client.aclose()
 
 
