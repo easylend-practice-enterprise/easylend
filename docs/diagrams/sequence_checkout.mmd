@@ -66,8 +66,13 @@ sequenceDiagram
 
         Note over VB,AI: Background check: locker must be empty
         VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: CHECKOUT}
-        API->>AI: POST /predict {image}
-        AI-->>API: {locker_empty, confidence}
+        par Object Detection
+            API->>AI: POST /detect {image}
+            AI-->>API: {locker_empty, detections}
+        and Segmentation
+            API->>AI: POST /segment {image}
+            AI-->>API: {has_damage_detected}
+        end
 
         alt Locker not empty (Fraud/Error: item not taken)
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?

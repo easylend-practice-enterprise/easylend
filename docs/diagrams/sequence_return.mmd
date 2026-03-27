@@ -43,8 +43,13 @@ sequenceDiagram
             VB->>API: WSS: slot_closed event
 
             VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
-            API->>AI: POST /predict {image}
-            AI-->>API: {is_empty, has_damage, damage_details}
+            par Object Detection
+                API->>AI: POST /detect {image}
+                AI-->>API: {locker_empty, detections}
+            and Segmentation
+                API->>AI: POST /segment {image}
+                AI-->>API: {has_damage_detected}
+            end
 
             alt Locker is empty (Fraud!) or Damage detected
                 API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
