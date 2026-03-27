@@ -481,11 +481,23 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -502,11 +514,23 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -523,11 +547,23 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -546,11 +582,23 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -570,11 +618,23 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -595,11 +655,23 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
@@ -621,11 +693,23 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
 
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
-    with client_with_overrides(_QueuedSession()) as client:
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    checkout_locker_id = uuid.uuid4()
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+    )
+    asset = _make_asset(asset_id=asset_id)
+    locker = _make_locker(locker_id=checkout_locker_id)
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/vision/analyze",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-            data=_vision_form_data(evaluation_type="CHECKOUT"),
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
