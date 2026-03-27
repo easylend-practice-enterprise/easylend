@@ -91,7 +91,60 @@ async def analyze_image(
     file_path = UPLOAD_DIR / unique_filename
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    # 3. Request to the AI Microservice (VM2) Dual-Model
+    # 3. Load domain entities and validate state machine before AI request.
+    # This guarantees RETURN fallback can persist a safe state if AI is unreachable.
+    loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
+    loan = loan_result.scalar_one_or_none()
+    if loan is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Loan not found.",
+        )
+
+    asset_result = await db.execute(
+        select(Asset).where(Asset.asset_id == loan.asset_id)
+    )
+    asset = asset_result.scalar_one_or_none()
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found.",
+        )
+
+    if evaluation_type == EvaluationType.CHECKOUT:
+        if loan.loan_status != LoanStatus.RESERVED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
+            )
+    else:  # EvaluationType.RETURN
+        if loan.loan_status != LoanStatus.RETURNING:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
+            )
+        if loan.return_locker_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Return locker must be assigned before evaluation.",
+            )
+
+    locker_id_for_eval = (
+        loan.checkout_locker_id
+        if evaluation_type == EvaluationType.CHECKOUT
+        else loan.return_locker_id
+    )
+    locker_result = await db.execute(
+        select(Locker).where(Locker.locker_id == locker_id_for_eval)
+    )
+    locker = locker_result.scalar_one_or_none()
+    if locker is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Locker not found.",
+        )
+
+    # 4. Request to the AI Microservice (VM2) Dual-Model
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             detect_req = client.post(
@@ -110,6 +163,35 @@ async def analyze_image(
             "Vision AI request failed.",
             extra={"error": str(exc), "vision_url": settings.VISION_SERVICE_URL},
         )
+
+        if evaluation_type == EvaluationType.RETURN:
+            try:
+                loan.loan_status = LoanStatus.PENDING_INSPECTION
+                asset.asset_status = AssetStatus.PENDING_INSPECTION
+                locker.locker_status = LockerStatus.MAINTENANCE
+                asset.locker_id = locker.locker_id
+
+                await manager.send_command(
+                    str(locker.kiosk_id),
+                    {
+                        "action": "set_led",
+                        "locker_id": str(
+                            getattr(locker, "logical_number", locker.locker_id)
+                        ),
+                        "color": "orange",
+                    },
+                )
+                await db.commit()
+            except Exception as fallback_exc:
+                await db.rollback()
+                logger.exception(
+                    "Failed to persist RETURN fallback state after Vision AI request error."
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to persist return fallback state.",
+                ) from fallback_exc
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Vision AI service is unavailable.",
@@ -184,58 +266,7 @@ async def analyze_image(
             detail="Vision AI service returned invalid data format.",
         ) from exc
 
-    # 4. Apply transaction outcome to domain state (BEFORE writing file)
-    loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
-    loan = loan_result.scalar_one_or_none()
-    if loan is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Loan not found.",
-        )
-
-    asset_result = await db.execute(
-        select(Asset).where(Asset.asset_id == loan.asset_id)
-    )
-    asset = asset_result.scalar_one_or_none()
-    if asset is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found.",
-        )
-
-    # 4b. Validate state machine BEFORE querying locker (prevents 404 before 409)
-    if evaluation_type == EvaluationType.CHECKOUT:
-        if loan.loan_status != LoanStatus.RESERVED:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
-            )
-    else:  # EvaluationType.RETURN
-        if loan.loan_status != LoanStatus.RETURNING:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
-            )
-        if loan.return_locker_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Return locker must be assigned before evaluation.",
-            )
-
-    locker_id_for_eval = (
-        loan.checkout_locker_id
-        if evaluation_type == EvaluationType.CHECKOUT
-        else loan.return_locker_id
-    )
-    locker_result = await db.execute(
-        select(Locker).where(Locker.locker_id == locker_id_for_eval)
-    )
-    locker = locker_result.scalar_one_or_none()
-    if locker is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Locker not found.",
-        )
+    # 5. Apply transaction outcome to domain state (BEFORE writing file)
 
     led_color = "green"
 
@@ -265,7 +296,7 @@ async def analyze_image(
             locker.locker_status = LockerStatus.OCCUPIED
             led_color = "green"
 
-    # 5. Save to disk ONLY after successful validation and state mutations
+    # 6. Save to disk ONLY after successful validation and state mutations
     try:
         async with aiofiles.open(file_path, "wb") as buffer:
             await buffer.write(image_data)
