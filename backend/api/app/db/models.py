@@ -6,10 +6,12 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -245,10 +247,17 @@ class AIEvaluation(Base):
     evaluation_type: Mapped[EvaluationType] = mapped_column(
         Enum(EvaluationType), nullable=False
     )
-    outcome: Mapped[str] = mapped_column(String(100), nullable=False)
-    photo_url: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    photo_url: Mapped[str] = mapped_column(String, nullable=False)
+    ai_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    detected_objects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    has_damage_detected: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    model_version: Mapped[str] = mapped_column(String, nullable=False)
+    is_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    analyzed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now()
     )
 
     loan: Mapped["Loan"] = relationship("Loan", back_populates="evaluations")
@@ -268,10 +277,8 @@ class DamageReport(Base):
         ForeignKey("ai_evaluations.evaluation_id"), nullable=False
     )
 
-    damage_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    severity: Mapped[str] = mapped_column(String(50), nullable=False)
-
-    # YOLO26 bounding boxes / segmentations data
+    damage_type: Mapped[str] = mapped_column(String, nullable=False)
+    severity: Mapped[str] = mapped_column(String, nullable=False)
     segmentation_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     requires_repair: Mapped[bool] = mapped_column(Boolean, default=False)
 

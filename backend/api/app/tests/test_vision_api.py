@@ -229,7 +229,13 @@ def test_checkout_success_branch_sets_active_and_green_led(
     kwargs = audit_call.kwargs
     assert kwargs["action_type"] == "VISION_EVALUATION_PROCESSED"
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
-    assert kwargs["payload"]["outcome"] == "ACTIVE"
+    assert kwargs["payload"]["has_damage_detected"] is False
+
+    assert len(fake_db.added) == 1
+    eval_record = fake_db.added[0]
+    assert eval_record.has_damage_detected is False
+    assert eval_record.ai_confidence == 0.95
+    assert eval_record.model_version == "yolo26-v1"
 
 
 def test_checkout_fraud_branch_sets_fraud_and_red_led(
@@ -285,7 +291,13 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
     assert audit_call is not None
     kwargs = audit_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
-    assert kwargs["payload"]["outcome"] == "FRAUD_SUSPECTED"
+    assert kwargs["payload"]["has_damage_detected"] is False
+
+    assert len(fake_db.added) == 1
+    eval_record = fake_db.added[0]
+    assert eval_record.has_damage_detected is False
+    assert eval_record.ai_confidence == 0.95
+    assert eval_record.model_version == "yolo26-v1"
 
 
 def test_return_success_branch_sets_completed_and_green_led(
@@ -343,7 +355,13 @@ def test_return_success_branch_sets_completed_and_green_led(
     assert audit_call is not None
     kwargs = audit_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "RETURN"
-    assert kwargs["payload"]["outcome"] == "COMPLETED"
+    assert kwargs["payload"]["has_damage_detected"] is False
+
+    assert len(fake_db.added) == 1
+    eval_record = fake_db.added[0]
+    assert eval_record.has_damage_detected is False
+    assert eval_record.ai_confidence == 0.95
+    assert eval_record.model_version == "yolo26-v1"
 
 
 def test_return_damage_branch_sets_pending_inspection_and_red_led(
@@ -400,7 +418,13 @@ def test_return_damage_branch_sets_pending_inspection_and_red_led(
     assert audit_call is not None
     kwargs = audit_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "RETURN"
-    assert kwargs["payload"]["outcome"] == "PENDING_INSPECTION"
+    assert kwargs["payload"]["has_damage_detected"] is True
+
+    assert len(fake_db.added) == 1
+    eval_record = fake_db.added[0]
+    assert eval_record.has_damage_detected is True
+    assert eval_record.ai_confidence == 0.95
+    assert eval_record.model_version == "yolo26-v1"
 
 
 def test_vision_analyze_rejects_non_image_file(monkeypatch, client_with_overrides):

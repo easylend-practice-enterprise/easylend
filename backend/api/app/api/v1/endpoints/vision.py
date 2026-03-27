@@ -231,7 +231,6 @@ async def analyze_image(
     )
 
     led_color = "green"
-    outcome = "SUCCESS"
 
     if evaluation_type == EvaluationType.CHECKOUT:
         if has_any_detection:
@@ -239,12 +238,10 @@ async def analyze_image(
             asset.asset_status = AssetStatus.AVAILABLE
             locker.locker_status = LockerStatus.AVAILABLE
             led_color = "red"
-            outcome = "FRAUD_SUSPECTED"
         else:
             loan.loan_status = LoanStatus.ACTIVE
             loan.borrowed_at = datetime.now(UTC)
             led_color = "green"
-            outcome = "ACTIVE"
     else:  # EvaluationType.RETURN
         if has_damage:
             loan.loan_status = LoanStatus.PENDING_INSPECTION
@@ -252,7 +249,6 @@ async def analyze_image(
             asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.MAINTENANCE
             led_color = "red"
-            outcome = "PENDING_INSPECTION"
         else:
             loan.loan_status = LoanStatus.COMPLETED
             loan.returned_at = datetime.now(UTC)
@@ -260,7 +256,6 @@ async def analyze_image(
             asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.OCCUPIED
             led_color = "green"
-            outcome = "COMPLETED"
 
     # 5. Save to disk ONLY after successful validation and state mutations
     try:
@@ -277,15 +272,6 @@ async def analyze_image(
         ) from exc
 
     try:
-        db.add(
-            AIEvaluation(
-                loan_id=loan.loan_id,
-                evaluation_type=evaluation_type,
-                outcome=outcome,
-                photo_url=validated_data.photo_url,
-            )
-        )
-
         await manager.send_command(
             str(locker.kiosk_id),
             {
@@ -303,9 +289,21 @@ async def analyze_image(
                 "asset_id": str(asset.asset_id),
                 "locker_id": str(locker.locker_id),
                 "evaluation_type": evaluation_type.value,
-                "outcome": outcome,
+                "has_damage_detected": has_damage,
                 "photo_url": validated_data.photo_url,
             },
+        )
+
+        db.add(
+            AIEvaluation(
+                loan_id=loan.loan_id,
+                evaluation_type=evaluation_type,
+                photo_url=validated_data.photo_url,
+                ai_confidence=0.95,
+                has_damage_detected=has_damage,
+                model_version="yolo26-v1",
+                detected_objects={"mock": "data"},
+            )
         )
 
         await db.commit()
