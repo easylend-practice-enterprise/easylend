@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -90,20 +91,20 @@ async def analyze_image(
     file_path = UPLOAD_DIR / unique_filename
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    # 3. Request to the AI Microservice (VM2)
+    # 3. Request to the AI Microservice (VM2) Dual-Model
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{settings.VISION_SERVICE_URL.rstrip('/')}/predict",
+            detect_req = client.post(
+                f"{settings.VISION_SERVICE_URL.rstrip('/')}/detect",
                 headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
-                files={
-                    "file": (
-                        file.filename or "upload",
-                        image_data,
-                        content_type,
-                    )
-                },
+                files={"file": (file.filename or "upload", image_data, content_type)},
             )
+            segment_req = client.post(
+                f"{settings.VISION_SERVICE_URL.rstrip('/')}/segment",
+                headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
+                files={"file": (file.filename or "upload", image_data, content_type)},
+            )
+            detect_resp, segment_resp = await asyncio.gather(detect_req, segment_req)
     except httpx.RequestError as exc:
         logger.error(
             "Vision AI request failed.",
@@ -114,56 +115,68 @@ async def analyze_image(
             detail="Vision AI service is unavailable.",
         ) from exc
 
-    if response.status_code in (
+    if detect_resp.status_code in (
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+    ) or segment_resp.status_code in (
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN,
     ):
-        logger.error(
-            "Vision AI authentication/configuration mismatch.",
-            extra={"upstream_status": response.status_code},
-        )
+        logger.error("Vision AI authentication/configuration mismatch.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Vision AI authentication is misconfigured.",
         )
 
-    if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
-        logger.warning(
-            "Vision AI service is temporarily unavailable.",
-            extra={"upstream_status": response.status_code},
-        )
+    if (
+        detect_resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        or segment_resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    ):
+        logger.warning("Vision AI service is temporarily unavailable.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Vision AI service is temporarily unavailable.",
         )
 
-    if response.status_code == status.HTTP_400_BAD_REQUEST:
-        logger.warning(
-            "Vision AI rejected uploaded image as invalid/unsupported.",
-            extra={"upstream_status": response.status_code},
-        )
+    if (
+        detect_resp.status_code == status.HTTP_400_BAD_REQUEST
+        or segment_resp.status_code == status.HTTP_400_BAD_REQUEST
+    ):
+        logger.warning("Vision AI rejected uploaded image as invalid/unsupported.")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded image is invalid or unsupported.",
         )
 
-    if response.status_code != status.HTTP_200_OK:
-        logger.error(
-            "Vision AI returned unexpected non-200 response.",
-            extra={"upstream_status": response.status_code},
-        )
+    if (
+        detect_resp.status_code != status.HTTP_200_OK
+        or segment_resp.status_code != status.HTTP_200_OK
+    ):
+        logger.error("Vision AI returned unexpected non-200 response.")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Vision AI service returned an unexpected response.",
         )
 
     try:
-        payload = response.json()
-        if not isinstance(payload, dict):
+        detect_payload = detect_resp.json()
+        segment_payload = segment_resp.json()
+        if not isinstance(detect_payload, dict) or not isinstance(
+            segment_payload, dict
+        ):
             raise TypeError("Expected dict payload from Vision AI service.")
 
-        payload["photo_url"] = photo_url
-        validated_data = VisionAnalyzeResponse(**payload)
+        locker_empty = detect_payload.get("locker_empty", True)
+        has_damage = segment_payload.get("has_damage_detected", False)
+
+        # Build combined response for the proxy
+        combined_payload = {
+            "status": "success",
+            "count": detect_payload.get("count", 0),
+            "detections": detect_payload.get("detections", []),
+            "photo_url": photo_url,
+        }
+        validated_data = VisionAnalyzeResponse(**combined_payload)
     except (TypeError, ValueError, ValidationError) as exc:
         logger.error("Vision AI returned invalid JSON or unexpected schema.")
         raise HTTPException(
@@ -224,16 +237,10 @@ async def analyze_image(
             detail="Locker not found.",
         )
 
-    detections = validated_data.detections or []
-    has_any_detection = validated_data.count > 0 and len(detections) > 0
-    has_damage = any(
-        "damage" in detection.class_name.lower() for detection in detections
-    )
-
     led_color = "green"
 
     if evaluation_type == EvaluationType.CHECKOUT:
-        if has_any_detection:
+        if not locker_empty:
             loan.loan_status = LoanStatus.FRAUD_SUSPECTED
             asset.asset_status = AssetStatus.AVAILABLE
             locker.locker_status = LockerStatus.AVAILABLE
@@ -241,14 +248,15 @@ async def analyze_image(
         else:
             loan.loan_status = LoanStatus.ACTIVE
             loan.borrowed_at = datetime.now(UTC)
+            locker.locker_status = LockerStatus.AVAILABLE
             led_color = "green"
     else:  # EvaluationType.RETURN
-        if has_damage:
+        if locker_empty or has_damage:
             loan.loan_status = LoanStatus.PENDING_INSPECTION
             asset.asset_status = AssetStatus.PENDING_INSPECTION
             asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.MAINTENANCE
-            led_color = "red"
+            led_color = "orange"
         else:
             loan.loan_status = LoanStatus.COMPLETED
             loan.returned_at = datetime.now(UTC)
@@ -301,8 +309,13 @@ async def analyze_image(
                 photo_url=validated_data.photo_url,
                 ai_confidence=0.95,
                 has_damage_detected=has_damage,
-                model_version="yolo26-v1",
-                detected_objects={"mock": "data"},
+                model_version="yolo26-dual-model",
+                detected_objects={
+                    "locker_empty": locker_empty,
+                    "detections": [d.model_dump() for d in validated_data.detections]
+                    if validated_data.detections
+                    else [],
+                },
             )
         )
 

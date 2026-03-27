@@ -78,7 +78,9 @@ class _MockAsyncClient:
 
     async def post(self, url: str, *, headers: dict, files: dict):
         if self._captured is not None:
-            self._captured["url"] = url
+            if "urls" not in self._captured:
+                self._captured["urls"] = []
+            self._captured["urls"].append(url)
             self._captured["headers"] = headers
             self._captured["files"] = files
 
@@ -122,6 +124,8 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
         "status": "success",
         "count": 1,
         "detections": [{"class_name": "laptop", "confidence": 0.98}],
+        "locker_empty": False,
+        "has_damage_detected": False,
     }
 
     # Mock UUID so we get a predictable photo_url in the test
@@ -163,7 +167,7 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
         == "/api/v1/images/1234567890abcdef1234567890abcdef.jpg"
     )
 
-    assert captured["url"] == "http://vm2/predict"
+    assert set(captured["urls"]) == {"http://vm2/detect", "http://vm2/segment"}
     assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
     assert captured["files"]["file"] == ("sample.jpg", b"image-bytes", "image/jpeg")
 
@@ -171,7 +175,7 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     assert isinstance(fake_db.added[0], AIEvaluation)
     assert fake_db.added[0].loan_id == loan_id
     assert fake_db.added[0].evaluation_type == "CHECKOUT"
-    assert fake_db.added[0].outcome == "FRAUD_SUSPECTED"
+    assert fake_db.added[0].has_damage_detected is False
 
 
 def test_checkout_success_branch_sets_active_and_green_led(
@@ -181,6 +185,8 @@ def test_checkout_success_branch_sets_active_and_green_led(
         "status": "success",
         "count": 0,
         "detections": [],
+        "locker_empty": True,
+        "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
     send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
@@ -235,7 +241,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
     assert eval_record.ai_confidence == 0.95
-    assert eval_record.model_version == "yolo26-v1"
+    assert eval_record.model_version == "yolo26-dual-model"
 
 
 def test_checkout_fraud_branch_sets_fraud_and_red_led(
@@ -245,6 +251,8 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         "status": "success",
         "count": 1,
         "detections": [{"class_name": "laptop", "confidence": 0.98}],
+        "locker_empty": False,
+        "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
     send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
@@ -297,7 +305,7 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
     assert eval_record.ai_confidence == 0.95
-    assert eval_record.model_version == "yolo26-v1"
+    assert eval_record.model_version == "yolo26-dual-model"
 
 
 def test_return_success_branch_sets_completed_and_green_led(
@@ -307,6 +315,8 @@ def test_return_success_branch_sets_completed_and_green_led(
         "status": "success",
         "count": 0,
         "detections": [],
+        "locker_empty": False,
+        "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
     send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
@@ -361,16 +371,18 @@ def test_return_success_branch_sets_completed_and_green_led(
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
     assert eval_record.ai_confidence == 0.95
-    assert eval_record.model_version == "yolo26-v1"
+    assert eval_record.model_version == "yolo26-dual-model"
 
 
-def test_return_damage_branch_sets_pending_inspection_and_red_led(
+def test_return_damage_branch_sets_pending_inspection_and_orange_led(
     monkeypatch, client_with_overrides, tmp_path
 ):
     payload = {
         "status": "success",
         "count": 1,
         "detections": [{"class_name": "damage_screen", "confidence": 0.91}],
+        "locker_empty": False,
+        "has_damage_detected": True,
     }
     _mock_success_upstream(monkeypatch, payload)
     send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
@@ -411,7 +423,7 @@ def test_return_damage_branch_sets_pending_inspection_and_red_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "10", "color": "red"},
+        {"action": "set_led", "locker_id": "10", "color": "orange"},
     )
     audit_mock.assert_awaited_once()
     audit_call = audit_mock.await_args
@@ -424,7 +436,7 @@ def test_return_damage_branch_sets_pending_inspection_and_red_led(
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is True
     assert eval_record.ai_confidence == 0.95
-    assert eval_record.model_version == "yolo26-v1"
+    assert eval_record.model_version == "yolo26-dual-model"
 
 
 def test_vision_analyze_rejects_non_image_file(monkeypatch, client_with_overrides):
@@ -630,6 +642,8 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
         "status": "success",
         "count": 0,
         "detections": [],
+        "locker_empty": True,
+        "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
     _mock_common_vision_runtime(monkeypatch, tmp_path)

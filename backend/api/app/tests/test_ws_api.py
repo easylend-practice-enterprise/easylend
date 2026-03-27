@@ -48,7 +48,7 @@ def test_websocket_valid_simulation_token() -> None:
         websocket.send_json({"action": "ping"})
 
 
-def test_websocket_slot_closed_event_is_accepted() -> None:
+def test_websocket_slot_closed_event_is_logged() -> None:
     with client.websocket_connect(
         "/ws/visionbox/kiosk_3", headers={"X-Device-Token": settings.VISION_BOX_API_KEY}
     ) as websocket:
