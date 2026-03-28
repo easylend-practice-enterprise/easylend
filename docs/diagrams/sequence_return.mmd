@@ -15,6 +15,7 @@ sequenceDiagram
         API-->>App: 409 Conflict {"Request already processing"}
     else Key not seen
         API->>Redis: SETEX idempotency:{key} 86400 "processing"
+        Note over API,Redis: On any exception, Idempotency-Key is deleted from Redis to allow immediate retry
 
         API->>DB: SELECT * FROM kiosks WHERE kiosk_id = ?
         alt Kiosk not found
@@ -84,12 +85,14 @@ sequenceDiagram
         API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
         API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
         API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
     else AI timeout (Model crash)
         API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
         API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
         API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
         Note over API,DB: Manual inspection required due to system error
@@ -97,6 +100,7 @@ sequenceDiagram
         API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = <loan_id>
         API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = <asset_id>
         API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
         API->>VB: WSS: set_led {locker_id: logical_number, color: green}
     end

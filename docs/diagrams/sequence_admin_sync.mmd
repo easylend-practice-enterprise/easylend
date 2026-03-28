@@ -6,6 +6,7 @@ sequenceDiagram
     participant VB as Vision Box (Kiosk A)
 
     Note over App,API: Scenario A: Kiosk Boot Sequence
+    Note over API,VB: ConnectionManager enforces strict single-connection-per-kiosk rule (reconnecting Vision Box forcibly closes the previous socket)
     App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [With M2M Token]
     API->>DB: Fetch physical status of lockers
     DB-->>API: Statuses (e.g. AVAILABLE, MAINTENANCE, OCCUPIED)

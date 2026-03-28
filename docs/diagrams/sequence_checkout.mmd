@@ -15,6 +15,7 @@ sequenceDiagram
         API-->>App: 409 Conflict {"Request already processing"}
     else Key not seen
         API->>Redis: SETEX idempotency:{key} 86400 "processing"
+        Note over API,Redis: On any exception, Idempotency-Key is deleted from Redis to allow immediate retry
 
         API->>DB: BEGIN transaction
         API->>DB: SELECT asset BY aztec_code FOR UPDATE NOWAIT
@@ -79,12 +80,14 @@ sequenceDiagram
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
             Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
             API->>VB: WSS: set_led {locker_id: logical_number, color: red}
         else Locker empty (Success)
-            Note over API,DB: Only update locker if it was OCCUPIED; guards against double-assignment masking bugs
+            Note over API,DB: Only update locker if it was OCCUPIED, guards against double-assignment masking bugs
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ? (only if status == OCCUPIED)
             API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
+            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
             Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
             API->>VB: WSS: set_led {locker_id: logical_number, color: green}
         end
