@@ -777,3 +777,109 @@ def test_update_model_accepts_dual_model_urls(client_with_overrides):
 
     assert response.status_code == 200
     assert response.json()["message"] == "Model update received successfully."
+
+
+def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    """If the AI service times out during CHECKOUT, trigger the safe fallback."""
+
+    # Mock the AI request to raise a timeout error
+    async def mock_post(*args, **kwargs):
+        raise httpx.RequestError("Mocked Timeout")
+
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=4,
+        locker_status="AVAILABLE",
+    )
+
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    # 503 Service Unavailable is expected on AI failure
+    assert response.status_code == 503
+    assert loan.loan_status == "PENDING_INSPECTION"
+    assert asset.asset_status == "PENDING_INSPECTION"
+    assert asset.locker_id == locker_id
+    assert locker.locker_status == "MAINTENANCE"
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": "4", "color": "orange"},
+    )
+
+
+def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    """If the AI service times out during RETURN, trigger the safe fallback."""
+
+    # Mock the AI request to raise a timeout error
+    async def mock_post(*args, **kwargs):
+        raise httpx.RequestError("Mocked Timeout")
+
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    return_locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        return_locker_id=return_locker_id,
+        loan_status="RETURNING",
+    )
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locker = _make_locker(
+        locker_id=return_locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=5,
+        locker_status="OCCUPIED",
+    )
+
+    fake_db = _QueuedSession(loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="RETURN"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 503
+    assert loan.loan_status == "PENDING_INSPECTION"
+    assert asset.asset_status == "PENDING_INSPECTION"
+    assert locker.locker_status == "MAINTENANCE"
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": "5", "color": "orange"},
+    )

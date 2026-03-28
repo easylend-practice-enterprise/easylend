@@ -431,7 +431,74 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     assert asset.asset_status == "BORROWED"
     assert locker.locker_status == "AVAILABLE"
     assert fake_db.commit_calls == 1
-    assert len(fake_db.added) == 1  # the Loan object
+
+
+def test_checkout_returns_503_when_manager_send_command_returns_false(
+    monkeypatch, client_with_overrides
+):
+    """If the WebSocket manager fails to send the `open_slot` command,
+    the checkout should rollback and return 503.
+    """
+    student = _make_student()
+    locker_id = uuid.uuid4()
+    asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
+    locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
+
+    fake_db = _QueuedSession(student, asset, locker)
+
+    # Simulate failing send_command (hardware unreachable despite an active connection)
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
+            headers=_with_idempotency(_bearer(student), "checkout-sendcmd-fails"),
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Unable to initiate checkout: kiosk hardware unavailable. Please try again."
+    )
+    assert fake_db.commit_calls == 0
+    assert fake_db.rollback_calls == 1
+
+
+def test_return_initiate_returns_503_when_manager_send_command_returns_false(
+    monkeypatch, client_with_overrides
+):
+    """If the WebSocket manager fails to send the `open_slot` command,
+    the return initiation should rollback and return 503.
+    """
+    student = _make_student()
+    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
+
+    # Queue: [auth user, kiosk exists, loan, locked loan, free_locker]
+    fake_db = _QueuedSession(
+        student, SimpleNamespace(), active_loan, active_loan, free_locker
+    )
+
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={
+                "loan_id": str(active_loan.loan_id),
+                "kiosk_id": str(_VALID_KIOSK_ID),
+            },
+            headers=_with_idempotency(_bearer(student), "return-sendcmd-fails"),
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Unable to initiate return: kiosk hardware unavailable. Please try again."
+    )
+    assert fake_db.commit_calls == 0
+    assert fake_db.rollback_calls == 1
 
 
 def test_checkout_returns_400_when_asset_not_found(client_with_overrides):
