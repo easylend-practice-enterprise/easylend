@@ -97,7 +97,7 @@ sequenceDiagram
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
         Note over API,DB: Manual inspection required due to system error
     else Item present and No damage
-        API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = <loan_id>
+        API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = <loan_id>
         API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = <asset_id>
         API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}

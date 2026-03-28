@@ -40,9 +40,10 @@ sequenceDiagram
                         API-->>App: 503 Service Unavailable (Hardware offline)
                         App-->>User: "Locker currently out of service"
                     else Vision Box online
-                        API->>DB: INSERT INTO loans {loan_status: 'RESERVED'}
+                        API->>DB: INSERT INTO loans {loan_status: 'RESERVED', reserved_at: NOW()}
                         API->>DB: UPDATE assets SET asset_status = 'BORROWED', locker_id = NULL
-                        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' (if occupied)
+                        Note over API,DB: Locker only updated if currently OCCUPIED, guards against double-assignment masking bugs
+                        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ? (only if status == OCCUPIED)
 
                         Note over API,VB: open_slot is sent before DB commit
                         Note over API,VB: locker_id in WSS payload = logical_number (physical slot int, e.g. 2), not the UUID
@@ -84,22 +85,32 @@ sequenceDiagram
             Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
             API->>VB: WSS: set_led {locker_id: logical_number, color: red}
         else Locker empty (Success)
-            Note over API,DB: Only update locker if it was OCCUPIED, guards against double-assignment masking bugs
-            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ? (only if status == OCCUPIED)
-            API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
+            API->>DB: UPDATE loans SET loan_status = 'ACTIVE', borrowed_at = NOW() WHERE loan_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
             Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
             API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+        else AI timeout (Model crash)
+            API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
+            API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <checkout_locker_id> WHERE asset_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
+            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
+            Note over API,DB: Manual inspection required, loan stays PENDING_INSPECTION until admin review
         end
 
         Note over App,API: App polls the API every 3 sec for a status update (Polling)
         App->>API: GET /api/v1/loans/{loan_id}/status
-        
+
         alt Status is FRAUD_SUSPECTED
             API-->>App: 200 OK {status: FRAUD_SUSPECTED}
             App-->>User: "Error detected. Item not taken."
         else Status is ACTIVE
             API-->>App: 200 OK {status: ACTIVE}
             App-->>User: "Good luck! Return the item on time."
+        else Status is PENDING_INSPECTION
+            API-->>App: 200 OK {status: PENDING_INSPECTION}
+            App-->>User: "System error. Administrator has been notified."
         end
     end
