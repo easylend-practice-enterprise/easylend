@@ -11,6 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import verify_vision_box_token
@@ -105,9 +106,17 @@ async def analyze_image(
     file_path = UPLOAD_DIR / unique_filename
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    loan = (
-        await db.execute(select(Loan).where(Loan.loan_id == loan_id))
-    ).scalar_one_or_none()
+    try:
+        loan_result = await db.execute(
+            select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
+        )
+        loan = loan_result.scalar_one_or_none()
+    except OperationalError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
+        )
     if not loan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found."
