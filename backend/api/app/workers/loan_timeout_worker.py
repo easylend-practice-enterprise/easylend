@@ -42,7 +42,9 @@ async def process_reserved_loan_timeouts(
         loan.loan_status = LoanStatus.PENDING_INSPECTION
 
         locker_result = await db.execute(
-            select(Locker).where(Locker.locker_id == loan.checkout_locker_id)
+            select(Locker)
+            .where(Locker.locker_id == loan.checkout_locker_id)
+            .with_for_update()
         )
         locker = locker_result.scalar_one_or_none()
         locker_id = None
@@ -52,7 +54,7 @@ async def process_reserved_loan_timeouts(
 
         # Fetch the asset to prevent it from being orphaned
         asset_result = await db.execute(
-            select(Asset).where(Asset.asset_id == loan.asset_id)
+            select(Asset).where(Asset.asset_id == loan.asset_id).with_for_update()
         )
         asset = asset_result.scalar_one_or_none()
         if asset is not None:

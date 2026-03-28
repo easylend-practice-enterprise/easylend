@@ -38,8 +38,8 @@ class ConnectionManager:
             logger.info(f"Hardware client disconnected: kiosk_id={kiosk_id}")
 
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
-        if kiosk_id in self.active_connections:
-            websocket = self.active_connections[kiosk_id]
+        websocket = self.active_connections.get(kiosk_id)
+        if websocket:
             try:
                 # Use a short timeout to avoid blocking when the hardware TCP stack hangs.
                 await asyncio.wait_for(websocket.send_json(command), timeout=3.0)
