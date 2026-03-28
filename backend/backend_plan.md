@@ -216,7 +216,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 - [x] Return idempotency test.
 - [x] Add/extend tests for `set_led` and vision outcome branches.
 - [x] Add dedicated backend WebSocket `slot_closed` routing test.
-- [ ] **BLOCKER:** Fallback tests (AI timeout, no active WSS).
+- [x] Fallback tests (AI timeout, no active WSS).
 
 ### Branch Scope (ELP-60-hardware-integration)
 
@@ -246,7 +246,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 ## Step 10b: Hardware & AI Integration (Dual-Model)
 
-**Status:** 📋 In Progress (Blocked by tests) · *Requires: step 9 (Static Device Tokens) + step 10a*
+**Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
 
 By far the most complex part. Couples the transaction logic with physical hardware.
 
@@ -340,7 +340,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
    - [x] Idempotency test for checkout
 
 - [x] Idempotency test for return
-- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+- [x] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
 1. **After steps 11-13 (sanitisation/rate-limit/audit)**
 
