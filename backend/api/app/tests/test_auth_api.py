@@ -118,17 +118,23 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
     payload = {"nfc_tag_id": user.nfc_tag_id, "pin": "000000"}
 
     with client_with_overrides(fake_db) as client:
-        for _ in range(5):
+        for remaining in [4, 3, 2, 1]:
             response = client.post("/api/v1/auth/pin", json=payload)
             assert response.status_code == 401
-            assert response.json()["detail"] == "Invalid PIN."
+            assert (
+                response.json()["detail"]
+                == f"Incorrect PIN. {remaining} attempts remaining."
+            )
+
+        # Fifth failed attempt applies lockout immediately.
+        lock_response = client.post("/api/v1/auth/pin", json=payload)
+        assert lock_response.status_code == 401
+        assert lock_response.json()["detail"] == "Account is locked. Try again later."
 
         # After 5 failures the account is locked; the next attempt fails on account status.
         locked_response = client.post("/api/v1/auth/pin", json=payload)
         assert locked_response.status_code == 401
-        assert (
-            locked_response.json()["detail"] == "Invalid NFC badge or account status."
-        )
+        assert locked_response.json()["detail"] == "Account is locked. Try again later."
         assert user.locked_until is not None
         assert user.locked_until > datetime.now(UTC)
 

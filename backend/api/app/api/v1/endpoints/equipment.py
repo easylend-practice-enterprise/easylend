@@ -19,6 +19,7 @@ Auth rules:
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +41,6 @@ from app.schemas.equipment import (
     AssetListResponse,
     AssetResponse,
     AssetUpdate,
-    CatalogAdminView,
     CatalogUserView,
     CategoryCreate,
     CategoryListResponse,
@@ -478,6 +478,19 @@ async def update_locker_status(
 
 catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 
+
+class CatalogAdminView(BaseModel):
+    asset_id: UUID
+    asset_name: str
+    category_id: UUID
+    asset_status: AssetStatus
+    locker_id: UUID | None = None
+    is_deleted: bool
+    loan_status: LoanStatus | None = None
+    borrower_first_name: str | None = None
+    borrower_last_name: str | None = None
+
+
 CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
 
 
@@ -511,7 +524,7 @@ async def get_catalog(
     if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
         loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
         query = (
-            select(Asset, Loan.loan_status, User.email)
+            select(Asset, Loan.loan_status, User.first_name, User.last_name)
             .outerjoin(
                 Loan,
                 (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
@@ -524,7 +537,7 @@ async def get_catalog(
         rows = result.all()
 
         admin_items: list[CatalogAdminView] = []
-        for asset, loan_status, borrower_email in rows:
+        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
             admin_items.append(
                 CatalogAdminView.model_validate(
                     {
@@ -535,7 +548,8 @@ async def get_catalog(
                         "locker_id": asset.locker_id,
                         "is_deleted": asset.is_deleted,
                         "loan_status": loan_status,
-                        "borrower_email": borrower_email,
+                        "borrower_first_name": borrower_first_name,
+                        "borrower_last_name": borrower_last_name,
                     }
                 )
             )
@@ -544,7 +558,7 @@ async def get_catalog(
     # Non-admin path: categories with available counts
     query = (
         select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
-        .outerjoin(
+        .join(
             Asset,
             (Asset.category_id == Category.category_id)
             & (Asset.asset_status == AssetStatus.AVAILABLE)
