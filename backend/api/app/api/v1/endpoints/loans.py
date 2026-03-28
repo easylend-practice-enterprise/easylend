@@ -366,7 +366,7 @@ async def checkout(
 @router.post(
     "/return/initiate",
     response_model=LoanResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Loan is not in ACTIVE state"},
         401: {"description": "Not authenticated"},

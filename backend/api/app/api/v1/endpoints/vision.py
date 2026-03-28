@@ -164,7 +164,10 @@ async def analyze_image(
             extra={"error": str(exc), "vision_url": settings.VISION_SERVICE_URL},
         )
 
-        if evaluation_type == EvaluationType.RETURN:
+        # Mirror the RETURN fallback pattern for CHECKOUT: park the loan and
+        # asset in PENDING_INSPECTION so an administrator can review them.
+        # This prevents the loan staying stuck in RESERVED with no recovery path.
+        if evaluation_type in (EvaluationType.CHECKOUT, EvaluationType.RETURN):
             try:
                 loan.loan_status = LoanStatus.PENDING_INSPECTION
                 asset.asset_status = AssetStatus.PENDING_INSPECTION
@@ -185,11 +188,12 @@ async def analyze_image(
             except Exception as fallback_exc:
                 await db.rollback()
                 logger.exception(
-                    "Failed to persist RETURN fallback state after Vision AI request error."
+                    "Failed to persist %s fallback state after Vision AI request error.",
+                    evaluation_type.value,
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to persist return fallback state.",
+                    detail="Failed to persist fallback state.",
                 ) from fallback_exc
 
         raise HTTPException(
@@ -338,7 +342,11 @@ async def analyze_image(
                 loan_id=loan.loan_id,
                 evaluation_type=evaluation_type,
                 photo_url=validated_data.photo_url,
-                ai_confidence=0.95,
+                ai_confidence=(
+                    validated_data.detections[0].confidence
+                    if validated_data.detections
+                    else 0.0
+                ),
                 has_damage_detected=has_damage,
                 model_version="yolo26-dual-model",
                 detected_objects={
