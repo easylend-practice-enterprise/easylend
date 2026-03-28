@@ -158,7 +158,7 @@ async def analyze_image(
                 files={"file": (file.filename or "upload", image_data, content_type)},
             )
             detect_resp, segment_resp = await asyncio.gather(detect_req, segment_req)
-    except httpx.RequestError as exc:
+    except (httpx.RequestError, ValueError) as exc:
         logger.error(
             "Vision AI request failed.",
             extra={"error": str(exc), "vision_url": settings.VISION_SERVICE_URL},
@@ -252,8 +252,12 @@ async def analyze_image(
         ):
             raise TypeError("Expected dict payload from Vision AI service.")
 
-        locker_empty = detect_payload.get("locker_empty", True)
-        has_damage = segment_payload.get("has_damage_detected", False)
+        # Strict validation: do NOT fail open (default to success).
+        locker_empty = detect_payload.get("locker_empty")
+        has_damage = segment_payload.get("has_damage_detected")
+
+        if not isinstance(locker_empty, bool) or not isinstance(has_damage, bool):
+            raise ValueError("Malformed AI response: missing or non-boolean flags")
 
         # Build combined response for the proxy
         combined_payload = {
