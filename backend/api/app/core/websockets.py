@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import WebSocket
@@ -40,13 +41,17 @@ class ConnectionManager:
         if kiosk_id in self.active_connections:
             websocket = self.active_connections[kiosk_id]
             try:
-                await websocket.send_json(command)
+                # Use a short timeout to avoid blocking when the hardware TCP stack hangs.
+                await asyncio.wait_for(websocket.send_json(command), timeout=3.0)
                 return True
-            except Exception:
-                logger.exception(
-                    "Failed to send command to kiosk_id=%s. Disconnecting.", kiosk_id
-                )
-                self.disconnect(kiosk_id, websocket)
+            except (TimeoutError, Exception) as e:
+                logger.error(f"Failed to send command to {kiosk_id}: {e}")
+                try:
+                    self.disconnect(kiosk_id, websocket)
+                except Exception:
+                    logger.exception(
+                        "Error while disconnecting websocket for kiosk_id=%s", kiosk_id
+                    )
                 return False
 
         logger.warning(

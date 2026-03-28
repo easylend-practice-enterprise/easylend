@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,7 +39,34 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 webhook_router = APIRouter(tags=["vision"])
 logger = logging.getLogger(__name__)
 
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
+
+
+class VisionAIServiceError(Exception):
+    """Raised to represent a non-200 or otherwise problematic response from the Vision AI upstream.
+
+    Require explicit `status_code` and `detail` so callers provide context that
+    can be mapped to an appropriate downstream HTTP response.
+    """
+
+    def __init__(self, status_code: int, detail: str):
+        if status_code is None:
+            raise ValueError("status_code is required")
+        if detail is None:
+            detail = ""
+
+        try:
+            self.status_code = int(status_code)
+        except Exception:
+            raise ValueError("status_code must be an int")
+
+        # Collapse whitespace and truncate to limit exposure of upstream content
+        sanitized = re.sub(r"\s+", " ", str(detail)).strip()
+        self.detail = sanitized[:1000]
+
+        super().__init__(
+            f"VisionAIServiceError(status_code={self.status_code}, detail={self.detail})"
+        )
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -49,27 +77,16 @@ async def analyze_image(
     evaluation_type: EvaluationType = Form(...),
     file: UploadFile = File(...),
 ) -> VisionAnalyzeResponse:
-    # 1. Validate content type BEFORE reading into memory
     content_type = file.content_type or ""
-    allowed_content_types = {
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-    }
+    allowed_content_types = {"image/jpeg", "image/png", "image/webp"}
+
     if content_type not in allowed_content_types:
-        logger.warning(
-            "Rejected non-image upload in vision analyze endpoint.",
-            extra={
-                "upload_content_type": content_type,
-                "upload_name": file.filename,
-            },
-        )
+        logger.warning(f"Rejected non-image upload: {file.filename} ({content_type})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file must be a JPEG/PNG/WebP image.",
         )
 
-    # 2a. Read with a hard limit (memory protection)
     image_data = await file.read(MAX_UPLOAD_SIZE + 1)
     if len(image_data) > MAX_UPLOAD_SIZE:
         raise HTTPException(
@@ -77,9 +94,6 @@ async def analyze_image(
             detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
         )
 
-    # 2b. Determine file extension from the declared content type (`UploadFile.content_type`).
-    # If stronger guarantees are required, inspect the file bytes to validate the actual image format
-    # before choosing an extension (e.g., to reject mismatched HEIC/WEBP uploads).
     content_type_ext_map = {
         "image/jpeg": "jpg",
         "image/png": "png",
@@ -91,39 +105,35 @@ async def analyze_image(
     file_path = UPLOAD_DIR / unique_filename
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    # 3. Load domain entities and validate state machine before AI request.
-    # This guarantees RETURN fallback can persist a safe state if AI is unreachable.
-    loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
-    loan = loan_result.scalar_one_or_none()
-    if loan is None:
+    loan = (
+        await db.execute(select(Loan).where(Loan.loan_id == loan_id))
+    ).scalar_one_or_none()
+    if not loan:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Loan not found.",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found."
         )
 
-    asset_result = await db.execute(
-        select(Asset).where(Asset.asset_id == loan.asset_id)
-    )
-    asset = asset_result.scalar_one_or_none()
-    if asset is None:
+    asset = (
+        await db.execute(select(Asset).where(Asset.asset_id == loan.asset_id))
+    ).scalar_one_or_none()
+    if not asset:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Asset not found.",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found."
         )
 
     if evaluation_type == EvaluationType.CHECKOUT:
         if loan.loan_status != LoanStatus.RESERVED:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RESERVED status for checkout evaluation, not {loan.loan_status}.",
+                detail=f"Loan must be in RESERVED status for checkout, not {loan.loan_status}.",
             )
-    else:  # EvaluationType.RETURN
+    else:
         if loan.loan_status != LoanStatus.RETURNING:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RETURNING status for return evaluation, not {loan.loan_status}.",
+                detail=f"Loan must be in RETURNING status for return, not {loan.loan_status}.",
             )
-        if loan.return_locker_id is None:
+        if not loan.return_locker_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Return locker must be assigned before evaluation.",
@@ -134,17 +144,15 @@ async def analyze_image(
         if evaluation_type == EvaluationType.CHECKOUT
         else loan.return_locker_id
     )
-    locker_result = await db.execute(
-        select(Locker).where(Locker.locker_id == locker_id_for_eval)
-    )
-    locker = locker_result.scalar_one_or_none()
-    if locker is None:
+    locker = (
+        await db.execute(select(Locker).where(Locker.locker_id == locker_id_for_eval))
+    ).scalar_one_or_none()
+
+    if not locker:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Locker not found.",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Locker not found."
         )
 
-    # 4. Request to the AI Microservice (VM2) Dual-Model
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             detect_req = client.post(
@@ -158,15 +166,88 @@ async def analyze_image(
                 files={"file": (file.filename or "upload", image_data, content_type)},
             )
             detect_resp, segment_resp = await asyncio.gather(detect_req, segment_req)
-    except (httpx.RequestError, ValueError) as exc:
-        logger.error(
-            "Vision AI request failed.",
-            extra={"error": str(exc), "vision_url": settings.VISION_SERVICE_URL},
+
+        # Log any non-200 responses (debuggable) and raise a domain error
+        # that will be caught by the fallback handler below. Do NOT raise
+        # HTTPException here, otherwise the fallback path would be bypassed.
+        non_200 = []
+        for name, resp in (("detect", detect_resp), ("segment", segment_resp)):
+            if resp.status_code != 200:
+                try:
+                    raw_text = resp.text
+                except Exception:
+                    raw_text = "<unavailable>"
+
+                # Sanitize whitespace/control chars and truncate to 500 chars
+                safe_text = re.sub(r"\s+", " ", str(raw_text)).strip()[:500]
+
+                # 4xx are warnings; 5xx are errors
+                if 400 <= resp.status_code < 500:
+                    logger.warning(
+                        "Vision AI '%s' returned %s: %s",
+                        name,
+                        resp.status_code,
+                        safe_text,
+                        extra={"vision_response_excerpt": safe_text},
+                    )
+                else:
+                    logger.error(
+                        "Vision AI '%s' returned %s: %s",
+                        name,
+                        resp.status_code,
+                        safe_text,
+                        extra={"vision_response_excerpt": safe_text},
+                    )
+
+                non_200.append((resp.status_code, safe_text, name))
+
+        if non_200:
+            codes = [c for (c, t, n) in non_200]
+            if any(c in (401, 403) for c in codes):
+                rep = next(c for c in codes if c in (401, 403))
+            elif 503 in codes:
+                rep = 503
+            elif 400 in codes:
+                rep = 400
+            else:
+                rep = codes[0]
+
+            combined_text = " | ".join(f"{name}:{text}" for (c, text, name) in non_200)
+            raise VisionAIServiceError(status_code=rep, detail=combined_text)
+
+        detect_payload = detect_resp.json()
+        segment_payload = segment_resp.json()
+
+        if not isinstance(detect_payload, dict) or not isinstance(
+            segment_payload, dict
+        ):
+            raise ValueError("Expected dict payload from Vision AI service.")
+
+        locker_empty = detect_payload.get("locker_empty")
+        has_damage = segment_payload.get("has_damage_detected")
+
+        if not isinstance(locker_empty, bool) or not isinstance(has_damage, bool):
+            raise ValueError("Malformed AI response: missing or non-boolean flags")
+
+        validated_data = VisionAnalyzeResponse(
+            status="success",
+            count=detect_payload.get("count", 0),
+            detections=detect_payload.get("detections", []),
+            photo_url=photo_url,
         )
 
-        # Mirror the RETURN fallback pattern for CHECKOUT: park the loan and
-        # asset in PENDING_INSPECTION so an administrator can review them.
-        # This prevents the loan staying stuck in RESERVED with no recovery path.
+    except (
+        httpx.RequestError,
+        VisionAIServiceError,
+        ValueError,
+        TypeError,
+        ValidationError,
+    ) as exc:
+        logger.error(
+            f"Vision AI evaluation failed: {str(exc)}",
+            extra={"vision_url": settings.VISION_SERVICE_URL},
+        )
+
         if evaluation_type in (EvaluationType.CHECKOUT, EvaluationType.RETURN):
             try:
                 loan.loan_status = LoanStatus.PENDING_INSPECTION
@@ -188,95 +269,39 @@ async def analyze_image(
             except Exception as fallback_exc:
                 await db.rollback()
                 logger.exception(
-                    "Failed to persist %s fallback state after Vision AI request error.",
-                    evaluation_type.value,
+                    "Failed to persist fallback state after Vision AI failure."
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to persist fallback state.",
                 ) from fallback_exc
 
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vision AI service is unavailable.",
-        ) from exc
+        # Map the original exception to the appropriate HTTP response code
+        if isinstance(exc, httpx.RequestError):
+            final_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            final_detail = "Vision AI service is unavailable."
+        elif isinstance(exc, VisionAIServiceError):
+            upstream = getattr(exc, "status_code", None)
+            if upstream in (401, 403):
+                final_status = status.HTTP_500_INTERNAL_SERVER_ERROR
+                final_detail = "Vision AI authentication is misconfigured."
+            elif upstream == 503:
+                final_status = status.HTTP_503_SERVICE_UNAVAILABLE
+                final_detail = "Vision AI service is temporarily unavailable."
+            elif upstream == 400:
+                final_status = status.HTTP_400_BAD_REQUEST
+                final_detail = "Uploaded image is invalid or unsupported."
+            else:
+                final_status = status.HTTP_502_BAD_GATEWAY
+                final_detail = "Vision AI service returned an unexpected response."
+        elif isinstance(exc, (TypeError, ValidationError, ValueError)):
+            final_status = status.HTTP_502_BAD_GATEWAY
+            final_detail = "Vision AI service returned invalid data format."
+        else:
+            final_status = status.HTTP_503_SERVICE_UNAVAILABLE
+            final_detail = "Vision AI service is unavailable."
 
-    if detect_resp.status_code in (
-        status.HTTP_401_UNAUTHORIZED,
-        status.HTTP_403_FORBIDDEN,
-    ) or segment_resp.status_code in (
-        status.HTTP_401_UNAUTHORIZED,
-        status.HTTP_403_FORBIDDEN,
-    ):
-        logger.error("Vision AI authentication/configuration mismatch.")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Vision AI authentication is misconfigured.",
-        )
-
-    if (
-        detect_resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-        or segment_resp.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    ):
-        logger.warning("Vision AI service is temporarily unavailable.")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vision AI service is temporarily unavailable.",
-        )
-
-    if (
-        detect_resp.status_code == status.HTTP_400_BAD_REQUEST
-        or segment_resp.status_code == status.HTTP_400_BAD_REQUEST
-    ):
-        logger.warning("Vision AI rejected uploaded image as invalid/unsupported.")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded image is invalid or unsupported.",
-        )
-
-    if (
-        detect_resp.status_code != status.HTTP_200_OK
-        or segment_resp.status_code != status.HTTP_200_OK
-    ):
-        logger.error("Vision AI returned unexpected non-200 response.")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Vision AI service returned an unexpected response.",
-        )
-
-    try:
-        detect_payload = detect_resp.json()
-        segment_payload = segment_resp.json()
-        if not isinstance(detect_payload, dict) or not isinstance(
-            segment_payload, dict
-        ):
-            raise TypeError("Expected dict payload from Vision AI service.")
-
-        # Strict validation: do NOT fail open (default to success).
-        locker_empty = detect_payload.get("locker_empty")
-        has_damage = segment_payload.get("has_damage_detected")
-
-        if not isinstance(locker_empty, bool) or not isinstance(has_damage, bool):
-            raise ValueError("Malformed AI response: missing or non-boolean flags")
-
-        # Build combined response for the proxy
-        combined_payload = {
-            "status": "success",
-            "count": detect_payload.get("count", 0),
-            "detections": detect_payload.get("detections", []),
-            "photo_url": photo_url,
-        }
-        validated_data = VisionAnalyzeResponse(**combined_payload)
-    except (TypeError, ValueError, ValidationError) as exc:
-        logger.error("Vision AI returned invalid JSON or unexpected schema.")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Vision AI service returned invalid data format.",
-        ) from exc
-
-    # 5. Apply transaction outcome to domain state (BEFORE writing file)
-
-    led_color = "green"
+        raise HTTPException(status_code=final_status, detail=final_detail) from exc
 
     if evaluation_type == EvaluationType.CHECKOUT:
         if not locker_empty:
@@ -290,7 +315,7 @@ async def analyze_image(
             loan.borrowed_at = datetime.now(UTC)
             locker.locker_status = LockerStatus.AVAILABLE
             led_color = "green"
-    else:  # EvaluationType.RETURN
+    else:
         if locker_empty or has_damage:
             loan.loan_status = LoanStatus.PENDING_INSPECTION
             asset.asset_status = AssetStatus.PENDING_INSPECTION
@@ -305,15 +330,11 @@ async def analyze_image(
             locker.locker_status = LockerStatus.OCCUPIED
             led_color = "green"
 
-    # 6. Save to disk ONLY after successful validation and state mutations
     try:
         async with aiofiles.open(file_path, "wb") as buffer:
             await buffer.write(image_data)
     except OSError as exc:
-        logger.error(
-            "Failed to save uploaded image to disk.",
-            extra={"error": str(exc), "file_path": str(file_path)},
-        )
+        logger.error(f"Failed to save image to disk: {str(file_path)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Storage service is temporarily unavailable.",
@@ -347,11 +368,9 @@ async def analyze_image(
                 loan_id=loan.loan_id,
                 evaluation_type=evaluation_type,
                 photo_url=validated_data.photo_url,
-                ai_confidence=(
-                    validated_data.detections[0].confidence
-                    if validated_data.detections
-                    else 0.0
-                ),
+                ai_confidence=validated_data.detections[0].confidence
+                if validated_data.detections
+                else 0.0,
                 has_damage_detected=has_damage,
                 model_version="yolo26-dual-model",
                 detected_objects={
@@ -362,11 +381,16 @@ async def analyze_image(
                 },
             )
         )
-
         await db.commit()
     except Exception as exc:
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception(
+                "Failed to rollback DB during finalization error handling."
+            )
+
         Path(file_path).unlink(missing_ok=True)
-        logger.exception("Failed while finalizing vision evaluation transaction.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to finalize vision evaluation.",

@@ -12,6 +12,7 @@ Business rules (Step 10a, hardware-free path):
     first available locker at the user's kiosk without blocking peers.
 """
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -41,6 +42,8 @@ from app.schemas.loan import (
     LoanStatusResponse,
     ReturnInitiateRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_lock_not_available_error(exc: OperationalError) -> bool:
@@ -352,7 +355,21 @@ async def checkout(
         await db.refresh(loan)
 
         return LoanResponse.model_validate(loan)
-    except Exception:
+    except Exception as exc:
+        # If this is an intentional HTTPException raised above, the
+        # handler code most likely already performed a rollback. Avoid a
+        # duplicate rollback while still ensuring the idempotency key is
+        # cleaned up. For other unexpected exceptions, perform the
+        # rollback here to guarantee transaction safety.
+        if isinstance(exc, HTTPException):
+            await redis_client.delete(redis_key)
+            raise
+
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB during error handling.")
+
         # Clean up idempotency key on any error to allow retries
         await redis_client.delete(redis_key)
         raise
@@ -517,7 +534,19 @@ async def return_initiate(
         await db.refresh(loan)
 
         return LoanResponse.model_validate(loan)
-    except Exception:
+    except Exception as exc:
+        # As above: avoid double-rollback when an HTTPException was
+        # intentionally raised earlier in the flow; still remove the
+        # idempotency key. For unexpected errors, perform rollback.
+        if isinstance(exc, HTTPException):
+            await redis_client.delete(redis_key)
+            raise
+
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB during error handling.")
+
         # Clean up idempotency key on any error to allow retries
         await redis_client.delete(redis_key)
         raise
