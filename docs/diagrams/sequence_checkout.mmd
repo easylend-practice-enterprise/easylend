@@ -44,7 +44,8 @@ sequenceDiagram
                         API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' (if occupied)
 
                         Note over API,VB: open_slot is sent before DB commit
-                        API->>VB: WSS: open_slot {logical_number, loan_id}
+                        Note over API,VB: locker_id in WSS payload = logical_number (physical slot int, e.g. 2), not the UUID
+                        API->>VB: WSS: open_slot {locker_id: logical_number, loan_id}
 
                         alt Hardware command failed
                             API->>DB: ROLLBACK
@@ -78,11 +79,14 @@ sequenceDiagram
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
-            API->>VB: WSS: set_led {locker_id, color: red}
+            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            API->>VB: WSS: set_led {locker_id: logical_number, color: red}
         else Locker empty (Success)
-            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+            Note over API,DB: Only update locker if it was OCCUPIED; guards against double-assignment masking bugs
+            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ? (only if status == OCCUPIED)
             API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
-            API->>VB: WSS: set_led {locker_id, color: green}
+            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            API->>VB: WSS: set_led {locker_id: logical_number, color: green}
         end
 
         Note over App,API: App polls the API every 3 sec for a status update (Polling)

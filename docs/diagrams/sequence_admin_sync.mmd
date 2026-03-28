@@ -20,6 +20,7 @@ sequenceDiagram
     App->>API: POST /api/v1/lockers/{locker_id}/open
     Note over API: Validates that the token holds the Admin role
     API->>VB: WSS: open_slot {locker_id: "<uuid>"}
+    Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
     VB-->>API: WSS: slot_opened
     API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
     API-->>App: 200 OK (Locker successfully opened)

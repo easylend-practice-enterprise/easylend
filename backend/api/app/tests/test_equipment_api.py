@@ -716,13 +716,22 @@ def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
 
 
 def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
-    """GET /catalog as a non-admin returns grouped counts per category."""
+    """GET /catalog as a non-admin returns grouped counts per category.
+
+    Categories where all assets are borrowed or in-maintenance must still appear
+    with available_count=0 (LEFT OUTER JOIN, not INNER JOIN). Verifies DRIFT-01.
+
+    DB execute order:
+    [1] get_current_user → medewerker
+    [2] grouped query    → [(cat1_id, 'Laptops', 2), (cat2_id, 'Tablets', 0)]
+    """
     medewerker = _make_medewerker()
     cat1_id = uuid.uuid4()
     cat2_id = uuid.uuid4()
 
-    # The fake DB queue: [get_current_user -> medewerker, grouped query -> list of tuples]
-    grouped_rows = [(cat1_id, "Laptops", 2)]
+    # The fake DB queue: [get_current_user → medewerker, grouped query → list of tuples]
+    # cat2 (Tablets) has 0 available assets — the outerjoin must still emit this row.
+    grouped_rows = [(cat1_id, "Laptops", 2), (cat2_id, "Tablets", 0)]
     fake_db = _QueuedSession(medewerker, grouped_rows)
 
     with client_with_overrides(fake_db) as client:
@@ -731,12 +740,19 @@ def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    # Find the laptops row
+    assert len(data) == 2
+
+    # Laptops: 2 available
     laptops = next((r for r in data if r.get("category_id") == str(cat1_id)), None)
     assert laptops is not None
     assert laptops["category_name"] == "Laptops"
     assert laptops["available_count"] == 2
-    assert all(r.get("category_id") != str(cat2_id) for r in data)
+
+    # Tablets: 0 available — must still be present (DRIFT-01 regression guard)
+    tablets = next((r for r in data if r.get("category_id") == str(cat2_id)), None)
+    assert tablets is not None
+    assert tablets["category_name"] == "Tablets"
+    assert tablets["available_count"] == 0
 
 
 def test_get_catalog_as_admin_sees_asset_details(client_with_overrides):

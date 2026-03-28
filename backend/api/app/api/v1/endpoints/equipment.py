@@ -648,10 +648,13 @@ async def get_catalog(
             )
         return admin_items
 
-    # Non-admin path: categories with available counts
+    # Non-admin path: categories with available counts.
+    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
+    # in-maintenance) are still returned with available_count=0, rather than
+    # silently disappearing from the user catalog.
     query = (
         select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
-        .join(
+        .outerjoin(
             Asset,
             (Asset.category_id == Category.category_id)
             & (Asset.asset_status == AssetStatus.AVAILABLE)

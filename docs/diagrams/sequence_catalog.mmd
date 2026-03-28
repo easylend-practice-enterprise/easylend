@@ -7,8 +7,9 @@ sequenceDiagram
     Note over API: Validates JWT and checks role
 
     alt Role == USER
-        API->>DB: SELECT category_id, COUNT(asset_id) FROM assets WHERE asset_status = 'AVAILABLE' AND is_deleted = FALSE GROUP BY category_id
-        DB-->>API: Categorised pool (e.g. Laptops: 3)
+        Note over API,DB: LEFT OUTER JOIN from categories ensures 0-availability rows are returned
+        API->>DB: SELECT c.category_id, c.category_name, COUNT(a.asset_id) FROM categories c LEFT JOIN assets a ON a.category_id = c.category_id AND a.asset_status = 'AVAILABLE' AND a.is_deleted = FALSE GROUP BY c.category_id, c.category_name ORDER BY c.category_name
+        DB-->>API: Categorised pool (e.g. Laptops: 3, Tablets: 0)
         API-->>Client: 200 OK (Standard view)
     else Role == ADMIN
         Note over API,DB: Admin requires 2 joins for the current status
