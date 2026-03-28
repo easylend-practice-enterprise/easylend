@@ -426,10 +426,11 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     assert data["loan_status"] == "RESERVED"
     assert data["asset_id"] == str(asset.asset_id)
     assert data["checkout_locker_id"] == str(locker_id)
-    # Verify side-effects: asset cleared from locker, locker freed
-    assert asset.locker_id is None
+    # Verify side-effects: checkout reserves the loan and borrows the asset,
+    # but physical locker release is deferred until Vision confirmation.
+    assert asset.locker_id == locker_id
     assert asset.asset_status == "BORROWED"
-    assert locker.locker_status == "AVAILABLE"
+    assert locker.locker_status == "OCCUPIED"
     assert fake_db.commit_calls == 1
 
 

@@ -1,9 +1,13 @@
+import asyncio
+import threading
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from app.api.v1.endpoints import vision as vision_endpoints
 from app.core.config import settings
@@ -91,6 +95,73 @@ class _MockAsyncClient:
             raise AssertionError("Expected a mock response for post().")
 
         return self._response
+
+
+class _ScalarResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+class _ConcurrentLoanLockState:
+    def __init__(self, loan, asset, locker):
+        self.loan = loan
+        self.asset = asset
+        self.locker = locker
+        self.is_locked = False
+        self.guard = threading.Lock()
+
+
+class _ConcurrentLoanLockSession(_QueuedSession):
+    """Session stub that simulates FOR UPDATE NOWAIT lock contention on Loan."""
+
+    def __init__(self, state: _ConcurrentLoanLockState):
+        super().__init__()
+        self._state = state
+        self._owns_lock = False
+
+    async def execute(self, query):
+        query_str = str(query)
+
+        if "FROM loans" in query_str and "FOR UPDATE" in query_str:
+            with self._state.guard:
+                if self._state.is_locked:
+                    raise OperationalError(
+                        "could not obtain lock",
+                        params=None,
+                        orig=Exception("lock not available"),
+                    )
+                self._state.is_locked = True
+                self._owns_lock = True
+
+            # Keep the lock long enough for the competing request
+            # to hit the NOWAIT conflict path.
+            await asyncio.sleep(0.05)
+            return _ScalarResult(self._state.loan)
+
+        if "FROM assets" in query_str:
+            return _ScalarResult(self._state.asset)
+
+        if "FROM lockers" in query_str:
+            return _ScalarResult(self._state.locker)
+
+        return _ScalarResult(None)
+
+    async def commit(self):
+        self.commit_calls += 1
+        self._release_owner_lock_if_needed()
+
+    async def rollback(self):
+        self.rollback_calls += 1
+        self._release_owner_lock_if_needed()
+
+    def _release_owner_lock_if_needed(self) -> None:
+        with self._state.guard:
+            if self._owns_lock:
+                self._state.is_locked = False
+                self._owns_lock = False
 
 
 def _mock_success_upstream(monkeypatch, payload: dict, captured: dict | None = None):
@@ -202,7 +273,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
         checkout_locker_id=locker_id,
         loan_status="RESERVED",
     )
-    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED", locker_id=locker_id)
     locker = _make_locker(
         locker_id=locker_id,
         kiosk_id=kiosk_id,
@@ -223,6 +294,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
     assert loan.loan_status == "ACTIVE"
     assert getattr(loan, "borrowed_at", None) is not None
     assert asset.asset_status == "BORROWED"
+    assert asset.locker_id is None
     assert locker.locker_status == "AVAILABLE"
 
     send_command_mock.assert_awaited_once_with(
@@ -242,6 +314,80 @@ def test_checkout_success_branch_sets_active_and_green_led(
     assert eval_record.has_damage_detected is False
     assert eval_record.ai_confidence == 0.0
     assert eval_record.model_version == "yolo26-dual-model"
+
+
+def test_vision_analyze_concurrent_requests_return_409(monkeypatch, tmp_path):
+    payload = {
+        "status": "success",
+        "count": 0,
+        "detections": [],
+        "locker_empty": True,
+        "has_damage_detected": False,
+    }
+    _mock_success_upstream(monkeypatch, payload)
+    _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED", locker_id=locker_id)
+    locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
+    state = _ConcurrentLoanLockState(loan, asset, locker)
+
+    from app.db.database import get_db
+    from app.main import app
+
+    async def _override_get_db():
+        yield _ConcurrentLoanLockSession(state)
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    responses = []
+    errors = []
+    start_barrier = threading.Barrier(2)
+
+    def _send_once() -> None:
+        try:
+            with TestClient(app) as client:
+                start_barrier.wait()
+                response = client.post(
+                    "/api/v1/vision/analyze",
+                    headers={"X-Device-Token": "device-key"},
+                    data=_vision_form_data(
+                        loan_id=loan_id,
+                        evaluation_type="CHECKOUT",
+                    ),
+                    files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+                )
+                responses.append(response)
+        except Exception as exc:  # pragma: no cover - defensive test guard
+            errors.append(exc)
+
+    try:
+        thread_1 = threading.Thread(target=_send_once)
+        thread_2 = threading.Thread(target=_send_once)
+        thread_1.start()
+        thread_2.start()
+        thread_1.join(timeout=5)
+        thread_2.join(timeout=5)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert not errors
+    assert len(responses) == 2
+    assert sorted([responses[0].status_code, responses[1].status_code]) == [200, 409]
+
+    conflict_response = next(r for r in responses if r.status_code == 409)
+    assert conflict_response.json()["detail"] == (
+        "Vision evaluation is already processing for this loan. Please try again or wait."
+    )
 
 
 def test_checkout_fraud_branch_sets_fraud_and_red_led(

@@ -221,8 +221,8 @@ async def checkout(
     **State transitions (hardware-free path):**
     - `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)
     - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
-    - `Asset.locker_id`: cleared to `None` (asset leaves the locker)
-    - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
+    - `Asset.locker_id`: unchanged until Vision confirms the checkout result
+    - `Locker.locker_status`: unchanged until Vision confirms the locker is empty
     - New `Loan` record created with `loan_status = RESERVED`
     """
     if not idempotency_key:
@@ -310,11 +310,9 @@ async def checkout(
             )
 
         # --- 4. Apply state mutations ---
-        # Asset leaves the locker → locker becomes available again
+        # Asset becomes BORROWED immediately; physical locker release is deferred
+        # until Vision confirms the checkout outcome.
         asset.asset_status = AssetStatus.BORROWED
-        asset.locker_id = None
-        if locker.locker_status == LockerStatus.OCCUPIED:
-            locker.locker_status = LockerStatus.AVAILABLE
 
         # --- 5. Create loan record ---
         loan = Loan(

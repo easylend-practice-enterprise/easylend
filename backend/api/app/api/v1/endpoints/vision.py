@@ -123,7 +123,9 @@ async def analyze_image(
         )
 
     asset = (
-        await db.execute(select(Asset).where(Asset.asset_id == loan.asset_id))
+        await db.execute(
+            select(Asset).where(Asset.asset_id == loan.asset_id).with_for_update()
+        )
     ).scalar_one_or_none()
     if not asset:
         raise HTTPException(
@@ -154,7 +156,11 @@ async def analyze_image(
         else loan.return_locker_id
     )
     locker = (
-        await db.execute(select(Locker).where(Locker.locker_id == locker_id_for_eval))
+        await db.execute(
+            select(Locker)
+            .where(Locker.locker_id == locker_id_for_eval)
+            .with_for_update()
+        )
     ).scalar_one_or_none()
 
     if not locker:
@@ -341,6 +347,7 @@ async def analyze_image(
         else:
             loan.loan_status = LoanStatus.ACTIVE
             loan.borrowed_at = datetime.now(UTC)
+            asset.locker_id = None
             locker.locker_status = LockerStatus.AVAILABLE
             led_color = "green"
     else:
