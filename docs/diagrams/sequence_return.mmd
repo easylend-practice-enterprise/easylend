@@ -2,86 +2,112 @@ sequenceDiagram
     actor User as User
     participant App as Kiosk App (Flutter)
     participant API as FastAPI Backend
+    participant Redis as Redis Cache
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
     participant AI as YOLO26 AI Service (VM2)
 
-    User->>App: Selects "Return item"
-    App-->>User: Show Aztec code scanner (Tablet Camera)
-    User->>App: Scans Aztec code of item
-    App->>API: POST /api/v1/loans/return/initiate {aztec_code} [JWT, Idempotency-Key]
-    API->>DB: SELECT * FROM assets WHERE aztec_code = ?
-    DB-->>API: asset info (asset_id)
-    API->>DB: SELECT * FROM loans WHERE asset_id = <asset_id> AND loan_status = 'ACTIVE'
-    DB-->>API: loan info
+    User->>App: Selects "Return item" and picks their active loan
+    App->>API: POST /api/v1/loans/return/initiate {loan_id, kiosk_id} [JWT, Idempotency-Key]
 
-    alt No active loan found
-        API-->>App: 404 Not Found
-        App-->>User: "No active loan for this item"
-    else Loan belongs to another user
-        API->>DB: Check if loan.user_id == jwt.sub
-        API-->>App: 403 Forbidden
-        App-->>User: "This item was not borrowed by you"
-    else Loan found & Owner matches
-        API->>VB: Check WSS connection
-        alt Vision Box offline
-            API-->>App: 503 Service Unavailable
-            App-->>User: "Lockers currently out of service"
-        else Vision Box online
-            API->>DB: BEGIN transaction
-            API->>DB: SELECT * FROM lockers WHERE kiosk_id = current_kiosk_id AND locker_status = 'AVAILABLE' ORDER BY logical_number FOR UPDATE SKIP LOCKED LIMIT 1
-            DB-->>API: Available locker (locker_id, locker_number)
-            API->>DB: UPDATE loans SET return_locker_id = locker_id, loan_status = 'RETURNING' WHERE loan_id = <loan_id>
-            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
-            API->>DB: COMMIT
-            API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
-            App-->>User: Show loader: "Bring item to locker #N"
+    API->>Redis: EXISTS idempotency:{key}
+    alt Duplicate Idempotency-Key
+        API-->>App: 409 Conflict {"Request already processing"}
+    else Key not seen
+        API->>Redis: SETEX idempotency:{key} 86400 "processing"
 
-            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int, e.g. 3), not the UUID
-            API->>VB: WSS: open_slot {return_locker_id: logical_number, loan_id}
-            VB->>VB: GPIO: open slot + LED green
-            User->>VB: Places item in locker, closes door
-            VB->>API: WSS: slot_closed event
+        API->>DB: SELECT * FROM kiosks WHERE kiosk_id = ?
+        alt Kiosk not found
+            API-->>App: 404 Not Found
+        else Kiosk found
+            API->>VB: Check WSS connection for kiosk
+            alt Vision Box offline
+                API-->>App: 503 Service Unavailable
+                App-->>User: "Lockers currently out of service"
+            else Vision Box online
+                API->>DB: SELECT * FROM loans WHERE loan_id = <loan_id>
+                alt Loan not found
+                    API-->>App: 404 Not Found
+                else Loan belongs to another user (loan.user_id != jwt.sub)
+                    API-->>App: 403 Forbidden
+                    App-->>User: "This loan does not belong to you"
+                else Loan not in ACTIVE status
+                    API-->>App: 400 Bad Request ("Loan is not active")
+                else Loan found & Owner matches
+                    API->>DB: BEGIN transaction
+                    API->>DB: SELECT * FROM loans WHERE loan_id = <loan_id> AND loan_status = 'ACTIVE' AND return_locker_id IS NULL FOR UPDATE NOWAIT
+                    alt Loan lock contention
+                        API-->>App: 409 Conflict {"A return is already in progress"}
+                    else Loan state changed concurrently
+                        API-->>App: 409 Conflict {"Loan no longer returnable"}
+                    else Lock acquired
+                        API->>DB: SELECT * FROM lockers WHERE kiosk_id = <kiosk_id> AND locker_status = 'AVAILABLE' ORDER BY logical_number FOR UPDATE SKIP LOCKED LIMIT 1
+                        alt No available locker
+                            API-->>App: 503 Service Unavailable {"No available lockers at this kiosk"}
+                        else Locker found
+                            API->>DB: UPDATE loans SET return_locker_id = locker_id, loan_status = 'RETURNING' WHERE loan_id = <loan_id>
+                            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
 
-            VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
-            par Object Detection
-                API->>AI: POST /detect {image}
-                AI-->>API: {locker_empty, detections}
-            and Segmentation
-                API->>AI: POST /segment {image}
-                AI-->>API: {has_damage_detected}
-            end
+                            Note over API,VB: open_slot is sent BEFORE DB commit (hardware failure triggers ROLLBACK)
+                            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int, e.g. 3), not the UUID
+                            API->>VB: WSS: open_slot {locker_id: logical_number, loan_id}
 
-            alt Locker is empty (Fraud!) or Damage detected
-                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
-                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
-                Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
-                API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
-            else AI timeout (Model crash)
-                API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
-                API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
-                API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
-                Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
-                API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
-                Note over API,DB: Manual inspection required due to system error
-            else Item present and No damage
-                API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = <loan_id>
-                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = <asset_id>
-                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
-                Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
-                API->>VB: WSS: set_led {locker_id: logical_number, color: green}
-            end
-
-            Note over App,API: App polls the API every 3 sec for a status update (Polling)
-            App->>API: GET /api/v1/loans/{loan_id}/status
-            
-            alt Status is PENDING_INSPECTION
-                API-->>App: 200 OK {status: PENDING_INSPECTION}
-                App-->>User: "Damage detected. Administrator has been notified."
-            else Status is COMPLETED
-                API-->>App: 200 OK {status: COMPLETED}
-                App-->>User: "Item successfully returned!"
+                            alt Hardware command failed
+                                API->>DB: ROLLBACK
+                                API-->>App: 503 Service Unavailable
+                            else Hardware command accepted
+                                API->>DB: COMMIT
+                                API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
+                                App-->>User: Show loader: "Bring item to locker #N"
+                            end
+                        end
+                    end
+                end
             end
         end
+    end
+
+    VB->>VB: GPIO: open slot + LED green
+    User->>VB: Places item in locker, closes door
+    VB->>API: WSS: slot_closed event
+
+    VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: RETURN}
+    par Object Detection
+        API->>AI: POST /detect {image}
+        AI-->>API: {locker_empty, detections}
+    and Segmentation
+        API->>AI: POST /segment {image}
+        AI-->>API: {has_damage_detected}
+    end
+
+    alt Locker is empty (Fraud!) or Damage detected
+        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
+        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
+        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
+        Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+        API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
+    else AI timeout (Model crash)
+        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = <loan_id>
+        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION' WHERE asset_id = <asset_id>
+        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = <return_locker_id>
+        Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+        API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
+        Note over API,DB: Manual inspection required due to system error
+    else Item present and No damage
+        API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = <loan_id>
+        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = <asset_id>
+        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
+        Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+        API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+    end
+
+    Note over App,API: App polls the API every 3 sec for a status update (Polling)
+    App->>API: GET /api/v1/loans/{loan_id}/status
+
+    alt Status is PENDING_INSPECTION
+        API-->>App: 200 OK {status: PENDING_INSPECTION}
+        App-->>User: "Damage detected. Administrator has been notified."
+    else Status is COMPLETED
+        API-->>App: 200 OK {status: COMPLETED}
+        App-->>User: "Item successfully returned!"
     end
