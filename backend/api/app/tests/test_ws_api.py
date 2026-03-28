@@ -60,4 +60,12 @@ def test_websocket_slot_closed_event_is_logged(
         ) as websocket:
             websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
 
-    assert "slot_closed" in caplog.text
+    expected_substrings = ["slot_closed", "12"]
+    matching_records = [
+        record
+        for record in caplog.records
+        if all(substring in record.getMessage() for substring in expected_substrings)
+    ]
+    assert matching_records, (
+        "Expected log message containing slot_closed and locker_id was not found."
+    )

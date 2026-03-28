@@ -423,11 +423,20 @@ async def update_model(
     payload: ModelUpdateRequest,
     _: None = Depends(verify_vision_box_token),
 ) -> ModelUpdateResponse:
+    safe_detect_url = (
+        payload.object_detection_url.split("?")[0]
+        if payload.object_detection_url
+        else ""
+    )
+    safe_segment_url = (
+        payload.segmentation_url.split("?")[0] if payload.segmentation_url else ""
+    )
+
     logger.info(
         "Model update webhook received.",
         extra={
-            "object_detection_url": payload.object_detection_url,
-            "segmentation_url": payload.segmentation_url,
+            "object_detection_url_sanitized": safe_detect_url,
+            "segmentation_url_sanitized": safe_segment_url,
         },
     )
     return ModelUpdateResponse(message="Model update received successfully.")

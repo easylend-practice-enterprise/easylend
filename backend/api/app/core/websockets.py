@@ -44,7 +44,7 @@ class ConnectionManager:
                 # Use a short timeout to avoid blocking when the hardware TCP stack hangs.
                 await asyncio.wait_for(websocket.send_json(command), timeout=3.0)
                 return True
-            except TimeoutError:
+            except asyncio.TimeoutError:  # noqa: UP041
                 logger.error("Send command to kiosk_id=%s timed out.", kiosk_id)
                 try:
                     self.disconnect(kiosk_id, websocket)
