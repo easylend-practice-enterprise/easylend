@@ -85,11 +85,17 @@ async def _get_active_user_by_nfc(
             detail="Invalid NFC badge or account status.",
         )
 
-    if user.locked_until is not None and user.locked_until > datetime.now(UTC):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=locked_detail,
-        )
+    if user.locked_until:
+        if user.locked_until > datetime.now(UTC):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=locked_detail,
+            )
+        else:
+            # Lockout has expired, grant a fresh set of attempts.
+            # This state is committed by the caller in the normal login flow.
+            user.locked_until = None
+            user.failed_login_attempts = 0
 
     return user
 

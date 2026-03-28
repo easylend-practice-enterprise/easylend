@@ -294,7 +294,7 @@ async def list_kiosk_lockers(
     List all lockers that belong to a specific kiosk, ordered by slot number.
 
     Accessible by every authenticated user. Used by both the kiosk boot
-    sequence (M2M token) and the Admin Locker Grid UI (JWT Admin token).
+    sequence (JWT Service Account) and the Admin Locker Grid UI (JWT Admin token).
     Returns a 404 if the kiosk does not exist.
     """
     await _get_kiosk_or_404(db, kiosk_id)

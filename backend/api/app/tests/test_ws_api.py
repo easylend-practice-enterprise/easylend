@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -48,8 +51,17 @@ def test_websocket_valid_simulation_token() -> None:
         websocket.send_json({"action": "ping"})
 
 
-def test_websocket_slot_closed_event_is_logged() -> None:
-    with client.websocket_connect(
-        "/ws/visionbox/kiosk_3", headers={"X-Device-Token": settings.VISION_BOX_API_KEY}
-    ) as websocket:
-        websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
+@pytest.mark.anyio
+async def test_websocket_slot_closed_event_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        with client.websocket_connect(
+            "/ws/visionbox/kiosk_3",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+        ) as websocket:
+            websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
+
+        await asyncio.sleep(0.1)
+
+    assert "slot_closed" in caplog.text

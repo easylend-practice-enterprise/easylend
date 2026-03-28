@@ -277,8 +277,9 @@ async def analyze_image(
     if evaluation_type == EvaluationType.CHECKOUT:
         if not locker_empty:
             loan.loan_status = LoanStatus.FRAUD_SUSPECTED
+            asset.locker_id = locker.locker_id
             asset.asset_status = AssetStatus.AVAILABLE
-            locker.locker_status = LockerStatus.AVAILABLE
+            locker.locker_status = LockerStatus.OCCUPIED
             led_color = "red"
         else:
             loan.loan_status = LoanStatus.ACTIVE
@@ -371,7 +372,10 @@ async def analyze_image(
 
 
 @webhook_router.post("/update-model", response_model=ModelUpdateResponse)
-async def update_model(payload: ModelUpdateRequest) -> ModelUpdateResponse:
+async def update_model(
+    payload: ModelUpdateRequest,
+    _: None = Depends(verify_vision_box_token),
+) -> ModelUpdateResponse:
     logger.info(
         "Model update webhook received.",
         extra={

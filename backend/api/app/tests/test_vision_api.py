@@ -288,7 +288,8 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
     assert response.status_code == 200
     assert loan.loan_status == "FRAUD_SUSPECTED"
     assert asset.asset_status == "AVAILABLE"
-    assert locker.locker_status == "AVAILABLE"
+    assert asset.locker_id == locker_id
+    assert locker.locker_status == "OCCUPIED"
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
@@ -767,6 +768,7 @@ def test_update_model_accepts_dual_model_urls(client_with_overrides):
     with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/update-model",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
             json={
                 "object_detection_url": "https://models.example.com/object.pt",
                 "segmentation_url": "https://models.example.com/segmentation.pt",
