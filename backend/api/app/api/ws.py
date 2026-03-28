@@ -62,6 +62,6 @@ async def visionbox_websocket_endpoint(
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         except RuntimeError:
-            pass
+            logger.debug("WebSocket close failed: client already disconnected.")
         finally:
             manager.disconnect(kiosk_id, websocket)
