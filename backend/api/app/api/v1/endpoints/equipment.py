@@ -19,7 +19,6 @@ Auth rules:
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +42,7 @@ from app.schemas.equipment import (
     AssetListResponse,
     AssetResponse,
     AssetUpdate,
+    CatalogAdminView,
     CatalogUserView,
     CategoryCreate,
     CategoryListResponse,
@@ -570,18 +570,6 @@ async def update_locker_status(
 # ---------------------------------------------------------------------------
 
 catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
-
-
-class CatalogAdminView(BaseModel):
-    asset_id: UUID
-    asset_name: str
-    category_id: UUID
-    asset_status: AssetStatus
-    locker_id: UUID | None = None
-    is_deleted: bool
-    loan_status: LoanStatus | None = None
-    borrower_first_name: str | None = None
-    borrower_last_name: str | None = None
 
 
 CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]

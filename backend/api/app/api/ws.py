@@ -44,8 +44,9 @@ async def visionbox_websocket_endpoint(
             try:
                 data = json.loads(raw_message)
             except json.JSONDecodeError:
+                safe_msg = str(raw_message).replace("\n", " ").replace("\r", "")[:200]
                 logger.warning(
-                    f"Ignored non-JSON event from kiosk_id={kiosk_id}: {raw_message}"
+                    "Ignored non-JSON event from kiosk_id=%s: %s", kiosk_id, safe_msg
                 )
                 continue
 

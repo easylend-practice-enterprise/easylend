@@ -31,6 +31,9 @@
             "editor.formatOnSave": true,
             "editor.defaultFormatter": "Dart-Code.dart-code",
             "editor.rulers": [80]
+        },
+        "chat.tools.terminal.autoApprove": {
+            "uv": true
         }
     }
 }

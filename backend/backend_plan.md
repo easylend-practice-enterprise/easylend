@@ -201,7 +201,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 1. Finish 10b MVP control loop next
 
 - [x] Send `set_led` commands.
-- [x] Handle `slot_closed` event routing in backend WebSocket endpoint.
+- [x] Handle `slot_closed` event routing in backend WebSocket endpoint (MVP: logging-only; Vision Box still triggers `POST /vision/analyze`).
 - [x] Add unreachable Vision Box fallback behavior + audit log.
 
 1. Then finish 10b AI robustness items

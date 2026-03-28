@@ -216,7 +216,8 @@ class CatalogAdminView(BaseModel):
     asset_name: str
     category_id: UUID
     asset_status: AssetStatus
-    locker_id: UUID | None = None
+    locker_id: UUID | None
     is_deleted: bool
-    loan_status: LoanStatus | None = None
-    borrower_email: str | None = None
+    loan_status: LoanStatus | None
+    borrower_first_name: str | None
+    borrower_last_name: str | None

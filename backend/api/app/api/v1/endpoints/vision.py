@@ -265,6 +265,25 @@ async def analyze_image(
                         "color": "orange",
                     },
                 )
+
+                try:
+                    error_summary = str(exc)[:200].replace("\n", " ")
+                    await log_audit_event(
+                        db,
+                        action_type="VISION_EVALUATION_FAILED",
+                        payload={
+                            "evaluation_type": evaluation_type.value,
+                            "loan_id": str(loan.loan_id),
+                            "asset_id": str(asset.asset_id),
+                            "locker_id": str(locker.locker_id),
+                            "error_summary": error_summary,
+                        },
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to write audit log for Vision AI failure fallback."
+                    )
+
                 await db.commit()
             except Exception as fallback_exc:
                 await db.rollback()

@@ -76,7 +76,7 @@ erDiagram
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
         timestamp returned_at "Nullable"
-        enum loan_status "RESERVED, ACTIVE, RETURNING(*), OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
     %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
     %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
