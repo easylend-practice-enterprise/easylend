@@ -80,7 +80,7 @@ sequenceDiagram
         alt Locker not empty (Fraud/Error: item not taken)
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
             API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
             Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
             API->>VB: WSS: set_led {locker_id: logical_number, color: red}

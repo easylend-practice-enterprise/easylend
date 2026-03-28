@@ -243,7 +243,6 @@ async def checkout(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
             if _is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -258,21 +257,18 @@ async def checkout(
 
         # --- 2. Validate asset ---
         if asset is None or asset.is_deleted:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset not found.",
             )
 
         if asset.asset_status != AssetStatus.AVAILABLE:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset is not available for checkout.",
             )
 
         if asset.locker_id is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset has no assigned locker and cannot be checked out.",
@@ -288,7 +284,6 @@ async def checkout(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
             if _is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -301,7 +296,6 @@ async def checkout(
         locker = locker_result.scalar_one_or_none()
 
         if locker is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Locker not found.",
@@ -310,7 +304,6 @@ async def checkout(
         # --- 3b. Hardware Pre-flight Check ---
         kiosk_id_str = str(locker.kiosk_id)
         if kiosk_id_str not in manager.active_connections:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The Vision Box for this locker is currently offline. Cannot checkout.",
@@ -345,7 +338,6 @@ async def checkout(
             },
         )
         if not command_ok:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
@@ -355,22 +347,11 @@ async def checkout(
         await db.refresh(loan)
 
         return LoanResponse.model_validate(loan)
-    except Exception as exc:
-        # If this is an intentional HTTPException raised above, the
-        # handler code most likely already performed a rollback. Avoid a
-        # duplicate rollback while still ensuring the idempotency key is
-        # cleaned up. For other unexpected exceptions, perform the
-        # rollback here to guarantee transaction safety.
-        if isinstance(exc, HTTPException):
-            await redis_client.delete(redis_key)
-            raise
-
+    except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-
-        # Clean up idempotency key on any error to allow retries
         await redis_client.delete(redis_key)
         raise
 
@@ -468,7 +449,6 @@ async def return_initiate(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
             if _is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -481,7 +461,6 @@ async def return_initiate(
 
         locked_loan = locked_loan_result.scalar_one_or_none()
         if locked_loan is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Loan is no longer in a state that can be returned.",
@@ -502,7 +481,6 @@ async def return_initiate(
         locker = locker_result.scalar_one_or_none()
 
         if locker is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="No available lockers at this kiosk. Please try again shortly.",
@@ -524,7 +502,6 @@ async def return_initiate(
             },
         )
         if not command_ok:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
@@ -534,19 +511,10 @@ async def return_initiate(
         await db.refresh(loan)
 
         return LoanResponse.model_validate(loan)
-    except Exception as exc:
-        # As above: avoid double-rollback when an HTTPException was
-        # intentionally raised earlier in the flow; still remove the
-        # idempotency key. For unexpected errors, perform rollback.
-        if isinstance(exc, HTTPException):
-            await redis_client.delete(redis_key)
-            raise
-
+    except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-
-        # Clean up idempotency key on any error to allow retries
         await redis_client.delete(redis_key)
         raise

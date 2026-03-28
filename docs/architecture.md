@@ -245,8 +245,8 @@ erDiagram
         uuid user_id FK "Nullable: For anonymous errors"
         varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
         jsonb payload
-        varchar previous_hash
-        varchar current_hash
+        varchar(64) previous_hash "SHA-256 hex, NOT NULL"
+        varchar(64) current_hash "SHA-256 hex, NOT NULL"
         timestamp created_at
     }
 

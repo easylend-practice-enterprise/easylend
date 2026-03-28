@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 import pytest
@@ -51,8 +50,7 @@ def test_websocket_valid_simulation_token() -> None:
         websocket.send_json({"action": "ping"})
 
 
-@pytest.mark.anyio
-async def test_websocket_slot_closed_event_is_logged(
+def test_websocket_slot_closed_event_is_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.INFO):
@@ -61,7 +59,5 @@ async def test_websocket_slot_closed_event_is_logged(
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
         ) as websocket:
             websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
-
-        await asyncio.sleep(0.1)
 
     assert "slot_closed" in caplog.text
