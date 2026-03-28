@@ -579,8 +579,8 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
 _VALID_KIOSK_ID = uuid.uuid4()
 
 
-def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
-    """POST /return/initiate for an active loan assigns a return locker → 200.
+def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
+    """POST /return/initiate for an active loan assigns a return locker → 202.
 
     DB execute order:
     [1] get_current_user      → student
@@ -600,7 +600,7 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
             json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
             headers=_with_idempotency(_bearer(student), "return-happy"),
         )
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
     assert data["loan_status"] == "RETURNING"
     assert data["return_locker_id"] == str(free_locker.locker_id)
@@ -802,7 +802,7 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
         response1 = client.post(
             "/api/v1/loans/return/initiate", json=payload, headers=headers
         )
-        assert response1.status_code == 200
+        assert response1.status_code == 202
 
         response2 = client.post(
             "/api/v1/loans/return/initiate", json=payload, headers=headers

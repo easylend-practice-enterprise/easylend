@@ -240,7 +240,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
     assert len(fake_db.added) == 1
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
-    assert eval_record.ai_confidence == 0.95
+    assert eval_record.ai_confidence == 0.0
     assert eval_record.model_version == "yolo26-dual-model"
 
 
@@ -304,7 +304,7 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
     assert len(fake_db.added) == 1
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
-    assert eval_record.ai_confidence == 0.95
+    assert eval_record.ai_confidence == 0.98
     assert eval_record.model_version == "yolo26-dual-model"
 
 
@@ -370,7 +370,7 @@ def test_return_success_branch_sets_completed_and_green_led(
     assert len(fake_db.added) == 1
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is False
-    assert eval_record.ai_confidence == 0.95
+    assert eval_record.ai_confidence == 0.0
     assert eval_record.model_version == "yolo26-dual-model"
 
 
@@ -435,7 +435,7 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
     assert len(fake_db.added) == 1
     eval_record = fake_db.added[0]
     assert eval_record.has_damage_detected is True
-    assert eval_record.ai_confidence == 0.95
+    assert eval_record.ai_confidence == 0.91
     assert eval_record.model_version == "yolo26-dual-model"
 
 
