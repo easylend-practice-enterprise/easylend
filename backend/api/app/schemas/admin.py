@@ -9,7 +9,7 @@ from app.db.models import EvaluationType, LoanStatus
 class QuarantineLoanView(BaseModel):
     """Quarantined loan with joined relation names for the admin dashboard."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     loan_id: UUID
     asset_name: str
@@ -24,7 +24,7 @@ class QuarantineLoanView(BaseModel):
 class EvaluationDetailView(BaseModel):
     """Most recent AI evaluation for a loan, returned to the admin for judging."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     evaluation_id: UUID
     evaluation_type: EvaluationType
@@ -38,6 +38,8 @@ class EvaluationDetailView(BaseModel):
 
 class QuarantineJudgmentRequest(BaseModel):
     """Admin verdict on a quarantined AI evaluation."""
+
+    model_config = ConfigDict(extra="forbid")
 
     is_approved: bool
     rejection_reason: str | None = Field(

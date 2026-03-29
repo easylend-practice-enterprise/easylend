@@ -25,6 +25,8 @@ from app.db.models import AssetStatus, KioskStatus, LoanStatus, LockerStatus
 class CategoryBase(BaseModel):
     """Attributes editable by clients (no server-managed fields)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     category_name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -37,6 +39,8 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     """All fields Optional for PATCH/PUT."""
 
+    model_config = ConfigDict(extra="forbid")
+
     category_name: str | None = Field(default=None, min_length=1, max_length=100)
 
 
@@ -47,6 +51,8 @@ class CategoryResponse(CategoryBase):
 
 
 class CategoryListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[CategoryResponse]
     total: int
 
@@ -58,6 +64,8 @@ class CategoryListResponse(BaseModel):
 
 class KioskBase(BaseModel):
     """Client-editable kiosk attributes."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=100)
     location_description: str = Field(..., min_length=1, max_length=255)
@@ -73,6 +81,8 @@ class KioskCreate(KioskBase):
 class KioskUpdate(BaseModel):
     """All fields Optional for PATCH/PUT."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     location_description: str | None = Field(default=None, min_length=1, max_length=255)
     kiosk_status: KioskStatus | None = None
@@ -80,6 +90,8 @@ class KioskUpdate(BaseModel):
 
 class KioskStatusUpdate(BaseModel):
     """Schema specifically for the /status endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
 
     kiosk_status: KioskStatus
 
@@ -91,6 +103,8 @@ class KioskResponse(KioskBase):
 
 
 class KioskListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[KioskResponse]
     total: int
 
@@ -102,6 +116,8 @@ class KioskListResponse(BaseModel):
 
 class LockerBase(BaseModel):
     """Client-editable locker attributes (FK kiosk_id stays in Create/Response)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     logical_number: int = Field(..., ge=1)
     locker_status: LockerStatus = LockerStatus.AVAILABLE
@@ -120,6 +136,8 @@ class LockerUpdate(BaseModel):
     kiosk_id may be updated during re-assignment scenarios.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     kiosk_id: UUID | None = None
     logical_number: int | None = Field(default=None, ge=1)
     locker_status: LockerStatus | None = None
@@ -127,6 +145,8 @@ class LockerUpdate(BaseModel):
 
 class LockerStatusUpdate(BaseModel):
     """Schema specifically for the /status endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
 
     locker_status: LockerStatus
 
@@ -139,6 +159,8 @@ class LockerResponse(LockerBase):
 
 
 class LockerListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[LockerResponse]
     total: int
 
@@ -154,6 +176,8 @@ class AssetBase(BaseModel):
     Note: locker_id is intentionally excluded here: it is a FK that belongs
     in Create and Response, since it can be NULL (asset on loan).
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(..., min_length=1, max_length=255)
     aztec_code: str = Field(..., min_length=1, max_length=100)
@@ -175,6 +199,8 @@ class AssetUpdate(BaseModel):
     is_deleted is intentionally excluded: use the dedicated soft-delete endpoint.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=255)
     aztec_code: str | None = Field(default=None, min_length=1, max_length=100)
     asset_status: AssetStatus | None = None
@@ -192,6 +218,8 @@ class AssetResponse(AssetBase):
 
 
 class AssetListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[AssetResponse]
     total: int
 
@@ -202,7 +230,7 @@ class AssetListResponse(BaseModel):
 
 
 class CatalogUserView(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     category_id: UUID
     category_name: str
@@ -213,7 +241,7 @@ class CatalogUserView(BaseModel):
 
 
 class CatalogAdminView(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     asset_id: UUID
     asset_name: str

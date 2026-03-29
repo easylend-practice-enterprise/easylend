@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 def _validate_model_url(url: str, field_name: str) -> str:
@@ -24,11 +24,15 @@ def _validate_model_url(url: str, field_name: str) -> str:
 
 
 class DetectionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     class_name: str
     confidence: float
 
 
 class VisionAnalyzeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     status: str
     count: int
     detections: list[DetectionItem]
@@ -36,6 +40,8 @@ class VisionAnalyzeResponse(BaseModel):
 
 
 class ModelUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     object_detection_url: str | None = None
     segmentation_url: str | None = None
 

@@ -11,7 +11,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,6 +72,10 @@ def _require_admin(current_user: User = Depends(get_current_user)) -> User:
     },
 )
 async def list_quarantine_loans(
+    skip: int = Query(0, ge=0, description="Records to skip (pagination offset)."),
+    limit: int = Query(
+        100, ge=1, le=500, description="Maximum records to return (max 500)."
+    ),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(_require_admin),
 ) -> list[QuarantineLoanView]:
@@ -88,6 +92,8 @@ async def list_quarantine_loans(
         )
         .where(Loan.loan_status == LoanStatus.PENDING_INSPECTION)
         .order_by(Loan.borrowed_at.desc().nulls_last())
+        .offset(skip)
+        .limit(limit)
     )
     loans = result.unique().scalars().all()
 

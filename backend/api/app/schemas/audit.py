@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class AuditLogView(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     audit_id: UUID
     user_id: UUID | None
@@ -17,5 +17,7 @@ class AuditLogView(BaseModel):
 
 
 class AuditVerifyResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     is_valid: bool
     tampered_record_id: UUID | None

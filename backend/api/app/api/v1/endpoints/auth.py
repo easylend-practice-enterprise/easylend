@@ -2,7 +2,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,15 +34,21 @@ _REFRESH_TOKEN_TTL_SECONDS = int(
 
 
 class NfcLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
 
 
 class PinLoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
     pin: str = Field(..., min_length=4, max_length=32)
 
 
 class RefreshTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     refresh_token: str = Field(..., min_length=1, max_length=2048)
 
 
