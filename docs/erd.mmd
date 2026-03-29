@@ -87,11 +87,11 @@ erDiagram
         uuid loan_id FK
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
-        float ai_confidence "NOT NULL: parsed from detections[0].confidence (0.0 if empty)"
+        float ai_confidence "NOT NULL: 0.0 when no detections"
         jsonb detected_objects "E.g. Aztec code location, object type"
         boolean has_damage_detected "Quickly filter problem evaluations"
         varchar model_version
-        boolean is_approved
+        boolean is_approved "Nullable"
         varchar rejection_reason "Nullable"
         timestamp analyzed_at
     }
@@ -100,7 +100,7 @@ erDiagram
         uuid damage_id PK
         uuid evaluation_id FK
         varchar damage_type "E.g. scratch, crack, missing key"
-        varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
+        varchar severity "Free-form string"
         jsonb segmentation_data "YOLO polygon/bounding box coordinates"
         boolean requires_repair
     }

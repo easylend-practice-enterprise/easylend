@@ -27,6 +27,8 @@ The user scans their NFC badge and enters their PIN to receive an access token a
 
 The app requests a loan via REST. The API controls the Vision Box via WSS. In the meantime the app polls the API to find out whether the hardware and AI actions have completed.
 
+> **Prerequisite:** Requires `Idempotency-Key` HTTP header (UUID recommended) on `POST /api/v1/loans/checkout`.
+
 [View the sequence diagram: Checkout Flow](./diagrams/sequence_checkout.mmd)
 
 ---
@@ -35,13 +37,15 @@ The app requests a loan via REST. The API controls the Vision Box via WSS. In th
 
 The user scans the Aztec code via the tablet. The API assigns an available locker. After closing, the AI verifies that the item is actually inside the locker and checks for damage.
 
+> **Prerequisites:** Requires `Idempotency-Key` HTTP header (UUID recommended) on `POST /api/v1/loans/return/initiate`. Inspection photos taken during the return flow are served via `GET /api/v1/images/{filename}` (Admin or Loan Owner access).
+
 [View the sequence diagram: Return Flow](./diagrams/sequence_return.mmd)
 
 ---
 
 ## 4. AI Quarantine Flow (Damage detected)
 
-When the AI detects damage during the Return Flow, a human admin must approve or reject the assessment via the dashboard.
+When the AI detects damage during the Return Flow, the loan enters a quarantine state. Admins retrieve all quarantined loans via `GET /api/v1/admin/quarantine`. A human admin must then approve or reject the assessment via `PATCH /api/v1/admin/evaluations/{evaluation_id}/judge` on the dashboard.
 
 [View the sequence diagram: AI Quarantine Flow](./diagrams/sequence_quarantine.mmd)
 
