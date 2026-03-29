@@ -910,7 +910,39 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_update_model_accepts_dual_model_urls(client_with_overrides):
+def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides):
+    """The update-model webhook must forward the payload to the Vision microservice."""
+
+    def _async_client_factory(*, timeout: float):  # noqa: ARG001
+        class _SuccessClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def post(self, url: str, *, json: dict, headers: dict):
+                assert url == "http://vm2/update-model"
+                assert headers["Authorization"] == "Bearer vision-service-key"
+                assert (
+                    json["object_detection_url"]
+                    == "https://models.example.com/object.pt"
+                )
+                assert (
+                    json["segmentation_url"]
+                    == "https://models.example.com/segmentation.pt"
+                )
+                response = _MockResponse(200, {"message": "ok"})
+                return response
+
+        return _SuccessClient()
+
+    monkeypatch.setattr(vision_endpoints.settings, "VISION_SERVICE_URL", "http://vm2")
+    monkeypatch.setattr(
+        vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
+    )
+    monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
+
     with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/update-model",

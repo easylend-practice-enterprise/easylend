@@ -282,13 +282,15 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 
 ## Step 10c: Admin Quarantine Dashboard
 
-**Status:** ❌ Open · *Requires: step 10b*
+**Status:** ✅ Done · *Requires: step 10b*
 
 Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in the Quarantine Flow.
 
-- `GET /api/v1/admin/loans?status=PENDING_INSPECTION` (list of loans in quarantine)
-- `GET /api/v1/admin/evaluations/{evaluation_id}` (retrieves the AI report and `photo_url`)
-- `PATCH /api/v1/admin/evaluations/{id}` (Administrator approves: status to `DISPUTED`, or rejects: status to `COMPLETED`)
+- [x] `GET /api/v1/admin/quarantine` — list of loans in `PENDING_INSPECTION` status with joined relation names
+- [x] `GET /api/v1/admin/evaluations/{loan_id}` — most recent AI evaluation for a loan
+- [x] `PATCH /api/v1/admin/evaluations/{evaluation_id}/judge` — admin verdict: approve (DISPUTED + MAINTENANCE) or reject (revert to normal flow)
+- [x] `SELECT … FOR UPDATE NOWAIT` with `OperationalError` handling on all judgment DB rows
+- [x] Tests in `backend/api/app/tests/test_admin_api.py`
 
 ## Step 11: Input Sanitisation
 

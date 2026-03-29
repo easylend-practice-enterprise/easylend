@@ -505,4 +505,34 @@ async def update_model(
             "segmentation_url_sanitized": safe_segment_url,
         },
     )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.VISION_SERVICE_URL.rstrip('/')}/update-model",
+                json=payload.model_dump(),
+                headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
+            )
+
+        if response.status_code != 200:
+            upstream_detail = response.text[:500]
+            logger.error(
+                "Vision microservice returned %s for model-update: %s",
+                response.status_code,
+                upstream_detail,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Vision microservice returned {response.status_code}: {upstream_detail}",
+            )
+    except httpx.RequestError as exc:
+        logger.error(
+            "Failed to forward model-update to Vision microservice: %s",
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to communicate with Vision microservice.",
+        ) from exc
+
     return ModelUpdateResponse(message="Model update received successfully.")
