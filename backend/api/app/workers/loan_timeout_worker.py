@@ -31,6 +31,7 @@ async def process_reserved_loan_timeouts(
             Loan.loan_status == LoanStatus.RESERVED,
             Loan.reserved_at.is_not(None),
             Loan.reserved_at < cutoff,
+            Loan.asset.has(is_deleted=False),  # skip loans for soft-deleted assets
         )
         .with_for_update(skip_locked=True)
     )

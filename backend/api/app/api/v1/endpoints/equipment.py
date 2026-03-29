@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core.audit import log_audit_event
@@ -36,6 +37,7 @@ from app.db.models import (
     Loan,
     LoanStatus,
     Locker,
+    LockerStatus,
     User,
 )
 from app.schemas.equipment import (
@@ -683,7 +685,11 @@ assets_router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 async def _get_asset_or_404(db: AsyncSession, asset_id: UUID) -> Asset:
-    result = await db.execute(select(Asset).where(Asset.asset_id == asset_id))
+    result = await db.execute(
+        select(Asset)
+        .options(selectinload(Asset.category), selectinload(Asset.locker))
+        .where(Asset.asset_id == asset_id, Asset.is_deleted.is_(False))
+    )
     asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(
@@ -691,6 +697,12 @@ async def _get_asset_or_404(db: AsyncSession, asset_id: UUID) -> Asset:
             detail="Asset not found.",
         )
     return asset
+
+
+async def _get_asset_allowing_deleted(db: AsyncSession, asset_id: UUID) -> Asset | None:
+    """Load an asset by ID regardless of is_deleted status (admin/historical use)."""
+    result = await db.execute(select(Asset).where(Asset.asset_id == asset_id))
+    return result.scalar_one_or_none()
 
 
 @assets_router.get(
@@ -726,7 +738,11 @@ async def list_assets(
     - Kiosk app catalog view: `?asset_status=AVAILABLE`
     - Admin overview: omit the filter to see everything active.
     """
-    query = select(Asset).where(Asset.is_deleted.is_(False))
+    query = (
+        select(Asset)
+        .options(selectinload(Asset.category), selectinload(Asset.locker))
+        .where(Asset.is_deleted.is_(False))
+    )
     count_query = (
         select(func.count()).select_from(Asset).where(Asset.is_deleted.is_(False))
     )
@@ -765,7 +781,12 @@ async def get_asset_by_id(
     of `is_deleted` status so that historical records remain retrievable
     when the ID is known.
     """
-    asset = await _get_asset_or_404(db, asset_id)
+    asset = await _get_asset_allowing_deleted(db, asset_id)
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found.",
+        )
     return AssetResponse.model_validate(asset)
 
 
@@ -868,7 +889,12 @@ async def update_asset(
     `is_deleted` is deliberately **not** updatable here: use the
     dedicated `DELETE /{asset_id}` endpoint for soft-deletion.
     """
-    asset = await _get_asset_or_404(db, asset_id)
+    asset = await _get_asset_allowing_deleted(db, asset_id)
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found.",
+        )
 
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
@@ -916,12 +942,13 @@ async def update_asset(
         401: {"description": "Not authenticated"},
         403: {"description": "Forbidden: Admin only"},
         404: {"description": "Asset not found"},
+        409: {"description": "Asset has active or reserved loans"},
     },
 )
 async def soft_delete_asset(
     asset_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin),
 ) -> None:
     """
     Soft-delete an asset (sets `is_deleted = True`).
@@ -933,7 +960,45 @@ async def soft_delete_asset(
 
     `asset_status` is intentionally preserved as-is so that audit logs
     and in-flight loans are not silently corrupted.
+
+    Returns 409 Conflict if the asset has an ACTIVE or RESERVED loan.
     """
-    asset = await _get_asset_or_404(db, asset_id)
+    asset = await _get_asset_allowing_deleted(db, asset_id)
+    if asset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset not found.",
+        )
+
+    # Guard: prevent soft-delete of assets with in-flight loans
+    active_loans_result = await db.execute(
+        select(Loan.loan_id).where(
+            Loan.asset_id == asset_id,
+            Loan.loan_status.in_([LoanStatus.ACTIVE, LoanStatus.RESERVED]),
+        )
+    )
+    if active_loans_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete an asset that has active or reserved loans.",
+        )
+
+    # Clear locker assignment and return the locker to AVAILABLE
+    if asset.locker_id is not None:
+        locker_result = await db.execute(
+            select(Locker).where(Locker.locker_id == asset.locker_id)
+        )
+        locker = locker_result.scalar_one_or_none()
+        if locker is not None:
+            locker.locker_status = LockerStatus.AVAILABLE
+        asset.locker_id = None
+
     asset.is_deleted = True
+
+    await log_audit_event(
+        db,
+        action_type="ASSET_SOFT_DELETED",
+        payload={"asset_id": str(asset_id), "asset_name": asset.name},
+        user_id=current_user.user_id,
+    )
     await db.commit()

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.db_utils import is_lock_not_available_error
@@ -114,8 +115,18 @@ async def list_loans(
     - **Admin**: all loans in the system.
     - **Any other role**: only the caller's own loans.
     """
-    query = select(Loan)
-    count_query = select(func.count()).select_from(Loan)
+    query = (
+        select(Loan)
+        .options(selectinload(Loan.user), selectinload(Loan.asset))
+        .join(Asset, Loan.asset_id == Asset.asset_id)
+        .where(Asset.is_deleted.is_(False))
+    )
+    count_query = (
+        select(func.count())
+        .select_from(Loan)
+        .join(Asset, Loan.asset_id == Asset.asset_id)
+        .where(Asset.is_deleted.is_(False))
+    )
 
     if not _is_admin(current_user):
         query = query.where(Loan.user_id == current_user.user_id)

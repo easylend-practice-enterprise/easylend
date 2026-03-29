@@ -39,6 +39,7 @@ def _make_asset(**kwargs) -> SimpleNamespace:
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         asset_status=kwargs.get("asset_status", "BORROWED"),
         locker_id=kwargs.get("locker_id"),
+        is_deleted=kwargs.get("is_deleted", False),
     )
 
 
@@ -115,17 +116,27 @@ class _ConcurrentLoanLockState:
 
 
 class _ConcurrentLoanLockSession(_QueuedSession):
-    """Session stub that simulates FOR UPDATE NOWAIT lock contention on Loan."""
+    """Session stub that simulates FOR UPDATE NOWAIT lock contention on Loan.
+
+    In the refactored analyze_image, Phase 1 loads entities without locks.
+    Phase 2 acquires FOR UPDATE locks immediately before DB mutations.
+    Thread 1 gets the Phase 1 loan, runs AI (~30s), then in Phase 2 acquires
+    the FOR UPDATE lock. Thread 2 hits NOWAIT contention on its Phase 2 lock
+    attempt and gets a 409.
+    """
 
     def __init__(self, state: _ConcurrentLoanLockState):
         super().__init__()
         self._state = state
         self._owns_lock = False
+        self._phase = 0  # 0=phase1, 1=phase2
 
     async def execute(self, query):
         query_str = str(query)
+        is_phase2 = "FOR UPDATE" in query_str
 
-        if "FROM loans" in query_str and "FOR UPDATE" in query_str:
+        # Phase 2 FOR UPDATE on Loan: handle lock contention
+        if is_phase2 and "FROM loans" in query_str:
             with self._state.guard:
                 if self._state.is_locked:
                     raise OperationalError(
@@ -139,6 +150,18 @@ class _ConcurrentLoanLockSession(_QueuedSession):
             # Keep the lock long enough for the competing request
             # to hit the NOWAIT conflict path.
             await asyncio.sleep(0.05)
+            return _ScalarResult(self._state.loan)
+
+        # Phase 2 FOR UPDATE on Asset
+        if is_phase2 and "FROM assets" in query_str:
+            return _ScalarResult(self._state.asset)
+
+        # Phase 2 FOR UPDATE on Locker
+        if is_phase2 and "FROM lockers" in query_str:
+            return _ScalarResult(self._state.locker)
+
+        # Phase 1: return entities without locks
+        if "FROM loans" in query_str:
             return _ScalarResult(self._state.loan)
 
         if "FROM assets" in query_str:
@@ -217,7 +240,7 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -280,7 +303,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
         logical_number=7,
         locker_status="AVAILABLE",
     )
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -386,7 +409,7 @@ def test_vision_analyze_concurrent_requests_return_409(monkeypatch, tmp_path):
 
     conflict_response = next(r for r in responses if r.status_code == 409)
     assert conflict_response.json()["detail"] == (
-        "Vision evaluation is already processing for this loan. Please try again or wait."
+        "Vision evaluation is already processing for this loan. Please try again."
     )
 
 
@@ -421,7 +444,7 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         logical_number=8,
         locker_status="AVAILABLE",
     )
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -486,7 +509,7 @@ def test_return_success_branch_sets_completed_and_green_led(
         logical_number=9,
         locker_status="OCCUPIED",
     )
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -552,7 +575,7 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
         logical_number=10,
         locker_status="OCCUPIED",
     )
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -879,10 +902,6 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
     _mock_success_upstream(monkeypatch, payload)
     _mock_common_vision_runtime(monkeypatch, tmp_path)
 
-    class _FailingCommitSession(_QueuedSession):
-        async def commit(self):
-            raise RuntimeError("commit failed")
-
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
     locker_id = uuid.uuid4()
@@ -895,7 +914,13 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
     )
     asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
     locker = _make_locker(locker_id=locker_id)
-    fake_db = _FailingCommitSession(loan, asset, locker)
+
+    class _FailingCommitSession(_QueuedSession):
+        async def commit(self):
+            raise RuntimeError("commit failed")
+
+    # Phase 1 (3) + Phase 2 lock acquisition (3)
+    fake_db = _FailingCommitSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(

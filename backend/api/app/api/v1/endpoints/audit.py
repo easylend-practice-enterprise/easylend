@@ -8,6 +8,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core import audit as audit_core
@@ -45,7 +46,11 @@ async def list_audit_logs(
 ) -> list[AuditLogView]:
     """Return a paginated list of audit logs (admin-only)."""
     result = await db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).offset(skip).limit(limit)
+        select(AuditLog)
+        .options(selectinload(AuditLog.user))
+        .order_by(AuditLog.created_at.desc())
+        .offset(skip)
+        .limit(limit)
     )
     logs = result.scalars().all()
     return [AuditLogView.model_validate(log) for log in logs]

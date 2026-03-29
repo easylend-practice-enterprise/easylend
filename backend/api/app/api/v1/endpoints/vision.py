@@ -108,7 +108,7 @@ async def analyze_image(
     if len(image_data) > MAX_UPLOAD_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Image too large (max {MAX_UPLOAD_SIZE} bytes)",
+            detail="Image too large.",
         )
 
     content_type_ext_map = {
@@ -122,61 +122,43 @@ async def analyze_image(
     file_path = UPLOAD_DIR / unique_filename
     photo_url = f"/api/v1/images/{unique_filename}"
 
-    try:
-        loan_result = await db.execute(
-            select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
-        )
-        loan = loan_result.scalar_one_or_none()
-    except OperationalError as exc:
-        await db.rollback()
-        if not _is_lock_not_available_error(exc):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="A database error occurred.",
-            ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
-        )
+    # --- Phase 1: Lightweight existence checks (no row locks held) ---
+    # Load loan, asset, and locker without FOR UPDATE.
+    # Locks are acquired in Phase 2 (after AI analysis) to avoid holding
+    # row locks during the ~30s Vision AI HTTP call.
+    loan_result = await db.execute(select(Loan).where(Loan.loan_id == loan_id))
+    loan = loan_result.scalar_one_or_none()
     if not loan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found."
         )
 
-    try:
-        asset_result = await db.execute(
-            select(Asset)
-            .where(Asset.asset_id == loan.asset_id)
-            .with_for_update(nowait=True)
-        )
-        asset = asset_result.scalar_one_or_none()
-    except OperationalError as exc:
-        await db.rollback()
-        if not _is_lock_not_available_error(exc):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="A database error occurred.",
-            ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
-        )
+    asset_result = await db.execute(
+        select(Asset).where(Asset.asset_id == loan.asset_id)
+    )
+    asset = asset_result.scalar_one_or_none()
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found."
+        )
+
+    if asset.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Asset is no longer active.",
         )
 
     if evaluation_type == EvaluationType.CHECKOUT:
         if loan.loan_status != LoanStatus.RESERVED:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RESERVED status for checkout, not {loan.loan_status}.",
+                detail="Loan must be in RESERVED status for checkout.",
             )
     else:
         if loan.loan_status != LoanStatus.RETURNING:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Loan must be in RETURNING status for return, not {loan.loan_status}.",
+                detail="Loan must be in RETURNING status for return.",
             )
         if not loan.return_locker_id:
             raise HTTPException(
@@ -189,25 +171,10 @@ async def analyze_image(
         if evaluation_type == EvaluationType.CHECKOUT
         else loan.return_locker_id
     )
-    try:
-        locker_result = await db.execute(
-            select(Locker)
-            .where(Locker.locker_id == locker_id_for_eval)
-            .with_for_update(nowait=True)
-        )
-        locker = locker_result.scalar_one_or_none()
-    except OperationalError as exc:
-        await db.rollback()
-        if not _is_lock_not_available_error(exc):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="A database error occurred.",
-            ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
-        )
-
+    locker_result = await db.execute(
+        select(Locker).where(Locker.locker_id == locker_id_for_eval)
+    )
+    locker = locker_result.scalar_one_or_none()
     if not locker:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Locker not found."
@@ -302,7 +269,12 @@ async def analyze_image(
             f"Vision AI evaluation failed: {str(exc)}",
             extra={"vision_url": settings.VISION_SERVICE_URL},
         )
-
+        # When the AI call fails we do NOT acquire row locks (holding them
+        # during a retry would extend the contention window indefinitely).
+        # The Vision Box will re-send the same image; the loan will be
+        # re-processed on the next attempt with fresh locks.
+        # We do however transition the loan/asset to PENDING_INSPECTION so that
+        # admins are alerted and the quarantine flow handles the stuck item.
         if evaluation_type in (EvaluationType.CHECKOUT, EvaluationType.RETURN):
             try:
                 loan.loan_status = LoanStatus.PENDING_INSPECTION
@@ -345,41 +317,113 @@ async def analyze_image(
                     )
 
                 await db.commit()
-            except Exception as fallback_exc:
+            except Exception:
                 await db.rollback()
                 logger.exception(
                     "Failed to persist fallback state after Vision AI failure."
                 )
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to persist fallback state.",
-                ) from fallback_exc
 
         if isinstance(exc, httpx.RequestError):
-            final_status = status.HTTP_503_SERVICE_UNAVAILABLE
-            final_detail = "Vision AI service is unavailable."
-        elif isinstance(exc, VisionAIServiceError):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Vision AI service is unavailable.",
+            ) from exc
+        if isinstance(exc, VisionAIServiceError):
             upstream = getattr(exc, "status_code", None)
             if upstream in (401, 403):
-                final_status = status.HTTP_500_INTERNAL_SERVER_ERROR
-                final_detail = "Vision AI authentication is misconfigured."
-            elif upstream == 503:
-                final_status = status.HTTP_503_SERVICE_UNAVAILABLE
-                final_detail = "Vision AI service is temporarily unavailable."
-            elif upstream == 400:
-                final_status = status.HTTP_400_BAD_REQUEST
-                final_detail = "Uploaded image is invalid or unsupported."
-            else:
-                final_status = status.HTTP_502_BAD_GATEWAY
-                final_detail = "Vision AI service returned an unexpected response."
-        elif isinstance(exc, (TypeError, ValidationError, ValueError)):
-            final_status = status.HTTP_502_BAD_GATEWAY
-            final_detail = "Vision AI service returned invalid data format."
-        else:
-            final_status = status.HTTP_503_SERVICE_UNAVAILABLE
-            final_detail = "Vision AI service is unavailable."
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Vision AI authentication is misconfigured.",
+                ) from exc
+            if upstream == 503:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Vision AI service is temporarily unavailable.",
+                ) from exc
+            if upstream == 400:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Uploaded image is invalid or unsupported.",
+                ) from exc
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Vision AI service returned an unexpected response.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Vision AI service returned invalid data format.",
+        ) from exc
 
-        raise HTTPException(status_code=final_status, detail=final_detail) from exc
+    # --- Phase 2: Acquire row locks ONLY after AI analysis is complete ---
+    # Locking order: Loan → Asset → Locker (deterministic, matches judge_evaluation).
+    # Holding locks only during the ~100ms DB write + WS command avoids the
+    # ~30s contention window that the previous design introduced.
+    try:
+        locked_loan_result = await db.execute(
+            select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
+        )
+        locked_loan = locked_loan_result.scalar_one_or_none()
+        if locked_loan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found."
+            )
+        loan = locked_loan
+    except OperationalError as exc:
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again.",
+        )
+
+    try:
+        locked_asset_result = await db.execute(
+            select(Asset)
+            .where(Asset.asset_id == loan.asset_id)
+            .with_for_update(nowait=True)
+        )
+        locked_asset = locked_asset_result.scalar_one_or_none()
+        if locked_asset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found."
+            )
+        asset = locked_asset
+    except OperationalError as exc:
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again.",
+        )
+
+    try:
+        locked_locker_result = await db.execute(
+            select(Locker)
+            .where(Locker.locker_id == locker_id_for_eval)
+            .with_for_update(nowait=True)
+        )
+        locked_locker = locked_locker_result.scalar_one_or_none()
+        if locked_locker is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Locker not found."
+            )
+        locker = locked_locker
+    except OperationalError as exc:
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again.",
+        )
 
     if evaluation_type == EvaluationType.CHECKOUT:
         if not locker_empty:
@@ -523,7 +567,7 @@ async def update_model(
             )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Vision microservice returned {response.status_code}: {upstream_detail}",
+                detail="Vision microservice returned an error. Please try again or contact support.",
             )
     except httpx.RequestError as exc:
         logger.error(

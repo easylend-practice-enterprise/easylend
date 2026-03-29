@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
 from app.api.deps import get_current_user
 from app.core import audit as audit_core
@@ -90,7 +90,10 @@ async def list_quarantine_loans(
             joinedload(Loan.checkout_locker).joinedload(Locker.kiosk),
             joinedload(Loan.return_locker).joinedload(Locker.kiosk),
         )
-        .where(Loan.loan_status == LoanStatus.PENDING_INSPECTION)
+        .where(
+            Loan.loan_status == LoanStatus.PENDING_INSPECTION,
+            Asset.is_deleted.is_(False),
+        )
         .order_by(Loan.borrowed_at.desc().nulls_last())
         .offset(skip)
         .limit(limit)
@@ -152,7 +155,6 @@ async def get_latest_evaluation(
     result = await db.execute(
         select(AIEvaluation)
         .where(AIEvaluation.loan_id == loan_id)
-        .options(selectinload(AIEvaluation.loan))
         .order_by(AIEvaluation.analyzed_at.desc())
         .limit(1)
     )

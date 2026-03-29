@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
 from app.core.config import settings
+from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
 from app.db.models import User
 from app.db.redis import (
@@ -79,9 +81,20 @@ async def _get_active_user_by_nfc(
     )
 
     if lock_row:
-        query = query.with_for_update()
+        query = query.with_for_update(nowait=True)
 
-    result = await db.execute(query)
+    try:
+        result = await db.execute(query)
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Account is currently in use. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:
@@ -208,11 +221,11 @@ async def refresh_access_token(
     # 1. Decode and validate the signature and token type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
+            detail="Invalid or expired refresh token.",
+        )
 
     # 2. Atomically consume the token (prevents token replay / race conditions)
     try:

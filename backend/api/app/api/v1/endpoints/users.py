@@ -224,7 +224,7 @@ async def update_user(
     if invalid_null_fields:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Fields {', '.join(sorted(invalid_null_fields))} cannot be null.",
+            detail="Request contains fields that cannot be set to null.",
         )
 
     if "email" in update_data and update_data["email"] is not None:
