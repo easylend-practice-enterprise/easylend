@@ -352,7 +352,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 ## Step 13: Hash-Chaining Audit Logs
 
-**Ticket:** ELP-29 · **Status:** ❌ Open · *Requires: step 10a (transactions)*
+**Ticket:** ELP-29 · **Status:** ✅ Done · *Requires: step 10a (transactions)*
 
 - [x] Foundation helper added: `app/core/audit.py` (`log_audit_event`, genesis hash, hash computation)
 

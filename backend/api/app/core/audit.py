@@ -26,6 +26,9 @@ async def log_audit_event(
         select(AuditLog).order_by(AuditLog.created_at.desc()).limit(1).with_for_update()
     )
     last_audit = last_audit_result.scalar_one_or_none()
+    # Normalise None payload to empty dict — ensures the stored value and
+    # the hash computation are always consistent (null != {} in JSON).
+    payload = payload or {}
     previous_hash = (
         last_audit.current_hash if last_audit is not None else _GENESIS_AUDIT_HASH
     )
