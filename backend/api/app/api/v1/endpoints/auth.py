@@ -59,7 +59,6 @@ async def _get_active_user_by_nfc(
     nfc_tag_id: str,
     db: AsyncSession,
     lock_row: bool = False,
-    locked_detail: str = "Account is locked.",
 ) -> User:
     """
     Fetches a user by nfc_tag_id with the role eagerly loaded.
@@ -148,7 +147,6 @@ async def pin_login(
         body.nfc_tag_id,
         db,
         lock_row=True,
-        locked_detail="Account is locked. Try again later.",
     )
 
     if not security.verify_pin(body.pin, user.pin_hash):

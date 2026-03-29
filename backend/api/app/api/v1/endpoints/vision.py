@@ -40,6 +40,26 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 webhook_router = APIRouter(tags=["vision"])
 logger = logging.getLogger(__name__)
 
+
+def _is_lock_not_available_error(exc: OperationalError) -> bool:
+    """
+    Best-effort detection of a lock-not-available error coming from the DB.
+    We inspect the wrapped DBAPI error (exc.orig) for a lock-specific
+    SQLSTATE such as PostgreSQL's 55P03 ("lock_not_available").
+    """
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return False
+    # PostgreSQL via psycopg/asyncpg exposes SQLSTATE here
+    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
+    if pgcode == "55P03":
+        return True
+
+    # Fallback for SQLite in tests
+    message = str(orig).lower()
+    return "database is locked" in message or "lock not available" in message
+
+
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
@@ -111,8 +131,13 @@ async def analyze_image(
             select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
         )
         loan = loan_result.scalar_one_or_none()
-    except OperationalError:
+    except OperationalError as exc:
         await db.rollback()
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Vision evaluation is already processing for this loan. Please try again or wait.",
@@ -122,11 +147,24 @@ async def analyze_image(
             status_code=status.HTTP_404_NOT_FOUND, detail="Loan not found."
         )
 
-    asset = (
-        await db.execute(
-            select(Asset).where(Asset.asset_id == loan.asset_id).with_for_update()
+    try:
+        asset_result = await db.execute(
+            select(Asset)
+            .where(Asset.asset_id == loan.asset_id)
+            .with_for_update(nowait=True)
         )
-    ).scalar_one_or_none()
+        asset = asset_result.scalar_one_or_none()
+    except OperationalError as exc:
+        await db.rollback()
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
+        )
     if not asset:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found."
@@ -155,13 +193,24 @@ async def analyze_image(
         if evaluation_type == EvaluationType.CHECKOUT
         else loan.return_locker_id
     )
-    locker = (
-        await db.execute(
+    try:
+        locker_result = await db.execute(
             select(Locker)
             .where(Locker.locker_id == locker_id_for_eval)
-            .with_for_update()
+            .with_for_update(nowait=True)
         )
-    ).scalar_one_or_none()
+        locker = locker_result.scalar_one_or_none()
+    except OperationalError as exc:
+        await db.rollback()
+        if not _is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Vision evaluation is already processing for this loan. Please try again or wait.",
+        )
 
     if not locker:
         raise HTTPException(
