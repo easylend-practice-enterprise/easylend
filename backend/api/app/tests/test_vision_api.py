@@ -12,7 +12,7 @@ from sqlalchemy.exc import OperationalError
 from app.api.v1.endpoints import vision as vision_endpoints
 from app.core.config import settings
 from app.db.models import AIEvaluation
-from app.tests.conftest import _QueuedSession
+from app.tests.conftest import _FakeResult, _QueuedSession
 
 
 def _vision_form_data(
@@ -97,9 +97,9 @@ class _MockAsyncClient:
         return self._response
 
 
-class _ScalarResult:
+class _ScalarResult(_FakeResult):
     def __init__(self, value):
-        self._value = value
+        super().__init__(value)
 
     def scalar_one_or_none(self):
         return self._value
@@ -955,6 +955,57 @@ def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides
 
     assert response.status_code == 200
     assert response.json()["message"] == "Model update received successfully."
+
+
+def test_update_model_accepts_single_model_url(monkeypatch, client_with_overrides):
+    """Single-URL payload should be forwarded to the Vision microservice."""
+    captured: dict = {}
+
+    class _CapturingClient:
+        def __init__(self, *, timeout: float):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        async def post(
+            self, url: str, *, json: dict | None = None, headers: dict | None = None
+        ):
+            captured["url"] = url
+            captured["json"] = json
+            captured["headers"] = headers
+            return SimpleNamespace(status_code=200, text="OK")
+
+    # Patch AsyncClient used by the vision webhook forwarder
+    monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _CapturingClient)
+    monkeypatch.setattr(vision_endpoints.settings, "VISION_SERVICE_URL", "http://vm2")
+    monkeypatch.setattr(
+        vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
+    )
+    monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
+
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.post(
+            "/api/v1/update-model",
+            headers={"X-Device-Token": vision_endpoints.settings.VISION_BOX_API_KEY},
+            json={"object_detection_url": "https://models.example.com/object.pt"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Model update received successfully."
+    assert captured["url"] == "http://vm2/update-model"
+    assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
+    # The API forwards the pydantic model_dump() which may include the
+    # optional segmentation_url key with a None value. Assert on the
+    # meaningful field and allow segmentation_url to be present as None.
+    assert (
+        captured["json"]["object_detection_url"]
+        == "https://models.example.com/object.pt"
+    )
+    assert captured["json"].get("segmentation_url") is None
 
 
 def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(

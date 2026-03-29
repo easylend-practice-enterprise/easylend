@@ -14,8 +14,8 @@ class VisionAnalyzeResponse(BaseModel):
 
 
 class ModelUpdateRequest(BaseModel):
-    object_detection_url: str
-    segmentation_url: str
+    object_detection_url: str | None = None
+    segmentation_url: str | None = None
 
 
 class ModelUpdateResponse(BaseModel):
