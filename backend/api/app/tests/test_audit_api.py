@@ -13,7 +13,7 @@ from app.tests.conftest import (
 
 def _make_audit_entry(
     audit_id: uuid.UUID,
-    user_id,
+    user_id: uuid.UUID | None,
     action_type: str,
     payload: dict,
     previous_hash: str,

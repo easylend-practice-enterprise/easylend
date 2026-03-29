@@ -19,7 +19,7 @@ def _compute_audit_hash(previous_hash: str, action_type: str, payload: dict) -> 
 async def log_audit_event(
     db: AsyncSession,
     action_type: str,
-    payload: dict,
+    payload: dict | None,
     user_id: UUID | None = None,
 ) -> AuditLog:
     last_audit_result = await db.execute(
