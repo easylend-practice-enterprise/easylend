@@ -47,6 +47,10 @@ class ConnectionManager:
             except asyncio.TimeoutError:  # noqa: UP041
                 logger.error("Send command to kiosk_id=%s timed out.", kiosk_id)
                 try:
+                    try:
+                        await websocket.close()
+                    except Exception:  # noqa: S110
+                        pass
                     self.disconnect(kiosk_id, websocket)
                 except Exception:
                     logger.exception(
@@ -59,6 +63,10 @@ class ConnectionManager:
                     "Error sending command to kiosk_id=%s: %s", kiosk_id, e
                 )
                 try:
+                    try:
+                        await websocket.close()
+                    except Exception:  # noqa: S110
+                        pass
                     self.disconnect(kiosk_id, websocket)
                 except Exception:
                     logger.exception(
