@@ -6,7 +6,8 @@ sequenceDiagram
     participant VB as Vision Box (Kiosk A)
 
     Note over App,API: Scenario A: Kiosk Boot Sequence
-    App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [With M2M Token]
+    Note over API,VB: ConnectionManager enforces strict single-connection-per-kiosk rule (reconnecting Vision Box forcibly closes the previous socket)
+    App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [With JWT Token]
     API->>DB: Fetch physical status of lockers
     DB-->>API: Statuses (e.g. AVAILABLE, MAINTENANCE, OCCUPIED)
     API-->>App: 200 OK (Kiosk UI renders current lockers)
@@ -19,7 +20,8 @@ sequenceDiagram
     Admin->>App: Selects Kiosk A -> Locker 1 -> "Force Open"
     App->>API: POST /api/v1/lockers/{locker_id}/open
     Note over API: Validates that the token holds the Admin role
-    API->>VB: WSS: open_slot {locker_id: "<uuid>"}
-    VB-->>API: WSS: slot_opened
+    Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+    API->>VB: WSS: open_slot {locker_id: logical_number}
+    Note over API,VB: Fire-and-forget: audit log is written after send, not waiting for slot_opened
     API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
     API-->>App: 200 OK (Locker successfully opened)

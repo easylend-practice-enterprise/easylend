@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -46,3 +48,24 @@ def test_websocket_valid_simulation_token() -> None:
         "/ws/visionbox/kiosk_2", headers={"X-Device-Token": settings.SIMULATION_API_KEY}
     ) as websocket:
         websocket.send_json({"action": "ping"})
+
+
+def test_websocket_slot_closed_event_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        with client.websocket_connect(
+            "/ws/visionbox/kiosk_3",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+        ) as websocket:
+            websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
+
+    expected_substrings = ["slot_closed", "12"]
+    matching_records = [
+        record
+        for record in caplog.records
+        if all(substring in record.getMessage() for substring in expected_substrings)
+    ]
+    assert matching_records, (
+        "Expected log message containing slot_closed and locker_id was not found."
+    )

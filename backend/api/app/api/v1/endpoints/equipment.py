@@ -24,6 +24,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, get_current_user
+from app.core.audit import log_audit_event
+from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
     Asset,
@@ -272,6 +274,48 @@ async def create_kiosk(
     return KioskResponse.model_validate(kiosk)
 
 
+@kiosks_router.get(
+    "/{kiosk_id}/lockers",
+    response_model=LockerListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {"description": "Kiosk not found"},
+    },
+)
+async def list_kiosk_lockers(
+    kiosk_id: UUID,
+    skip: int = _PAGINATION_SKIP,
+    limit: int = _PAGINATION_LIMIT,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> LockerListResponse:
+    """
+    List all lockers that belong to a specific kiosk, ordered by slot number.
+
+    Accessible by every authenticated user. Used by both the kiosk boot
+    sequence (JWT Service Account) and the Admin Locker Grid UI (JWT Admin token).
+    Returns a 404 if the kiosk does not exist.
+    """
+    await _get_kiosk_or_404(db, kiosk_id)
+
+    result = await db.execute(
+        select(Locker)
+        .where(Locker.kiosk_id == kiosk_id)
+        .order_by(Locker.logical_number)
+        .offset(skip)
+        .limit(limit)
+    )
+    items = [LockerResponse.model_validate(lo) for lo in result.scalars().all()]
+
+    total_result = await db.execute(
+        select(func.count()).select_from(Locker).where(Locker.kiosk_id == kiosk_id)
+    )
+    total = total_result.scalar_one_or_none() or 0
+
+    return LockerListResponse(items=items, total=total)
+
+
 @kiosks_router.patch(
     "/{kiosk_id}/status",
     response_model=KioskResponse,
@@ -430,6 +474,55 @@ async def create_locker(
     return LockerResponse.model_validate(locker)
 
 
+@lockers_router.post(
+    "/{locker_id}/open",
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden: Admin only"},
+        404: {"description": "Locker not found"},
+        503: {"description": "Vision Box offline for this kiosk"},
+    },
+)
+async def force_open_locker(
+    locker_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin),
+) -> dict:
+    """
+    Force-open a locker door via the Vision Box WebSocket.
+
+    Requires Admin role. Sends an `open_slot` WSS command to the kiosk that
+    owns the locker and writes an `ADMIN_FORCED_OPEN` audit log entry.
+    Returns 503 if the Vision Box for the associated kiosk is offline.
+    """
+    locker = await _get_locker_or_404(db, locker_id)
+
+    kiosk_id_str = str(locker.kiosk_id)
+    command_ok = await manager.send_command(
+        kiosk_id_str,
+        {
+            "action": "open_slot",
+            "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+        },
+    )
+    if not command_ok:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
+        )
+
+    await log_audit_event(
+        db,
+        user_id=current_user.user_id,
+        action_type="ADMIN_FORCED_OPEN",
+        payload={"locker_id": str(locker_id)},
+    )
+    await db.commit()
+
+    return {"detail": "Locker opened successfully."}
+
+
 @lockers_router.patch(
     "/{locker_id}/status",
     response_model=LockerResponse,
@@ -478,6 +571,7 @@ async def update_locker_status(
 
 catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
 
+
 CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
 
 
@@ -511,7 +605,7 @@ async def get_catalog(
     if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
         loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
         query = (
-            select(Asset, Loan.loan_status, User.email)
+            select(Asset, Loan.loan_status, User.first_name, User.last_name)
             .outerjoin(
                 Loan,
                 (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
@@ -524,7 +618,7 @@ async def get_catalog(
         rows = result.all()
 
         admin_items: list[CatalogAdminView] = []
-        for asset, loan_status, borrower_email in rows:
+        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
             admin_items.append(
                 CatalogAdminView.model_validate(
                     {
@@ -535,13 +629,17 @@ async def get_catalog(
                         "locker_id": asset.locker_id,
                         "is_deleted": asset.is_deleted,
                         "loan_status": loan_status,
-                        "borrower_email": borrower_email,
+                        "borrower_first_name": borrower_first_name,
+                        "borrower_last_name": borrower_last_name,
                     }
                 )
             )
         return admin_items
 
-    # Non-admin path: categories with available counts
+    # Non-admin path: categories with available counts.
+    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
+    # in-maintenance) are still returned with available_count=0, rather than
+    # silently disappearing from the user catalog.
     query = (
         select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
         .outerjoin(

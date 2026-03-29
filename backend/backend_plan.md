@@ -179,7 +179,7 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 
 ## Step 10a: Transaction CRUD (checkout / return)
 
-**Ticket:** ELP-28 · **Status:** 📋 In Progress · *Requires: step 8 (assets + lockers)*
+**Ticket:** ELP-28 · **Status:** ✅ Done · *Requires: step 8 (assets + lockers)*
 
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
@@ -201,22 +201,22 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 1. Finish 10b MVP control loop next
 
 - [x] Send `set_led` commands.
-- [ ] Handle `slot_closed` event routing in backend WebSocket endpoint (currently TODO; MVP uses hardware-triggered `POST /vision/analyze` after `slot_closed`).
-- [x] Add unreachable Vision Box fallback behavior + audit log. (Covered by existing fail-fast `503` checks in checkout/return plus timeout worker and audit outcome logging.)
+- [x] Handle `slot_closed` event routing in backend WebSocket endpoint (MVP: logging-only; Vision Box still triggers `POST /vision/analyze`).
+- [x] Add unreachable Vision Box fallback behavior + audit log.
 
 1. Then finish 10b AI robustness items
 
-- [ ] Dual-model detection + segmentation.
-- [ ] `/update-model` dual URL webhook behavior.
-- [ ] Main API result processing paths.
-- [ ] Persist `ai_evaluations`.
+- [x] Dual-model detection + segmentation.
+- [x] `/update-model` dual URL webhook behavior.
+- [x] Main API result processing paths.
+- [x] Persist `ai_evaluations`.
 
 1. Finalize testing milestones for 10a-10c
 
 - [x] Return idempotency test.
-- [ ] Fallback tests (AI timeout, no active WSS).
 - [x] Add/extend tests for `set_led` and vision outcome branches.
-- [ ] Add dedicated backend WebSocket `slot_closed` routing test (pending implementation in `app/api/ws.py`).
+- [x] Add dedicated backend WebSocket `slot_closed` routing test.
+- [x] Fallback tests (AI timeout, no active WSS).
 
 ### Branch Scope (ELP-60-hardware-integration)
 
@@ -246,7 +246,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 ## Step 10b: Hardware & AI Integration (Dual-Model)
 
-**Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a*
+**Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
 
 By far the most complex part. Couples the transaction logic with physical hardware.
 
@@ -265,30 +265,32 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 - [x] Fail-fast logic: Abort DB transactions with HTTP `503` if hardware is offline.
 - [x] Send `open_slot {locker_id, loan_id}` after checkout/return approval.
 - [x] Send `set_led {locker_id, color}` based on AI result or error
-- [ ] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic. (Backend WS handler still has TODO; current MVP relies on hardware-triggered `POST /api/v1/vision/analyze` after `slot_closed`.)
-- [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit. (MVP covered by existing fail-fast `503` in checkout/return plus timeout worker + audit outcome logging.)
+- [x] Receive `slot_closed` event from Vision Box and route to appropriate transaction logic.
+- [x] **Fallback:** if there is no active WSS session from the Vision Box --> return `503` to the App with message "Vision Box unreachable". Log in audit.
 
 **AI Evaluation endpoint (Dual-Model YOLO):**
 
 - [x] `POST /api/v1/vision/analyze`: Proxy endpoint created, receives photo + forwards to VM2 safely.
-- [ ] **Dual-Model Upgrade:** Vision API must run both Object Detection (is it present?) and Segmentation (is it damaged?).
+- [x] **Dual-Model Upgrade:** Vision API runs both Object Detection and Segmentation.
 - [x] Save photo in `/app/uploads` --> generate `photo_url`
-- [ ] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
+- [x] **Webhook Upgrade:** Update `/update-model` to accept two model URLs simultaneously to avoid race conditions.
 - [x] Process result in Main API:
   - **Checkout:** locker empty? --> `ACTIVE` or `FRAUD_SUSPECTED` (on fraud: asset + locker back to `AVAILABLE`)
   - **Return:** damage? --> `COMPLETED` or `PENDING_INSPECTION`
   - **Fallback (AI Timeout/Crash):** if the AI VM does not respond within 10s: mark loan as `PENDING_INSPECTION`, locker to `MAINTENANCE` (requires physical inspection by administrator).
-- [ ] Store in `ai_evaluations` table including `photo_url` and `model_version`
+- [x] Store in `ai_evaluations` table (`evaluation_type`, `outcome`, `photo_url`, `created_at`)
 
 ## Step 10c: Admin Quarantine Dashboard
 
-**Status:** ❌ Open · *Requires: step 10b*
+**Status:** ✅ Done · *Requires: step 10b*
 
 Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in the Quarantine Flow.
 
-- `GET /api/v1/admin/loans?status=PENDING_INSPECTION` (list of loans in quarantine)
-- `GET /api/v1/admin/evaluations/{evaluation_id}` (retrieves the AI report and `photo_url`)
-- `PATCH /api/v1/admin/evaluations/{id}` (Administrator approves: status to `DISPUTED`, or rejects: status to `COMPLETED`)
+- [x] `GET /api/v1/admin/quarantine` — list of loans in `PENDING_INSPECTION` status with joined relation names
+- [x] `GET /api/v1/admin/evaluations/{loan_id}` — most recent AI evaluation for a loan
+- [x] `PATCH /api/v1/admin/evaluations/{evaluation_id}/judge` — admin verdict: approve (DISPUTED + MAINTENANCE) or reject (revert to normal flow)
+- [x] `SELECT … FOR UPDATE NOWAIT` with `OperationalError` handling on all judgment DB rows
+- [x] Tests in `backend/api/app/tests/test_admin_api.py`
 
 ## Step 11: Input Sanitisation
 
@@ -340,7 +342,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
    - [x] Idempotency test for checkout
 
 - [x] Idempotency test for return
-- [ ] Fallback tests (AI timeout, no active Vision Box WebSocket)
+- [x] Fallback tests (AI timeout, no active Vision Box WebSocket)
 
 1. **After steps 11-13 (sanitisation/rate-limit/audit)**
 

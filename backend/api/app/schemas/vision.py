@@ -11,3 +11,12 @@ class VisionAnalyzeResponse(BaseModel):
     count: int
     detections: list[DetectionItem]
     photo_url: str
+
+
+class ModelUpdateRequest(BaseModel):
+    object_detection_url: str
+    segmentation_url: str
+
+
+class ModelUpdateResponse(BaseModel):
+    message: str

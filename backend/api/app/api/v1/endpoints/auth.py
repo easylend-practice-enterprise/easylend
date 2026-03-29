@@ -56,7 +56,9 @@ class TokenResponse(BaseModel):
 
 
 async def _get_active_user_by_nfc(
-    nfc_tag_id: str, db: AsyncSession, lock_row: bool = False
+    nfc_tag_id: str,
+    db: AsyncSession,
+    lock_row: bool = False,
 ) -> User:
     """
     Fetches a user by nfc_tag_id with the role eagerly loaded.
@@ -76,15 +78,23 @@ async def _get_active_user_by_nfc(
     result = await db.execute(query)
     user = result.scalar_one_or_none()
 
-    if (
-        user is None
-        or not user.is_active
-        or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
-    ):
+    if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
         )
+
+    if user.locked_until:
+        if user.locked_until > datetime.now(UTC):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid NFC badge or account status.",
+            )
+        else:
+            # Lockout has expired, grant a fresh set of attempts.
+            # This state is committed by the caller in the normal login flow.
+            user.locked_until = None
+            user.failed_login_attempts = 0
 
     return user
 
@@ -133,19 +143,29 @@ async def pin_login(
 
     Public endpoint for the kiosk sign-in flow.
     """
-    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
+    user = await _get_active_user_by_nfc(
+        body.nfc_tag_id,
+        db,
+        lock_row=True,
+    )
 
     if not security.verify_pin(body.pin, user.pin_hash):
         user.failed_login_attempts += 1
+        remaining_attempts = max(_MAX_ATTEMPTS - user.failed_login_attempts, 0)
+
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
-            # Reset the counter when applying a lockout so that after the lockout
-            # period, the user gets a fresh set of _MAX_ATTEMPTS attempts.
-            user.failed_login_attempts = 0
+            user.failed_login_attempts = _MAX_ATTEMPTS
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is locked. Try again later.",
+            )
+
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid PIN.",
+            detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",
         )
 
     # Successful login: reset brute-force counters

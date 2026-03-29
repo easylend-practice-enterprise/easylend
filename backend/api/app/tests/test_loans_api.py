@@ -426,12 +426,80 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     assert data["loan_status"] == "RESERVED"
     assert data["asset_id"] == str(asset.asset_id)
     assert data["checkout_locker_id"] == str(locker_id)
-    # Verify side-effects: asset cleared from locker, locker freed
-    assert asset.locker_id is None
+    # Verify side-effects: checkout reserves the loan and borrows the asset,
+    # but physical locker release is deferred until Vision confirmation.
+    assert asset.locker_id == locker_id
     assert asset.asset_status == "BORROWED"
-    assert locker.locker_status == "AVAILABLE"
+    assert locker.locker_status == "OCCUPIED"
     assert fake_db.commit_calls == 1
-    assert len(fake_db.added) == 1  # the Loan object
+
+
+def test_checkout_returns_503_when_manager_send_command_returns_false(
+    monkeypatch, client_with_overrides
+):
+    """If the WebSocket manager fails to send the `open_slot` command,
+    the checkout should rollback and return 503.
+    """
+    student = _make_student()
+    locker_id = uuid.uuid4()
+    asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
+    locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
+
+    fake_db = _QueuedSession(student, asset, locker)
+
+    # Simulate failing send_command (hardware unreachable despite an active connection)
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/checkout",
+            json={"aztec_code": asset.aztec_code},
+            headers=_with_idempotency(_bearer(student), "checkout-sendcmd-fails"),
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Unable to initiate checkout: kiosk hardware unavailable. Please try again."
+    )
+    assert fake_db.commit_calls == 0
+    assert fake_db.rollback_calls == 1
+
+
+def test_return_initiate_returns_503_when_manager_send_command_returns_false(
+    monkeypatch, client_with_overrides
+):
+    """If the WebSocket manager fails to send the `open_slot` command,
+    the return initiation should rollback and return 503.
+    """
+    student = _make_student()
+    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
+
+    # Queue: [auth user, kiosk exists, loan, locked loan, free_locker]
+    fake_db = _QueuedSession(
+        student, SimpleNamespace(), active_loan, active_loan, free_locker
+    )
+
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/loans/return/initiate",
+            json={
+                "loan_id": str(active_loan.loan_id),
+                "kiosk_id": str(_VALID_KIOSK_ID),
+            },
+            headers=_with_idempotency(_bearer(student), "return-sendcmd-fails"),
+        )
+
+    assert response.status_code == 503
+    assert (
+        response.json()["detail"]
+        == "Unable to initiate return: kiosk hardware unavailable. Please try again."
+    )
+    assert fake_db.commit_calls == 0
+    assert fake_db.rollback_calls == 1
 
 
 def test_checkout_returns_400_when_asset_not_found(client_with_overrides):
@@ -579,8 +647,8 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
 _VALID_KIOSK_ID = uuid.uuid4()
 
 
-def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
-    """POST /return/initiate for an active loan assigns a return locker → 200.
+def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
+    """POST /return/initiate for an active loan assigns a return locker → 202.
 
     DB execute order:
     [1] get_current_user      → student
@@ -600,7 +668,7 @@ def test_return_initiate_returns_200_on_happy_path(client_with_overrides):
             json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
             headers=_with_idempotency(_bearer(student), "return-happy"),
         )
-    assert response.status_code == 200
+    assert response.status_code == 202
     data = response.json()
     assert data["loan_status"] == "RETURNING"
     assert data["return_locker_id"] == str(free_locker.locker_id)
@@ -802,7 +870,7 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
         response1 = client.post(
             "/api/v1/loans/return/initiate", json=payload, headers=headers
         )
-        assert response1.status_code == 200
+        assert response1.status_code == 202
 
         response2 = client.post(
             "/api/v1/loans/return/initiate", json=payload, headers=headers

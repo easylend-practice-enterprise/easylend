@@ -76,15 +76,18 @@ erDiagram
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
         timestamp returned_at "Nullable"
-        enum loan_status "RESERVED, ACTIVE, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
+    %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
+    %%     (409 if loan_status != RETURNING for a RETURN evaluation).
     
     AI_EVALUATIONS {
         uuid evaluation_id PK
         uuid loan_id FK
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
-        float ai_confidence
+        float ai_confidence "NOT NULL: parsed from detections[0].confidence (0.0 if empty)"
         jsonb detected_objects "E.g. Aztec code location, object type"
         boolean has_damage_detected "Quickly filter problem evaluations"
         varchar model_version
@@ -105,9 +108,9 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
         jsonb payload
-        varchar previous_hash
-        varchar current_hash
+        varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
+        varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"
         timestamp created_at
     }
