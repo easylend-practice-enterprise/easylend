@@ -8,6 +8,7 @@ quarantined by the Vision AI service (PENDING_INSPECTION).
 """
 
 import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.deps import get_current_user
+from app.core import audit as audit_core
+from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
 from app.db.models import (
     AIEvaluation,
@@ -43,20 +46,6 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _is_lock_not_available_error(exc: OperationalError) -> bool:
-    """
-    Best-effort detection of a lock-not-available error coming from the DB.
-    """
-    orig = getattr(exc, "orig", None)
-    if orig is None:
-        return False
-    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
-    if pgcode == "55P03":
-        return True
-    message = str(orig).lower()
-    return "database is locked" in message or "lock not available" in message
 
 
 def _require_admin(current_user: User = Depends(get_current_user)) -> User:
@@ -191,7 +180,7 @@ async def judge_evaluation(
     evaluation_id: UUID,
     judgment: QuarantineJudgmentRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(_require_admin),
+    current_user: User = Depends(_require_admin),
 ) -> None:
     """
     Admin verdict on a quarantined AI evaluation.
@@ -208,7 +197,8 @@ async def judge_evaluation(
             .with_for_update(nowait=True)
         )
     except OperationalError as exc:
-        if _is_lock_not_available_error(exc):
+        await db.rollback()
+        if is_lock_not_available_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Evaluation is currently being processed. Please try again.",
@@ -232,7 +222,8 @@ async def judge_evaluation(
             .with_for_update(nowait=True)
         )
     except OperationalError as exc:
-        if _is_lock_not_available_error(exc):
+        await db.rollback()
+        if is_lock_not_available_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Loan is currently being processed. Please try again.",
@@ -256,7 +247,8 @@ async def judge_evaluation(
             .with_for_update(nowait=True)
         )
     except OperationalError as exc:
-        if _is_lock_not_available_error(exc):
+        await db.rollback()
+        if is_lock_not_available_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Asset is currently being processed. Please try again.",
@@ -287,7 +279,8 @@ async def judge_evaluation(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            if _is_lock_not_available_error(exc):
+            await db.rollback()
+            if is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Locker is currently being processed. Please try again.",
@@ -308,6 +301,7 @@ async def judge_evaluation(
         asset.asset_status = AssetStatus.MAINTENANCE
         if locker is not None:
             locker.locker_status = LockerStatus.MAINTENANCE
+        audit_action = "EVALUATION_APPROVED"
     else:
         # AI was wrong: revert to normal flow
         if evaluation.evaluation_type == EvaluationType.CHECKOUT:
@@ -317,12 +311,23 @@ async def judge_evaluation(
                 locker.locker_status = LockerStatus.AVAILABLE
         else:
             # RETURN evaluation
-            from datetime import UTC, datetime
-
             loan.loan_status = LoanStatus.COMPLETED
             loan.returned_at = datetime.now(UTC)
             asset.asset_status = AssetStatus.AVAILABLE
             if locker is not None:
                 locker.locker_status = LockerStatus.OCCUPIED
+        audit_action = "EVALUATION_REJECTED"
 
+    # Write admin judgment to audit chain before committing
+    await audit_core.log_audit_event(
+        db,
+        action_type=audit_action,
+        payload={
+            "evaluation_id": str(evaluation.evaluation_id),
+            "loan_id": str(loan.loan_id),
+            "is_approved": judgment.is_approved,
+            "rejection_reason": judgment.rejection_reason,
+        },
+        user_id=current_user.user_id,
+    )
     await db.commit()

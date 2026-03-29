@@ -438,7 +438,8 @@ def test_checkout_returns_503_when_manager_send_command_returns_false(
     monkeypatch, client_with_overrides
 ):
     """If the WebSocket manager fails to send the `open_slot` command,
-    the checkout should rollback and return 503.
+    the checkout should commit the DB state first, then return 503.
+    The RESERVED loan remains in the database; the timeout worker will clean it up.
     """
     student = _make_student()
     locker_id = uuid.uuid4()
@@ -462,15 +463,17 @@ def test_checkout_returns_503_when_manager_send_command_returns_false(
         response.json()["detail"]
         == "Unable to initiate checkout: kiosk hardware unavailable. Please try again."
     )
-    assert fake_db.commit_calls == 0
-    assert fake_db.rollback_calls == 1
+    # DB is committed first so the loan record is durable; no rollback occurs.
+    assert fake_db.commit_calls == 1
+    assert fake_db.rollback_calls == 0
 
 
 def test_return_initiate_returns_503_when_manager_send_command_returns_false(
     monkeypatch, client_with_overrides
 ):
     """If the WebSocket manager fails to send the `open_slot` command,
-    the return initiation should rollback and return 503.
+    the return initiation should commit the DB state first, then return 503.
+    The RETURNING loan remains in the database; the timeout worker will clean it up.
     """
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
@@ -498,8 +501,9 @@ def test_return_initiate_returns_503_when_manager_send_command_returns_false(
         response.json()["detail"]
         == "Unable to initiate return: kiosk hardware unavailable. Please try again."
     )
-    assert fake_db.commit_calls == 0
-    assert fake_db.rollback_calls == 1
+    # DB is committed first so the loan record is durable; no rollback occurs.
+    assert fake_db.commit_calls == 1
+    assert fake_db.rollback_calls == 0
 
 
 def test_checkout_returns_400_when_asset_not_found(client_with_overrides):

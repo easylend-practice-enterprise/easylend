@@ -41,5 +41,7 @@ class QuarantineJudgmentRequest(BaseModel):
 
     is_approved: bool
     rejection_reason: str | None = Field(
-        None, description="Required when is_approved is False"
+        None,
+        max_length=255,
+        description="Required when is_approved is False. Max 255 characters.",
     )

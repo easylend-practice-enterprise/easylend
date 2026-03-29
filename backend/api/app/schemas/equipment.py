@@ -206,7 +206,10 @@ class CatalogUserView(BaseModel):
 
     category_id: UUID
     category_name: str
-    available_count: int
+    available_count: int = Field(
+        ge=0,
+        description="Number of assets in this category that are currently available for checkout.",
+    )
 
 
 class CatalogAdminView(BaseModel):

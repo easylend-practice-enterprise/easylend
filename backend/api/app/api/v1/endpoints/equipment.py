@@ -16,6 +16,7 @@ Auth rules:
     elevated privileges.
 """
 
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -57,6 +58,8 @@ from app.schemas.equipment import (
     LockerResponse,
     LockerStatusUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -498,6 +501,17 @@ async def force_open_locker(
     """
     locker = await _get_locker_or_404(db, locker_id)
 
+    # Write audit record and commit BEFORE sending hardware command.
+    # This ensures the audit trail is durable even if the hardware fails.
+    # The locker will be opened physically after the DB commit succeeds.
+    await log_audit_event(
+        db,
+        user_id=current_user.user_id,
+        action_type="ADMIN_FORCED_OPEN",
+        payload={"locker_id": str(locker_id)},
+    )
+    await db.commit()
+
     kiosk_id_str = str(locker.kiosk_id)
     command_ok = await manager.send_command(
         kiosk_id_str,
@@ -507,18 +521,14 @@ async def force_open_locker(
         },
     )
     if not command_ok:
+        logger.warning(
+            "Hardware command failed after DB commit for admin forced open locker=%s.",
+            locker_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
         )
-
-    await log_audit_event(
-        db,
-        user_id=current_user.user_id,
-        action_type="ADMIN_FORCED_OPEN",
-        payload={"locker_id": str(locker_id)},
-    )
-    await db.commit()
 
     return {"detail": "Locker opened successfully."}
 
