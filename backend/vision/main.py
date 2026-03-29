@@ -79,7 +79,6 @@ async def lifespan(_app: FastAPI):
     openvino_dir = model_path.replace(".pt", "_openvino_model")
 
     try:
-        # Check if model files exist; it's normal for fresh installations to have neither
         if not os.path.exists(model_path) and not os.path.exists(openvino_dir):
             logger.warning(
                 f"No model found at {model_path}. Service starting in degraded mode. "
@@ -109,7 +108,7 @@ async def lifespan(_app: FastAPI):
 # Initialize FastAPI app
 app = FastAPI(
     title="EasyLend Vision API",
-    description="AI Vision Service for object detection",
+    description="AI Vision Service for object detection and segmentation",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -118,20 +117,27 @@ app = FastAPI(
 security = HTTPBearer()
 
 
-# Pydantic schemas
+# Pydantic schemas aligned with Main API expectations
 class Detection(BaseModel):
     class_name: str
     confidence: float
 
 
-class PredictionResponse(BaseModel):
+class DetectResponse(BaseModel):
     status: str
     count: int
     detections: list[Detection]
+    locker_empty: bool
+
+
+class SegmentResponse(BaseModel):
+    status: str
+    has_damage_detected: bool
 
 
 class ModelUpdateRequest(BaseModel):
-    download_url: str
+    object_detection_url: str | None = None
+    segmentation_url: str | None = None
 
 
 # Security dependency
@@ -170,20 +176,10 @@ async def health_check():
     }
 
 
-# Prediction endpoint
-@app.post("/predict", response_model=PredictionResponse, tags=["Predictions"])
-def predict(
-    file: UploadFile = File(...),
-    token: str = Depends(verify_token),  # noqa: ARG001
-) -> PredictionResponse:
-    """Run object detection on the provided image."""
-    # Validate content type is an allowed image type and size limits.
-    allowed = {
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-    }
-    max_size = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))  # 10 MiB default
+def _validate_image(file: UploadFile) -> bytes:
+    """Shared helper to validate and read the uploaded image."""
+    allowed = {"image/jpeg", "image/png", "image/webp"}
+    max_size = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))
 
     if not file.content_type or file.content_type not in allowed:
         raise HTTPException(
@@ -191,6 +187,21 @@ def predict(
             detail="File must be a JPEG/PNG/WebP image",
         )
 
+    image_data = file.file.read(max_size + 1)
+    if len(image_data) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Image too large (max {max_size} bytes)",
+        )
+    return image_data
+
+
+@app.post("/detect", response_model=DetectResponse, tags=["Predictions"])
+def detect(
+    file: UploadFile = File(...),
+    token: str = Depends(verify_token),  # noqa: ARG001
+) -> DetectResponse:
+    """Run object detection on the provided image."""
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -198,15 +209,8 @@ def predict(
         )
 
     try:
-        # Defensive read: cap the bytes we accept from the client.
-        image_data = file.file.read(max_size + 1)
-        if len(image_data) > max_size:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Image too large (max {max_size} bytes)",
-            )
+        image_data = _validate_image(file)
 
-        # Prevent decompression-bomb style images
         Image.MAX_IMAGE_PIXELS = int(os.getenv("PIL_MAX_PIXELS", 100_000_000))
         image = Image.open(BytesIO(image_data))
         width, height = image.size
@@ -216,7 +220,7 @@ def predict(
                 detail="Image has too many pixels",
             )
 
-        logger.info(f"Running prediction on image: {file.filename}")
+        logger.info(f"Running detection on image: {file.filename}")
         results = model.predict(source=image, imgsz=640)
 
         detections: list[Detection] = []
@@ -231,15 +235,48 @@ def predict(
                         Detection(class_name=class_name, confidence=confidence)
                     )
 
-        logger.info(f"Detected {len(detections)} objects")
-        return PredictionResponse(
+        count = len(detections)
+        logger.info(f"Detected {count} objects")
+
+        return DetectResponse(
             status="success",
-            count=len(detections),
+            count=count,
             detections=detections,
+            locker_empty=(count == 0),
         )
 
+    except HTTPException:
+        raise
     except Exception:
-        logger.exception("Error during prediction")
+        logger.exception("Error during detection")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error processing image",
+        )
+
+
+@app.post("/segment", response_model=SegmentResponse, tags=["Predictions"])
+def segment(
+    file: UploadFile = File(...),
+    token: str = Depends(verify_token),  # noqa: ARG001
+) -> SegmentResponse:
+    """Run segmentation (damage detection) on the provided image."""
+    try:
+        _validate_image(file)
+        logger.info(f"Running segmentation on image: {file.filename}")
+
+        # TODO: Placeholder for actual segmentation logic
+        has_damage = False
+
+        return SegmentResponse(
+            status="success",
+            has_damage_detected=has_damage,
+        )
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error during segmentation")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
@@ -280,13 +317,15 @@ def update_model(
     _: str = Depends(verify_token),
 ):
     """Update the AI model from a secure HTTPS URL."""
-    if not is_safe_url(payload.download_url):
+    target_url = payload.object_detection_url or payload.segmentation_url
+
+    if not target_url or not is_safe_url(target_url):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or unsafe model URL.",
         )
 
-    parsed_url = urlparse(payload.download_url)
+    parsed_url = urlparse(target_url)
     hostname = parsed_url.hostname
     if not hostname:
         raise HTTPException(
@@ -309,7 +348,6 @@ def update_model(
             logger.info("Creating backup of the current model...")
             shutil.copy2(model_path, backup_path)
 
-        # Resolve IP to prevent DNS rebinding
         addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
         chosen_ip = None
         for info in addr_info:
@@ -328,7 +366,6 @@ def update_model(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to resolve model host",
             )
-        # Ensure chosen_ip is a string (some addrinfo tuples may include ints)
         chosen_ip = str(chosen_ip)
 
         temp_path = f"{model_path}.tmp"
