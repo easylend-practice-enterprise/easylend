@@ -64,11 +64,7 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 
 class VisionAIServiceError(Exception):
-    """Raised to represent a non-200 or otherwise problematic response from the Vision AI upstream.
-
-    Require explicit `status_code` and `detail` so callers provide context that
-    can be mapped to an appropriate downstream HTTP response.
-    """
+    """Raised to represent a non-200 or otherwise problematic response from the Vision AI upstream."""
 
     def __init__(self, status_code: int, detail: str):
         if status_code is None:
@@ -231,9 +227,6 @@ async def analyze_image(
             )
             detect_resp, segment_resp = await asyncio.gather(detect_req, segment_req)
 
-        # Log any non-200 responses (debuggable) and raise a domain error
-        # that will be caught by the fallback handler below. Do NOT raise
-        # HTTPException here, otherwise the fallback path would be bypassed.
         non_200 = []
         for name, resp in (("detect", detect_resp), ("segment", segment_resp)):
             if resp.status_code != 200:
@@ -242,10 +235,8 @@ async def analyze_image(
                 except Exception:
                     raw_text = "<unavailable>"
 
-                # Sanitize whitespace/control chars and truncate to 500 chars
                 safe_text = re.sub(r"\s+", " ", str(raw_text)).strip()[:500]
 
-                # 4xx are warnings; 5xx are errors
                 if 400 <= resp.status_code < 500:
                     logger.warning(
                         "Vision AI '%s' returned %s: %s",
@@ -319,7 +310,7 @@ async def analyze_image(
                 locker.locker_status = LockerStatus.MAINTENANCE
                 asset.locker_id = locker.locker_id
 
-                await manager.send_command(
+                command_ok = await manager.send_command(
                     str(locker.kiosk_id),
                     {
                         "action": "set_led",
@@ -329,6 +320,11 @@ async def analyze_image(
                         "color": "orange",
                     },
                 )
+                if not command_ok:
+                    logger.warning(
+                        "Failed to set LED color to orange for locker_id=%s",
+                        locker_id_for_eval,
+                    )
 
                 try:
                     error_summary = str(exc)[:200].replace("\n", " ")
@@ -359,7 +355,6 @@ async def analyze_image(
                     detail="Failed to persist fallback state.",
                 ) from fallback_exc
 
-        # Map the original exception to the appropriate HTTP response code
         if isinstance(exc, httpx.RequestError):
             final_status = status.HTTP_503_SERVICE_UNAVAILABLE
             final_detail = "Vision AI service is unavailable."
@@ -425,7 +420,7 @@ async def analyze_image(
         ) from exc
 
     try:
-        await manager.send_command(
+        command_ok = await manager.send_command(
             str(locker.kiosk_id),
             {
                 "action": "set_led",
@@ -433,6 +428,12 @@ async def analyze_image(
                 "color": led_color,
             },
         )
+        if not command_ok:
+            logger.warning(
+                "Failed to set LED color to %s for locker_id=%s",
+                led_color,
+                locker_id_for_eval,
+            )
 
         await log_audit_event(
             db,
