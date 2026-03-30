@@ -5,12 +5,23 @@ from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
+MAX_CONNECTIONS = 100
+
 
 class ConnectionManager:
     def __init__(self) -> None:
         self.active_connections: dict[str, WebSocket] = {}
 
     async def connect(self, websocket: WebSocket, kiosk_id: str) -> None:
+        # Global connection cap to prevent memory / fd exhaustion.
+        if len(self.active_connections) >= MAX_CONNECTIONS:
+            logger.warning(
+                "Connection rejected: global connection limit reached (MAX_CONNECTIONS=%d)",
+                MAX_CONNECTIONS,
+            )
+            await websocket.close(code=1013, reason="Connection limit reached")
+            return
+
         await websocket.accept()
 
         # If a connection for this kiosk_id already exists, close it before replacing.

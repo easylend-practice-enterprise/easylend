@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
+from app.core.redis_utils import acquire_distributed_lock
 from app.db.database import AsyncSessionLocal
 from app.db.models import Asset, AssetStatus, Loan, LoanStatus, Locker, LockerStatus
 
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_MINUTES = 3
 DEFAULT_INTERVAL_SECONDS = 60
 BATCH_SIZE = 100
+# Distributed lock TTL must be strictly shorter than the run interval (60s).
+# A crashed holder will release the lock after 55s, allowing the next scheduled
+# run to proceed without waiting for a full interval.
+DISTRIBUTED_LOCK_TTL_SECONDS = 55
 
 
 async def _process_single_reserved_loan(
@@ -167,13 +172,22 @@ async def reserved_loan_timeout_worker_loop(
 ) -> None:
     while not stop_event.is_set():
         try:
-            processed = await process_reserved_loan_timeouts(
-                timeout_minutes=timeout_minutes,
+            lock_acquired = await acquire_distributed_lock(
+                "lock:loan-timeout-worker",
+                DISTRIBUTED_LOCK_TTL_SECONDS,
             )
-            if processed:
-                logger.info(
-                    "Reserved-loan timeout worker: marked %d loan(s) as PENDING_INSPECTION.",
-                    processed,
+            if lock_acquired:
+                processed = await process_reserved_loan_timeouts(
+                    timeout_minutes=timeout_minutes,
+                )
+                if processed:
+                    logger.info(
+                        "Reserved-loan timeout worker: marked %d loan(s) as PENDING_INSPECTION.",
+                        processed,
+                    )
+            else:
+                logger.debug(
+                    "Reserved-loan timeout worker: lock held by another instance, skipping this cycle."
                 )
         except Exception:
             logger.exception("Reserved-loan timeout worker iteration failed")

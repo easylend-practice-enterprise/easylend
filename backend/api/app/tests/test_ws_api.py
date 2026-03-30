@@ -1,4 +1,5 @@
 import logging
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import status
@@ -37,28 +38,45 @@ def test_websocket_invalid_token() -> None:
 
 
 def test_websocket_valid_vision_box_token() -> None:
-    with client.websocket_connect(
-        "/ws/visionbox/kiosk_1", headers={"X-Device-Token": settings.VISION_BOX_API_KEY}
-    ) as websocket:
-        websocket.send_json({"action": "ping"})
+    with patch(
+        "app.api.ws._verify_kiosk_exists",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        with client.websocket_connect(
+            "/ws/visionbox/kiosk_1",
+            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+        ) as websocket:
+            websocket.send_json({"action": "ping"})
 
 
 def test_websocket_valid_simulation_token() -> None:
-    with client.websocket_connect(
-        "/ws/visionbox/kiosk_2", headers={"X-Device-Token": settings.SIMULATION_API_KEY}
-    ) as websocket:
-        websocket.send_json({"action": "ping"})
+    with patch(
+        "app.api.ws._verify_kiosk_exists",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        with client.websocket_connect(
+            "/ws/visionbox/kiosk_2",
+            headers={"X-Device-Token": settings.SIMULATION_API_KEY},
+        ) as websocket:
+            websocket.send_json({"action": "ping"})
 
 
 def test_websocket_slot_closed_event_is_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.INFO):
-        with client.websocket_connect(
-            "/ws/visionbox/kiosk_3",
-            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
-        ) as websocket:
-            websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
+    with patch(
+        "app.api.ws._verify_kiosk_exists",
+        new_callable=AsyncMock,
+        return_value=True,
+    ):
+        with caplog.at_level(logging.INFO):
+            with client.websocket_connect(
+                "/ws/visionbox/kiosk_3",
+                headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            ) as websocket:
+                websocket.send_text('{"event":"slot_closed","locker_id":"12"}')
 
     expected_substrings = ["slot_closed", "12"]
     matching_records = [

@@ -66,16 +66,26 @@ async def list_audit_logs(
     },
 )
 async def verify_audit_chain(
-    db: AsyncSession = Depends(get_db), _admin: User = Depends(_require_admin)
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=5000),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(_require_admin),
 ) -> AuditVerifyResponse:
     """Verify the integrity of the audit chain.
 
     Deterministic ordering is enforced via `created_at.asc(), audit_id.asc()`.
     The verification walks the chain, checking previous_hash continuity and
     recomputing each record's current_hash.
+
+    Pagination prevents memory exhaustion when the audit log grows large.
+    Use `skip` and `limit` to walk the chain in batches; the chain must
+    be verified contiguously — gaps indicate tampering.
     """
     result = await db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.asc(), AuditLog.audit_id.asc())
+        select(AuditLog)
+        .order_by(AuditLog.created_at.asc(), AuditLog.audit_id.asc())
+        .offset(skip)
+        .limit(limit)
     )
     logs = result.scalars().all()
 

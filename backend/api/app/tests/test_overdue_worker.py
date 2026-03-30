@@ -254,9 +254,9 @@ async def test_process_overdue_loans_calls_process_for_each_batch_id():
 async def test_overdue_worker_loop_skips_when_lock_not_acquired():
     """When another worker holds the lock (NX returns None), the cycle is skipped."""
     with patch(
-        "app.workers.overdue_worker.redis_client.set",
+        "app.core.redis_utils.acquire_distributed_lock",
         new_callable=AsyncMock,
-        return_value=None,
+        return_value=False,
     ):
         with patch(
             "app.workers.overdue_worker.process_overdue_loans",
@@ -278,7 +278,7 @@ async def test_overdue_worker_loop_skips_when_lock_not_acquired():
 async def test_overdue_worker_loop_runs_when_lock_acquired():
     """When the distributed lock is acquired (NX succeeds), process_overdue_loans is called."""
     with patch(
-        "app.workers.overdue_worker.redis_client.set",
+        "app.core.redis_utils.acquire_distributed_lock",
         new_callable=AsyncMock,
         return_value=True,
     ):

@@ -2,14 +2,30 @@ import json
 import logging
 import secrets
 
-from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.websockets import manager
+from app.db.database import get_db
+from app.db.models import Kiosk
 
 logger = logging.getLogger(__name__)
 
 ws_router = APIRouter(prefix="/ws", tags=["websockets"])
+
+
+async def _verify_kiosk_exists(db: AsyncSession, kiosk_id: str) -> bool:
+    """Return True only when kiosk_id is a valid UUID that exists in the DB."""
+    try:
+        from uuid import UUID
+
+        parsed = UUID(kiosk_id)
+    except (ValueError, AttributeError):
+        return False
+    result = await db.execute(select(Kiosk.kiosk_id).where(Kiosk.kiosk_id == parsed))
+    return result.scalar_one_or_none() is not None
 
 
 @ws_router.websocket("/visionbox/{kiosk_id}")
@@ -17,6 +33,7 @@ async def visionbox_websocket_endpoint(
     websocket: WebSocket,
     kiosk_id: str,
     x_device_token: str | None = Header(default=None, alias="X-Device-Token"),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     if not x_device_token:
         logger.warning(
@@ -35,7 +52,16 @@ async def visionbox_websocket_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # 2. Token is valid, register with the manager
+    # Enforce that the kiosk_id is a known kiosk in the DB (prevents kiosk impersonation).
+    if not await _verify_kiosk_exists(db, kiosk_id):
+        logger.warning(
+            "Connection rejected: kiosk_id=%s is not registered in the database.",
+            kiosk_id,
+        )
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    # Token valid and kiosk registered — register with the manager
     await manager.connect(websocket, kiosk_id)
 
     try:

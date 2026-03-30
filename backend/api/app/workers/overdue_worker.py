@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
+from app.core.redis_utils import acquire_distributed_lock
 from app.db.database import AsyncSessionLocal
 from app.db.models import Loan, LoanStatus
-from app.db.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +129,9 @@ async def overdue_worker_loop(
     while not stop_event.is_set():
         try:
             # Distributed lock: only one instance of the worker runs per interval.
-            # NX=True means SET only if key does not exist. EX sets TTL in seconds.
-            lock_acquired = await redis_client.set(
+            lock_acquired = await acquire_distributed_lock(
                 "lock:overdue-worker",
-                "1",
-                nx=True,
-                ex=DISTRIBUTED_LOCK_TTL_SECONDS,
+                DISTRIBUTED_LOCK_TTL_SECONDS,
             )
             if lock_acquired:
                 processed = await process_overdue_loans()

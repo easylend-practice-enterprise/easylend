@@ -115,7 +115,7 @@ app = FastAPI(
 # Restrict allowed_origins to your actual frontend domains in production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten to specific origins in production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=False,  # No credentials over wildcard origins
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
