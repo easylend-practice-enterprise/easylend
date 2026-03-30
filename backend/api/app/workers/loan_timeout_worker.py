@@ -129,19 +129,20 @@ async def process_reserved_loan_timeouts(
 
     while True:
         cutoff = reference_now - timedelta(minutes=timeout_minutes)
-        result = await AsyncSessionLocal().execute(
-            select(Loan.loan_id)
-            .where(
-                Loan.loan_status == LoanStatus.RESERVED,
-                Loan.reserved_at.is_not(None),
-                Loan.reserved_at < cutoff,
-                Loan.asset.has(is_deleted=False),
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Loan.loan_id)
+                .where(
+                    Loan.loan_status == LoanStatus.RESERVED,
+                    Loan.reserved_at.is_not(None),
+                    Loan.reserved_at < cutoff,
+                    Loan.asset.has(is_deleted=False),
+                )
+                .order_by(Loan.reserved_at)
+                .offset(offset)
+                .limit(BATCH_SIZE)
             )
-            .order_by(Loan.reserved_at)
-            .offset(offset)
-            .limit(BATCH_SIZE)
-        )
-        batch_ids = list(result.scalars().all())
+            batch_ids = list(result.scalars().all())
 
         if not batch_ids:
             break
