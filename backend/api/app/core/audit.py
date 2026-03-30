@@ -34,7 +34,7 @@ async def log_audit_event(
         try:
             last_audit_result = await db.execute(
                 select(AuditLog)
-                .order_by(AuditLog.created_at.desc())
+                .order_by(AuditLog.created_at.desc(), AuditLog.audit_id.desc())
                 .limit(1)
                 .with_for_update(nowait=True)
             )
@@ -45,7 +45,11 @@ async def log_audit_event(
 
                 await asyncio.sleep(0.05)
                 continue
-            raise
+            raise  # will exit the function; mypy/pyright know this
+    else:
+        # Unreachable — the loop has no `break` on the last iteration, so
+        # the `raise` above always fires. Present only to silence static analysers.
+        raise RuntimeError("audit lock contention exceeded retry limit")
 
     last_audit = last_audit_result.scalar_one_or_none()
     # Normalise None payload to empty dict — ensures the stored value and
