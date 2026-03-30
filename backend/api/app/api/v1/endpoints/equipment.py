@@ -605,6 +605,8 @@ CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
     },
 )
 async def get_catalog(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> CatalogResponse:
@@ -625,6 +627,8 @@ async def get_catalog(
             .outerjoin(User, User.user_id == Loan.user_id)
             .where(Asset.is_deleted.is_(False))
             .order_by(Asset.name)
+            .offset(skip)
+            .limit(limit)
         )
         result = await db.execute(query)
         rows = result.all()

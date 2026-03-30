@@ -311,10 +311,15 @@ async def analyze_image(
                             "error_summary": error_summary,
                         },
                     )
-                except Exception:
+                except Exception as audit_exc:
+                    # Audit log failure is non-negotiable — re-raise so the outer
+                    # handler rolls back the state instead of committing without
+                    # a forensic trail. Log the full exception context first.
                     logger.exception(
-                        "Failed to write audit log for Vision AI failure fallback."
+                        "Failed to write audit log for Vision AI failure fallback. "
+                        "Re-raising to prevent state-only commit.",
                     )
+                    raise audit_exc
 
                 await db.commit()
             except Exception:

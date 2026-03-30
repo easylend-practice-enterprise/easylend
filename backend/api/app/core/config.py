@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Define the dummy secret once at the top
@@ -29,6 +29,27 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = Path(__file__).parent.parent.parent / "uploads"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Comma-separated list of allowed CORS origins. Defaults to localhost for dev safety.
+    # Override via CORS_ORIGINS env var (e.g. "https://app.example.com,https://admin.example.com").
+    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        """Accept a JSON list, a comma-separated string, or a plain list."""
+        if isinstance(v, str):
+            # Try JSON list first
+            import json
+
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            # Fall back to comma-separated
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     @model_validator(mode="after")
     def _validate_secrets(self) -> "Settings":
