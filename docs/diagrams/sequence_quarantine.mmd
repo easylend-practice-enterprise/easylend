@@ -5,7 +5,7 @@ sequenceDiagram
     participant Admin as Administrator
 
     Note over API,VB: System is in PENDING_INSPECTION state (orange LED active)
-    Note over API,VB: Locker is OCCUPIED; asset is PENDING_INSPECTION
+    Note over API,VB: Locker is OCCUPIED, asset is PENDING_INSPECTION
 
     Admin->>API: GET /api/v1/admin/quarantine [JWT Admin]
     Note over Admin,API: Paginated list: skip, limit query params

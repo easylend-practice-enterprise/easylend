@@ -44,13 +44,13 @@ sequenceDiagram
                         API->>DB: INSERT INTO loans {loan_status: 'RESERVED', reserved_at: NOW()}
 
                         %% Hardware command sent BEFORE DB commit
-                        Note over API,VB: DB committed AFTER send; hardware failure leaves RESERVED loan for timeout worker
+                        Note over API,VB: DB committed AFTER send&#59; hardware failure leaves RESERVED loan for timeout worker
                         Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                         API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
                         alt Hardware command failed / timeout
                             API-->>App: 503 Service Unavailable
-                            Note over API: RESERVED loan left in DB; timeout worker will clean up
+                            Note over API: RESERVED loan left in DB&#59; timeout worker will clean up
                         else Hardware command accepted
                             API->>DB: COMMIT
                             API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
@@ -60,60 +60,60 @@ sequenceDiagram
                 end
             end
         end
+    end
 
-        VB->>VB: GPIO: open slot + LED green
-        User->>VB: Takes item from locker, closes door
+    VB->>VB: GPIO: open slot + LED green
+    User->>VB: Takes item from locker, closes door
 
-        %% Vision Box triggers AI analysis (M2M, no JWT)
-        Note over VB,AI: Vision Box captures image and sends to API; no slot_closed event processing on API side
-        VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, type: CHECKOUT}
+    %% Vision Box triggers AI analysis (M2M, no JWT)
+    Note over VB,AI: Vision Box captures image and sends to API&#59; no slot_closed event processing on API side
+    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, type: CHECKOUT}
 
-        %% Phase 2: Vision AI analysis (row locks acquired AFTER analysis)
-        par Object Detection (Phase 1 of 2)
-            API->>AI: POST /detect {image}
-            AI-->>API: {locker_empty, detections}
-        and Segmentation (Phase 2 of 2)
-            API->>AI: POST /segment {image}
-            AI-->>API: {has_damage_detected}
-        and Row Locks Acquired (Phase 3 of 2)
-            Note over API,DB: Loan → Asset → Locker locks acquired NOWAIT after AI analysis completes
-            %% Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
-        end
+    %% Phase 2: Vision AI analysis (row locks acquired AFTER analysis)
+    par Object Detection (Phase 1 of 2)
+        API->>AI: POST /detect {image}
+        AI-->>API: {locker_empty, detections}
+    and Segmentation (Phase 2 of 2)
+        API->>AI: POST /segment {image}
+        AI-->>API: {has_damage_detected}
+    end
 
-        alt Locker NOT empty (fraud / item not taken)
-            API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
-            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
-            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
-            API->>VB: WSS: set_led {locker_id: logical_number, color: red}
-        else Locker empty + No damage (success)
-            API->>DB: UPDATE loans SET loan_status = 'ACTIVE', borrowed_at = NOW() WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = NULL WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
-            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
-            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
-            API->>VB: WSS: set_led {locker_id: logical_number, color: green}
-        else AI service error / model crash
-            API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <checkout_locker_id> WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
-            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
-            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
-            API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
-            Note over API,DB: Loan stays PENDING_INSPECTION; timeout worker also monitors RESERVED loans
-        end
+    Note over API,DB: Loan → Asset → Locker locks acquired NOWAIT after AI analysis completes
+    Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
-        Note over App,API: App polls the API every ~3 sec for a status update
-        App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
-        alt loan_status is FRAUD_SUSPECTED
-            API-->>App: 200 OK {status: FRAUD_SUSPECTED}
-            App-->>User: "Error: item not taken."
-        else loan_status is ACTIVE
-            API-->>App: 200 OK {status: ACTIVE}
-            App-->>User: "Good luck! Return the item on time."
-        else loan_status is PENDING_INSPECTION
-            API-->>App: 200 OK {status: PENDING_INSPECTION}
-            App-->>User: "System error. Administrator has been notified."
-        end
+    alt Locker NOT empty (fraud / item not taken)
+        API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
+        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
+        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: red}
+    else Locker empty + No damage (success)
+        API->>DB: UPDATE loans SET loan_status = 'ACTIVE', borrowed_at = NOW() WHERE loan_id = ?
+        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = NULL WHERE asset_id = ?
+        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+    else AI service error / model crash
+        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
+        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <checkout_locker_id> WHERE asset_id = ?
+        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
+        Note over API,DB: Loan stays PENDING_INSPECTION&#59; timeout worker also monitors RESERVED loans
+    end
+
+    Note over App,API: App polls the API every ~3 sec for a status update
+    App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+    alt loan_status is FRAUD_SUSPECTED
+        API-->>App: 200 OK {status: FRAUD_SUSPECTED}
+        App-->>User: "Error: item not taken."
+    else loan_status is ACTIVE
+        API-->>App: 200 OK {status: ACTIVE}
+        App-->>User: "Good luck! Return the item on time."
+    else loan_status is PENDING_INSPECTION
+        API-->>App: 200 OK {status: PENDING_INSPECTION}
+        App-->>User: "System error. Administrator has been notified."
     end

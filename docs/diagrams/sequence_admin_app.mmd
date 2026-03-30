@@ -51,7 +51,7 @@ sequenceDiagram
     else 3. Asset Catalog
         Admin->>App: Opens Asset Management
         App->>API: GET /api/v1/assets [With JWT Admin Token]
-        Note over Admin,API: Optional ?asset_status= filter; always excludes is_deleted=TRUE
+        Note over Admin,API: Optional ?asset_status= filter, always excludes is_deleted=TRUE
         API->>DB: SELECT * FROM assets WHERE is_deleted = FALSE ORDER BY name
         DB-->>API: Full list (Asset + Locker + Category)
         API-->>App: 200 OK (Admin view)
@@ -93,7 +93,7 @@ sequenceDiagram
         opt Link NFC Tag
             Admin->>App: Links new NFC tag
             App->>API: PATCH /api/v1/users/{user_id}/nfc {nfc_tag_id} [JWT Admin]
-            Note over API,DB: Updates nfc_tag_id column; uniqueness enforced at DB level
+            Note over API,DB: Updates nfc_tag_id column, uniqueness enforced at DB level
             API->>DB: UPDATE users SET nfc_tag_id = ? WHERE user_id = ?
             API-->>App: 200 OK
         end
