@@ -39,8 +39,44 @@ class _GlobalFakeRedis:
     async def scan(self, cursor, match=None):
         return (0, [])
 
+    async def incr(self, key: str):  # noqa: ARG002
+        # Rate-limit: always return 1 so requests are always allowed in tests
+        return 1
+
+    async def expire(self, key: str, seconds: int):  # noqa: ARG002
+        return True
+
     async def aclose(self):
         return None
+
+    def pipeline(self):
+        return _FakePipeline()
+
+
+class _FakePipeline:
+    """Minimal pipeline stub for rate-limit tests."""
+
+    def __init__(self):
+        self._commands: list[tuple[str, list, dict]] = []
+
+    def incr(self, key: str):
+        self._commands.append(("incr", [key], {}))
+        return self
+
+    def expire(self, key: str, seconds: int):
+        self._commands.append(("expire", [key, seconds], {}))
+        return self
+
+    async def execute(self):
+        # Simulate: return [1] for first incr, True for expire
+        results = []
+        for cmd, args, _ in self._commands:
+            if cmd == "incr":
+                results.append(1)  # count starts at 1 — well under any limit
+            elif cmd == "expire":
+                results.append(True)
+        self._commands.clear()
+        return results
 
 
 _redis_mod.redis_client = _GlobalFakeRedis()

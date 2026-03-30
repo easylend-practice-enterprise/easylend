@@ -303,7 +303,7 @@ Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in
 
 ## Step 12: Rate Limiting & Abuse Prevention
 
-**Ticket:** ELP-31 · **Status:** ❌ Open · *Requires: step 6 (Redis)*
+**Ticket:** ELP-31 · **Status:** ✅ Done · *Requires: step 6 (Redis)*
 
 Rate limiting happens in 3 strategic layers (hybrid approach):
 
@@ -316,7 +316,11 @@ Rate limiting happens in 3 strategic layers (hybrid approach):
    - Once a client has a JWT or M2M token, we rate-limit on **Token ID (`sub` / `kiosk_id`)**.
    - This prevents a compromised account or glitchy app from overloading the server (e.g. 60 req/min per user) without penalising other users on the same network.
 
-> Current state: brute-force lockout at account level is already present in `POST /api/v1/auth/pin`; explicit rate limiting (IP/token) is still open.
+- [x] Redis-backed rate limiter implemented in `app/core/rate_limit.py` (`_check_rate_limit`, `check_ip_rate_limit`, `check_token_rate_limit`)
+- [x] Layer 2 applied to `POST /api/v1/auth/nfc` and `POST /api/v1/auth/pin` (500 req/min per IP)
+- [x] Layer 3 applied to `POST /api/v1/loans/checkout` and `POST /api/v1/loans/return/initiate` (60 req/min per user ID)
+- [x] Fail-open: if Redis is unavailable, requests are allowed rather than blocked
+- [x] Tests in `app/tests/test_rate_limit.py`
 
 ## Testing Milestones (when to write tests)
 
@@ -364,7 +368,12 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 ## Step 14: Overdue Worker
 
-- Overdue Worker: Implement a background task (APScheduler or Celery) that runs every hour. It must execute: `UPDATE loans SET loan_status = 'OVERDUE' WHERE loan_status = 'ACTIVE' AND due_date < NOW();` and automatically log this in the audit_logs.
+**Ticket:** ELP-96 · **Status:** ✅ Done
+
+- Overdue Worker: Background task that runs every 1 hour. Queries `Loan` where `loan_status = ACTIVE` and `due_date < NOW()`, marks them `OVERDUE`, and writes `LOAN_OVERDUE` audit events with `loan_id` and `asset_id` in the payload.
+- [x] `process_overdue_loans()` in `app/workers/overdue_worker.py` with `FOR UPDATE SKIP LOCKED`
+- [x] Worker loop with 1-hour interval, integrated in `app/main.py` lifespan
+- [x] Tests in `app/tests/test_overdue_worker.py`
 
 ## Scope Note (PXE)
 
@@ -386,7 +395,8 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
                           WebSockets + fallback + /vision/analyze (PROXY DONE ✅)
                     --> [10c] Admin Quarantine Dashboard
         --> [9] M2M Static Device Tokens (✅ DONE)
+        --> [14] Overdue Worker (✅ DONE)
 [11] Input sanitisation (parallel, from step 10+)
-[12] Rate limiting (requires Redis: step 6)
-[13] Hash-chaining audit logs (requires step 10a)
+[12] Rate limiting (requires Redis: step 6) ✅ DONE
+[13] Hash-chaining audit logs (requires step 10a) ✅ DONE
 ```

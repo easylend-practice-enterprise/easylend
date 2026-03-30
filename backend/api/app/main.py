@@ -20,6 +20,10 @@ from app.workers.loan_timeout_worker import (
     start_reserved_loan_timeout_worker,
     stop_reserved_loan_timeout_worker,
 )
+from app.workers.overdue_worker import (
+    start_overdue_worker,
+    stop_overdue_worker,
+)
 
 # ---------------------------------------------------------------------------
 # Security middleware
@@ -65,10 +69,13 @@ async def lifespan(app: FastAPI):
         await check_redis_connection()
     timeout_worker_task = None
     timeout_worker_stop_event = None
+    overdue_worker_task = None
+    overdue_worker_stop_event = None
     if settings.ENVIRONMENT.lower() != "test":
         timeout_worker_task, timeout_worker_stop_event = (
             start_reserved_loan_timeout_worker()
         )
+        overdue_worker_task, overdue_worker_stop_event = start_overdue_worker()
     # Ensure runtime uploads directory exists (create at startup, not at import time)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     yield
@@ -81,6 +88,15 @@ async def lifespan(app: FastAPI):
         await stop_reserved_loan_timeout_worker(
             timeout_worker_task,
             timeout_worker_stop_event,
+        )
+    if (
+        settings.ENVIRONMENT.lower() != "test"
+        and overdue_worker_task is not None
+        and overdue_worker_stop_event is not None
+    ):
+        await stop_overdue_worker(
+            overdue_worker_task,
+            overdue_worker_stop_event,
         )
     # Close Redis client only outside of tests to avoid background-transport
     # shutdown races during pytest session teardown.

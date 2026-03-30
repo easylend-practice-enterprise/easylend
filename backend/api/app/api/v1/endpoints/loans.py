@@ -16,7 +16,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.db_utils import is_lock_not_available_error
+from app.core.rate_limit import check_token_rate_limit
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -199,6 +200,7 @@ async def get_loan_status(
     },
 )
 async def checkout(
+    request: Request,
     payload: CheckoutRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -217,7 +219,10 @@ async def checkout(
     - `Asset.locker_id`: unchanged until Vision confirms the checkout result
     - `Locker.locker_status`: unchanged until Vision confirms the locker is empty
     - New `Loan` record created with `loan_status = RESERVED`
+
+    Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
+    await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -381,6 +386,7 @@ async def checkout(
     },
 )
 async def return_initiate(
+    request: Request,
     payload: ReturnInitiateRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -398,7 +404,10 @@ async def return_initiate(
     - `Locker.locker_status`: `AVAILABLE` → `OCCUPIED` (reserved for this return)
     - `Loan.return_locker_id`: assigned to the chosen locker
     - `Loan.loan_status`: `ACTIVE` → `RETURNING`
+
+    Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
+    await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -1,7 +1,7 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.core import security
 from app.core.config import settings
 from app.core.db_utils import is_lock_not_available_error
+from app.core.rate_limit import check_ip_rate_limit
 from app.db.database import get_db
 from app.db.models import User
 from app.db.redis import (
@@ -140,6 +141,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
 
 @router.post("/nfc", status_code=status.HTTP_200_OK)
 async def nfc_login(
+    request: Request,
     body: NfcLoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -147,13 +149,16 @@ async def nfc_login(
     Validate an NFC badge before PIN verification.
 
     Public endpoint for the kiosk sign-in flow.
+    Rate-limited: 500 req/min per IP (Layer 2).
     """
+    await check_ip_rate_limit(request)
     await _get_active_user_by_nfc(body.nfc_tag_id, db)
     return {"detail": "NFC badge recognized. Enter PIN."}
 
 
 @router.post("/pin", response_model=TokenResponse, status_code=status.HTTP_200_OK)
 async def pin_login(
+    request: Request,
     body: PinLoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
@@ -161,7 +166,9 @@ async def pin_login(
     Verify the PIN and issue access and refresh tokens.
 
     Public endpoint for the kiosk sign-in flow.
+    Rate-limited: 500 req/min per IP (Layer 2).
     """
+    await check_ip_rate_limit(request)
     user = await _get_active_user_by_nfc(
         body.nfc_tag_id,
         db,
