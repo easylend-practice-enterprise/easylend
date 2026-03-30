@@ -4,7 +4,7 @@ sequenceDiagram
     participant API as FastAPI Backend
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
-    participant AI as YOLO26 AI Service (VM2)
+    participant AI as Vision AI Service (yolo26-dual-model)
     participant Redis as Redis Cache
 
     User->>App: Selects asset from catalog
@@ -15,9 +15,9 @@ sequenceDiagram
         API-->>App: 409 Conflict {"Request already processing"}
     else Key not seen
         API->>Redis: SETEX idempotency:{key} 86400 "processing"
-        Note over API,Redis: On any exception, Idempotency-Key is deleted from Redis to allow immediate retry
 
-        API->>DB: BEGIN transaction
+        %% Phase 1: Validate and reserve (row locks acquired NOWAIT)
+        API->>DB: BEGIN TRANSACTION
         API->>DB: SELECT asset BY aztec_code FOR UPDATE NOWAIT
 
         alt Asset row lock contention
@@ -34,24 +34,23 @@ sequenceDiagram
                 else Locker missing
                     API-->>App: 404 Not Found
                 else Locker valid
-                    API->>VB: Check WSS connection for kiosk
-
-                    alt Vision Box offline
-                        API-->>App: 503 Service Unavailable (Hardware offline)
+                    alt Vision Box offline (WSS not connected)
+                        API-->>App: 503 Service Unavailable
                         App-->>User: "Locker currently out of service"
                     else Vision Box online
+                        %% State mutations applied immediately
+                        Note over API,DB: asset_status → BORROWED (physical release deferred until Vision)
+                        API->>DB: UPDATE assets SET asset_status = 'BORROWED'
                         API->>DB: INSERT INTO loans {loan_status: 'RESERVED', reserved_at: NOW()}
-                        API->>DB: UPDATE assets SET asset_status = 'BORROWED', locker_id = NULL
-                        Note over API,DB: Locker only updated if currently OCCUPIED, guards against double-assignment masking bugs
-                        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ? (only if status == OCCUPIED)
 
-                        Note over API,VB: open_slot is sent before DB commit
-                        Note over API,VB: locker_id in WSS payload = logical_number (physical slot int, e.g. 2), not the UUID
-                        API->>VB: WSS: open_slot {locker_id: logical_number, loan_id}
+                        %% Hardware command sent BEFORE DB commit
+                        Note over API,VB: DB committed AFTER send; hardware failure leaves RESERVED loan for timeout worker
+                        Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
+                        API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
-                        alt Hardware command failed
-                            API->>DB: ROLLBACK
+                        alt Hardware command failed / timeout
                             API-->>App: 503 Service Unavailable
+                            Note over API: RESERVED loan left in DB; timeout worker will clean up
                         else Hardware command accepted
                             API->>DB: COMMIT
                             API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
@@ -63,53 +62,57 @@ sequenceDiagram
         end
 
         VB->>VB: GPIO: open slot + LED green
-
         User->>VB: Takes item from locker, closes door
-        VB->>API: WSS: slot_closed event
 
-        Note over VB,AI: Background check: locker must be empty
-        VB->>API: POST /api/v1/vision/analyze (M2M) {loan_id, image, type: CHECKOUT}
-        par Object Detection
+        %% Vision Box triggers AI analysis (M2M, no JWT)
+        Note over VB,AI: Vision Box captures image and sends to API; no slot_closed event processing on API side
+        VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, type: CHECKOUT}
+
+        %% Phase 2: Vision AI analysis (row locks acquired AFTER analysis)
+        par Object Detection (Phase 1 of 2)
             API->>AI: POST /detect {image}
             AI-->>API: {locker_empty, detections}
-        and Segmentation
+        and Segmentation (Phase 2 of 2)
             API->>AI: POST /segment {image}
             AI-->>API: {has_damage_detected}
+        and Row Locks Acquired (Phase 3 of 2)
+            Note over API,DB: Loan → Asset → Locker locks acquired NOWAIT after AI analysis completes
+            %% Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
         end
 
-        alt Locker not empty (Fraud/Error: item not taken)
+        alt Locker NOT empty (fraud / item not taken)
             API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
             API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
-            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
             API->>VB: WSS: set_led {locker_id: logical_number, color: red}
-        else Locker empty (Success)
+        else Locker empty + No damage (success)
             API->>DB: UPDATE loans SET loan_status = 'ACTIVE', borrowed_at = NOW() WHERE loan_id = ?
+            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = NULL WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
             API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
-            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
             API->>VB: WSS: set_led {locker_id: logical_number, color: green}
-        else AI timeout (Model crash)
+        else AI service error / model crash
             API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
             API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <checkout_locker_id> WHERE asset_id = ?
             API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
-            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
-            Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+            API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
+            Note over API,VB: locker_id in WSS = logical_number (physical slot int)
             API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
-            Note over API,DB: Manual inspection required, loan stays PENDING_INSPECTION until admin review
+            Note over API,DB: Loan stays PENDING_INSPECTION; timeout worker also monitors RESERVED loans
         end
 
-        Note over App,API: App polls the API every 3 sec for a status update (Polling)
-        App->>API: GET /api/v1/loans/{loan_id}/status
-
-        alt Status is FRAUD_SUSPECTED
+        Note over App,API: App polls the API every ~3 sec for a status update
+        App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+        alt loan_status is FRAUD_SUSPECTED
             API-->>App: 200 OK {status: FRAUD_SUSPECTED}
-            App-->>User: "Error detected. Item not taken."
-        else Status is ACTIVE
+            App-->>User: "Error: item not taken."
+        else loan_status is ACTIVE
             API-->>App: 200 OK {status: ACTIVE}
             App-->>User: "Good luck! Return the item on time."
-        else Status is PENDING_INSPECTION
+        else loan_status is PENDING_INSPECTION
             API-->>App: 200 OK {status: PENDING_INSPECTION}
             App-->>User: "System error. Administrator has been notified."
         end

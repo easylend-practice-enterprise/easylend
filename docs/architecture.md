@@ -117,7 +117,7 @@ flowchart TD
 
 * **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **strictly rate-limited in Step 12** (not yet active in V1). `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`. The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
 * **Role Management:** Admins can enumerate available system roles via `GET /api/v1/roles` (Bearer JWT required).
-* **Cryptographic Audit Trail:** All critical transactions (`LOGIN`, `DOOR_OPENED`, `SELF_DECLARATION`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row, making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
+* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `ADMIN_FORCED_OPEN`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `ASSET_SOFT_DELETED`, `LOAN_RESERVED_TIMEOUT`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
 * **No Hardcoding:** Hardcoded IP addresses or secrets are prohibited. Everything is configured via a `.env` file, strictly validated by FastAPI `pydantic-settings`.
 * **Database Isolation:** The database is not exposed to the internet (`0.0.0.0` is prohibited) and is accessed by developers via an SSH Tunnel to `127.0.0.1`.
 * **PXE Live Boot Service:** This component is visible in the logical topology but falls **outside the scope of the current implementation (V1/MVP)**. PXE is planned for V2 (Post-MVP). References to `PXE_CHECK` audit actions and PXE-boot hardware tests are reserved for that release.
@@ -200,7 +200,7 @@ erDiagram
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
-        uuid locker_id FK "Nullable: NULL when on loan"
+        uuid locker_id FK "Nullable: NULL when on loan or in inspection"
         varchar name
         varchar aztec_code UK
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
@@ -229,11 +229,11 @@ erDiagram
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
         float ai_confidence "NOT NULL: 0.0 when no detections"
-        jsonb detected_objects "E.g. Aztec code location, object type"
+        jsonb detected_objects "E.g. detections list with bounding boxes"
         boolean has_damage_detected "Quickly filter problem evaluations"
-        varchar model_version
-        boolean is_approved "Nullable"
-        varchar rejection_reason "Nullable"
+        varchar model_version "NOT NULL: e.g. 'yolo26-dual-model'"
+        boolean is_approved "Nullable: set by admin judge endpoint"
+        varchar rejection_reason "Nullable: admin note when is_approved=false"
         timestamp analyzed_at
     }
 
@@ -249,7 +249,7 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOGIN_SUCCESS, LOGIN_FAILED"
         jsonb payload
         varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
         varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"

@@ -2,50 +2,57 @@
 
 ## What is this?
 
-The simulation is a **digital twin** of the EasyLend locker kiosk. It is a Python application with a web UI that virtually mimics a grid of physical lockers.
-
-Instead of real hardware, the simulation communicates directly with the API via WebSockets (acting as a regular Vision Box), allowing the backend to be fully tested without physical kiosks.
+The simulation is a **digital twin** of the EasyLend Vision Box. It is a lightweight Python script that connects to the backend via WebSocket, acting as a hardware emulator so the API and kiosk app can be fully tested without physical kiosks.
 
 ## Scope
 
-- Visualise a **locker grid** with real-time statuses (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, `ERROR_OPEN`)
-- Simulate hardware events: slot opening/closing, LED colour change
-- Send and receive **WebSocket messages** (same protocol as the real Vision Box)
-- Authentication via a **static M2M API key** (`X-Device-Token` header)
+- Connect to the API via WebSocket as a Vision Box would (`WSS: /ws/visionbox/{kiosk_id}`)
+- Authenticate using a static M2M device token (`X-Device-Token` header)
+- Send and receive **WebSocket messages** in the same protocol as the real Vision Box
+- Listen for `open_slot` commands and `set_led` commands, and send `slot_closed` events
+
+## Framework
+
+The simulation is a plain Python script using the `websockets` library (no UI framework). It runs headlessly in the terminal and is suitable for CI/CD integration and local development.
+
+```text
+simulation/
+├── main.py          # Entry point: WebSocket client that connects to the API
+├── main.py           # Connects to /ws/visionbox/{kiosk_id}, sends slot_closed, receives open_slot
+└── .env.example      # VISIONBOX_WS_URL, SIMULATION_API_KEY
+```
 
 ## Connection to the API
 
 ```text
-WSS: wss://<api-host>/ws/visionbox/{kiosk_id}
-Headers: X-Device-Token: <static_key>
+WS:  ws://<api-host>:/ws/visionbox/{kiosk_id}
+WSS: wss://<api-host>:/ws/visionbox/{kiosk_id}
+Headers: X-Device-Token: <SIMULATION_API_KEY>
 ```
 
-The simulation behaves like a Vision Box: it listens for `open_slot` events and sends `slot_closed` events back.
+The simulation behaves like a Vision Box: it receives `open_slot` and `set_led` commands and sends `slot_closed` events back.
 
-## Framework
+## Setup
 
-Not yet decided. Candidates:
+1. Copy `.env.example` to `.env` and set your API URL and simulation key:
+   ```bash
+   cp .env.example .env
+   ```
 
-| Framework | Pro | Con |
-| --- | --- | --- |
-| **Streamlit** | Fast, Python-native, easy grid UI | Less control over WebSocket lifecycle |
-| **FastAPI + HTMX** | Consistent with the rest of the stack (FastAPI already used in backend) | More boilerplate |
-| **Flask + Socket.IO** | Simple, good WebSocket support | Extra dependency |
+2. Install dependencies:
+   ```bash
+   cd simulation
+   uv sync
+   ```
 
-> Selection will be made at the start of ELP-32 (Choose simulation framework).
+3. Run the simulation:
+   ```bash
+   uv run python main.py
+   ```
 
-## Directory Structure (planned)
+## Environment Variables
 
-```text
-simulation/
-├── README.md         # This file
-├── main.py           # Entry point
-├── config.py         # API URL, API key via .env
-├── websocket.py      # WSS client logic
-├── ui/               # Web UI components
-└── .env.example      # API_URL, DEVICE_TOKEN
-```
-
-## Setup (not yet available)
-
-See ELP-32 to ELP-35 for the final setup instructions once the framework is chosen.
+| Variable | Default | Description |
+|---|---|---|
+| `VISIONBOX_WS_URL` | `ws://localhost:8000/ws/visionbox/00000000-0000-0000-0000-000000000000` | WebSocket URL of the API |
+| `SIMULATION_API_KEY` | `local-dev-sim-key-123` | Static device token (must match backend `SIMULATION_API_KEY`) |

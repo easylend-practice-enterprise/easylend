@@ -6,22 +6,28 @@ sequenceDiagram
     participant VB as Vision Box (Kiosk A)
 
     Note over App,API: Scenario A: Kiosk Boot Sequence
-    Note over API,VB: ConnectionManager enforces strict single-connection-per-kiosk rule (reconnecting Vision Box forcibly closes the previous socket)
+    Note over API,VB: ConnectionManager: on reconnect, closes previous socket for kiosk_id before accepting new one (single-connection-per-kiosk)
+
     App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [With JWT Token]
-    API->>DB: Fetch physical status of lockers
-    DB-->>API: Statuses (e.g. AVAILABLE, MAINTENANCE, OCCUPIED)
-    API-->>App: 200 OK (Kiosk UI renders current lockers)
+    API->>DB: SELECT * FROM lockers WHERE kiosk_id = ? ORDER BY logical_number
+    DB-->>API: Statuses (AVAILABLE, MAINTENANCE, OCCUPIED, ERROR_OPEN)
+    API-->>App: 200 OK (LockerListResponse, Kiosk UI renders current lockers)
 
     Note over Admin,VB: Scenario B: Admin Remote Control
     Admin->>App: Logs in and opens Kiosk Management [With JWT Admin Token]
     App->>API: GET /api/v1/kiosks
-    API-->>App: 200 OK (List of all kiosks)
+    API-->>App: 200 OK (KioskListResponse)
 
     Admin->>App: Selects Kiosk A -> Locker 1 -> "Force Open"
-    App->>API: POST /api/v1/lockers/{locker_id}/open
+    App->>API: POST /api/v1/lockers/{locker_id}/open [JWT Admin]
     Note over API: Validates that the token holds the Admin role
-    Note over API,VB: locker_id in WSS payload = logical_number (physical slot int), not the UUID
+    Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
+    API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN', payload: {locker_id}}
+    API->>DB: COMMIT
     API->>VB: WSS: open_slot {locker_id: logical_number}
-    Note over API,VB: Fire-and-forget: audit log is written after send, not waiting for slot_opened
-    API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
-    API-->>App: 200 OK (Locker successfully opened)
+    Note over API,VB: Fire-and-forget: audit committed before send; no slot_opened event is processed by the API
+    alt Vision Box offline / timeout
+        API-->>App: 503 Service Unavailable
+    else Vision Box accepted command
+        API-->>App: 200 OK {detail: "Locker opened successfully."}
+    end

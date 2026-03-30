@@ -59,7 +59,7 @@ erDiagram
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
-        uuid locker_id FK "Nullable: NULL when on loan"
+        uuid locker_id FK "Nullable: NULL when on loan or in inspection"
         varchar name
         varchar aztec_code UK
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
@@ -88,11 +88,11 @@ erDiagram
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
         float ai_confidence "NOT NULL: 0.0 when no detections"
-        jsonb detected_objects "E.g. Aztec code location, object type"
+        jsonb detected_objects "E.g. detections list with bounding boxes"
         boolean has_damage_detected "Quickly filter problem evaluations"
-        varchar model_version
-        boolean is_approved "Nullable"
-        varchar rejection_reason "Nullable"
+        varchar model_version "NOT NULL: e.g. 'yolo26-dual-model'"
+        boolean is_approved "Nullable: set by admin judge endpoint"
+        varchar rejection_reason "Nullable: admin note when is_approved=false"
         timestamp analyzed_at
     }
 

@@ -5,7 +5,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant VB as Vision Box (Kiosk A)
 
-    Note over Admin,App: Admin logs in via the app
+    Note over Admin,App: Admin logs in via the app (see sequence_auth.mmd)
     Admin->>App: Logs in and opens Admin Dashboard
     App->>API: GET /api/v1/kiosks [With JWT Admin Token]
     API-->>App: 200 OK (List of kiosks)
@@ -13,75 +13,88 @@ sequenceDiagram
     alt 1. Locker Grid UI
         Admin->>App: Selects Kiosk A and opens Locker Grid
         App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers
-        API->>DB: Fetch physical status of lockers
-        DB-->>API: Statuses (e.g. AVAILABLE, MAINTENANCE, OCCUPIED)
+        API->>DB: SELECT * FROM lockers WHERE kiosk_id = ? ORDER BY logical_number
+        DB-->>API: Statuses (AVAILABLE, MAINTENANCE, OCCUPIED)
         API-->>App: 200 OK (Current status per locker)
 
         opt Force Door Open
             Admin->>App: Taps Locker 1 -> Force Open
-            App->>API: POST /api/v1/lockers/{locker_id}/open
-            Note over API: Validates Admin role
-            API->>VB: WSS: open_slot {locker_id: {locker_id}}
-            VB-->>API: WSS: slot_opened
-            API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN'}
-            API-->>App: 200 OK (Locker opened)
+            App->>API: POST /api/v1/lockers/{locker_id}/open [JWT Admin]
+            Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
+            API->>VB: WSS: open_slot {locker_id: logical_number}
+            Note over API,VB: Fire-and-forget: audit log written before send, no slot_opened event processed
+            API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN', payload: {locker_id}}
+            API->>DB: COMMIT
+            alt Vision Box offline
+                API-->>App: 503 Service Unavailable
+            else Vision Box online
+                API-->>App: 200 OK {detail: "Locker opened successfully."}
+            end
         end
 
-        opt Mark as Defective
+        opt Mark as Defective / Maintenance
             Admin->>App: Taps Locker 1 -> Mark MAINTENANCE
-            App->>API: PATCH /api/v1/lockers/{locker_id}/status {locker_status: 'MAINTENANCE'}
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = {locker_id}
+            App->>API: PATCH /api/v1/lockers/{locker_id}/status {locker_status: 'MAINTENANCE'} [JWT Admin]
+            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
             API-->>App: 200 OK (Locker marked)
         end
 
     else 2. Quarantine Inbox
         Admin->>App: Opens Quarantine Inbox
-        App->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION
-        API-->>App: List of loans in quarantine
-        App->>API: GET /api/v1/admin/evaluations/{evaluation_id}
-        API-->>App: Photo, AI report, damage details
-        Note right of App: See [sequence_quarantine.mmd](./sequence_quarantine.mmd) for handling
+        App->>API: GET /api/v1/admin/quarantine [JWT Admin]
+        Note over Admin,API: Paginated: skip/limit query params
+        API-->>App: List[QuarantineLoanView] {loan_id, asset_name, user_name, kiosk_name, loan_status, ...}
+        App->>API: GET /api/v1/admin/evaluations/{loan_id}
+        API-->>App: EvaluationDetailView {evaluation_id, evaluation_type, photo_url, ai_confidence, ...}
+        Note right of App: See sequence_quarantine.mmd for full handling flow
 
     else 3. Asset Catalog
         Admin->>App: Opens Asset Management
         App->>API: GET /api/v1/assets [With JWT Admin Token]
-        API->>DB: SELECT a.*, l.loan_status, u.first_name, u.last_name FROM assets a LEFT JOIN loans l ON a.asset_id = l.asset_id AND l.loan_status IN ('ACTIVE', 'RESERVED') LEFT JOIN users u ON l.user_id = u.user_id WHERE a.is_deleted = FALSE
-        DB-->>API: Full list (Asset + Locker info + Borrower)
+        Note over Admin,API: Optional ?asset_status= filter; always excludes is_deleted=TRUE
+        API->>DB: SELECT * FROM assets WHERE is_deleted = FALSE ORDER BY name
+        DB-->>API: Full list (Asset + Locker + Category)
         API-->>App: 200 OK (Admin view)
-        
+
         opt New Asset
             Admin->>App: Adds asset
-            App->>API: POST /api/v1/assets
+            App->>API: POST /api/v1/assets [JWT Admin] {name, aztec_code, category_id, locker_id?}
             API->>DB: INSERT INTO assets
-            API-->>App: 201 Created
+            API-->>App: 201 Created (AssetResponse)
         end
-        
+
         opt Delete Asset (Soft Delete)
             Admin->>App: Deletes asset
-            App->>API: DELETE /api/v1/assets/{asset_id}
-            Note over API,DB: Soft-deletes the specific asset (catalog/checkout filter is_deleted = FALSE)
-            API->>DB: UPDATE assets SET is_deleted = TRUE WHERE asset_id = {asset_id}
-            API-->>App: 200 OK
+            App->>API: DELETE /api/v1/assets/{asset_id} [JWT Admin]
+            alt Asset has ACTIVE or RESERVED loan
+                API-->>App: 409 Conflict {"Cannot delete an asset that has active or reserved loans."}
+            else No active loans
+                Note over API,DB: Locker returned to AVAILABLE if asset was assigned
+                API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = <asset.locker_id>
+                API->>DB: UPDATE assets SET is_deleted = TRUE, locker_id = NULL WHERE asset_id = ?
+                API->>DB: INSERT INTO audit_logs {action_type: 'ASSET_SOFT_DELETED', payload: {asset_id, asset_name}}
+                API-->>App: 204 No Content
+            end
         end
 
     else 4. User & NFC Management
         Admin->>App: Opens User Management
         App->>API: GET /api/v1/users [With JWT Admin Token]
-        API-->>App: List of users
-        
+        API-->>App: 200 OK (List[UserResponse] with total count)
+
         opt Unblock User
             Admin->>App: Unblocks account
-            App->>API: PATCH /api/v1/users/{user_id} {failed_login_attempts: 0, locked_until: null}
-            Note over API,DB: Reset failed attempts & lock timer
-            API->>DB: UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = {user_id}
+            App->>API: PATCH /api/v1/users/{user_id} {failed_login_attempts: 0, locked_until: null} [JWT Admin]
+            Note over API,DB: Resets failed attempts counter and clears lock timer
+            API->>DB: UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE user_id = ?
             API-->>App: 200 OK
         end
-        
+
         opt Link NFC Tag
             Admin->>App: Links new NFC tag
-            App->>API: PATCH /api/v1/users/{user_id}/nfc {nfc_tag_id}
-            Note over API,DB: Update column in users table
-            API->>DB: UPDATE users SET nfc_tag_id = {nfc_tag_id} WHERE user_id = {user_id}
+            App->>API: PATCH /api/v1/users/{user_id}/nfc {nfc_tag_id} [JWT Admin]
+            Note over API,DB: Updates nfc_tag_id column; uniqueness enforced at DB level
+            API->>DB: UPDATE users SET nfc_tag_id = ? WHERE user_id = ?
             API-->>App: 200 OK
         end
     end
