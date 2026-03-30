@@ -48,9 +48,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # XSS filter (legacy browsers)
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        # Content Security Policy (strict, no eval/inline)
+        # Content Security Policy — allows Swagger UI assets from jsdelivr CDN
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
+            "default-src 'self'; "
+            "connect-src 'self' https://cdn.jsdelivr.net; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com;"
         )
         # Permissions policy: disable unnecessary browser features
         response.headers["Permissions-Policy"] = (
