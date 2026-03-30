@@ -115,7 +115,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 8: CRUD: Kiosks --> Categories --> Lockers --> Assets
 
-**Ticket:** ELP-26 · **Status:** 📋 In Progress · *Requires: step 7 (permissions)*
+**Ticket:** ELP-26 · **Status:** ✅ Done · *Requires: step 7 (permissions)*
 
 > **FK order required:** Each entity has an FK to the previous one. Build in this order.
 
@@ -246,7 +246,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 ## Step 10b: Hardware & AI Integration (Dual-Model)
 
-**Status:** 📋 In Progress · *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
+**Status:** ✅ Done · *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
 
 By far the most complex part. Couples the transaction logic with physical hardware.
 
@@ -294,11 +294,12 @@ Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in
 
 ## Step 11: Input Sanitisation
 
-**Ticket:** ELP-30 · **Status:** ❌ Open · *Can be executed in parallel with step 10+*
+**Ticket:** ELP-30 · **Status:** ✅ Done · *Can be executed in parallel with step 10+*
 
-- Pydantic validators on all request bodies
-- Max-length checks, regex on emails / IDs
-- SQL injection not applicable (SQLAlchemy ORM): watch for XSS in string fields
+- [x] Pydantic validators and field constraints added across request schemas (`backend/api/app/schemas/`): `Field(..., min_length / max_length)`, `EmailStr`, `ge`/`le` numeric bounds, and `ConfigDict(extra="forbid")` to reject extra fields.
+- [x] URL validation implemented via `@field_validator` in `backend/api/app/schemas/vision.py` to enforce HTTPS model URLs and prevent unsafe schemes.
+- [x] Extra fields are rejected at the schema level (`extra="forbid"`).
+- Note: SQL injection remains mitigated by SQLAlchemy ORM; remain vigilant for XSS when rendering text into HTML contexts.
 
 ## Step 12: Rate Limiting & Abuse Prevention
 
