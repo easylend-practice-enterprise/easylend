@@ -74,20 +74,49 @@ IP_RATE_LIMIT = _IP_LIMIT
 IP_WINDOW_SECONDS = _IP_WINDOW_SECONDS
 
 
+def _is_internal_ip(ip: str) -> bool:
+    """Return True if ip is in a trusted internal network range."""
+    if ip.startswith("127."):
+        return True
+    if ip.startswith("172."):
+        # Docker bridge / Compose networks: 172.17–172.31
+        second = int(ip.split(".")[1])
+        if 17 <= second <= 31:
+            return True
+    if ip.startswith("10."):
+        return True
+    if ip.startswith("192.168."):
+        return True
+    return False
+
+
 async def check_ip_rate_limit(request: Request) -> None:
     """
     Dependency that enforces the Layer 2 IP-based rate limit on public endpoints.
 
-    Reads the real client IP from the X-Forwarded-For header when the API is
-    deployed behind a reverse proxy (e.g. Docker + nginx). Falls back to
-    request.client.host for direct connections (local dev).
+    X-Forwarded-For is ONLY trusted when the immediate upstream (request.client.host)
+    is a known internal/proxy IP. This prevents an attacker from spoofing the header
+    to bypass rate limiting on their own connections.
+
+    If the client IP cannot be determined at all, a 400 is returned immediately
+    (no shared "unknown" bucket that could cause self-inflicted DoS).
     """
+    direct_ip = request.client.host if request.client else None
+
+    if direct_ip is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client IP cannot be determined",
+        )
+
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
+    if forwarded and _is_internal_ip(direct_ip):
+        # Only trust X-Forwarded-For when we are behind a known internal proxy.
         # Leftmost IP is the original client; proxy chain follows.
         client_ip = forwarded.split(",")[0].strip()
     else:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = direct_ip
+
     key = f"ratelimit:ip:{client_ip}"
     await _check_rate_limit(key, IP_RATE_LIMIT, IP_WINDOW_SECONDS)
 

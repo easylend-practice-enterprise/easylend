@@ -169,11 +169,42 @@ async def pin_login(
     Rate-limited: 500 req/min per IP (Layer 2).
     """
     await check_ip_rate_limit(request)
-    user = await _get_active_user_by_nfc(
-        body.nfc_tag_id,
-        db,
-        lock_row=True,
-    )
+
+    # Step 1: Look up the user by NFC tag (no row lock yet).
+    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=False)
+
+    # Step 2: Lock the user row by user_id to serialize all login attempts
+    # against this account, regardless of which NFC tag triggered the request.
+    # This prevents race conditions when multiple NFC tags map to the same user.
+    try:
+        locked_result = await db.execute(
+            select(User)
+            .options(selectinload(User.role))
+            .where(User.user_id == user.user_id)
+            .with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Account is currently in use. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
+
+    user = locked_result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid NFC badge or account status.",
+        )
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is locked. Try again later.",
+        )
 
     if not security.verify_pin(body.pin, user.pin_hash):
         user.failed_login_attempts += 1
@@ -217,6 +248,7 @@ async def pin_login(
     status_code=status.HTTP_200_OK,
 )
 async def refresh_access_token(
+    request: Request,
     body: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
@@ -224,7 +256,9 @@ async def refresh_access_token(
     Rotate a valid refresh token and return a new token pair.
 
     Public endpoint for authenticated kiosk sessions.
+    Rate-limited: 500 req/min per IP (Layer 2).
     """
+    await check_ip_rate_limit(request)
     # 1. Decode and validate the signature and token type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)

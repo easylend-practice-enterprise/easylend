@@ -5,7 +5,7 @@ Tests for the Redis-backed rate limiter (app/core/rate_limit.py).
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, status
 
 from app.core.rate_limit import (
     _check_rate_limit,
@@ -91,17 +91,18 @@ async def test_check_rate_limit_at_boundary():
 
 
 @pytest.mark.anyio
-async def test_check_ip_rate_limit_uses_x_forwarded_for():
-    """When behind a proxy, X-Forwarded-For must be used as the rate-limit key."""
+async def test_check_ip_rate_limit_uses_x_forwarded_for_for_internal_proxy():
+    """X-Forwarded-For is trusted ONLY when the direct client IP is internal (e.g. Docker bridge)."""
     with patch("app.core.rate_limit.redis_client") as mock_redis:
         mock_redis.incr = AsyncMock(return_value=1)
         mock_redis.expire = AsyncMock(return_value=True)
+        # request.client.host is 172.17.0.1 (Docker bridge) — trusted proxy
         request = make_mock_request(
-            client_host="10.255.0.1",
-            headers={"X-Forwarded-For": "203.0.113.50, 10.255.0.1, 172.17.0.1"},
+            client_host="172.17.0.1",
+            headers={"X-Forwarded-For": "203.0.113.50, 172.17.0.1"},
         )
         await check_ip_rate_limit(request)
-        # Leftmost IP is the original client
+        # Leftmost IP in XFF is the original client
         mock_redis.incr.assert_awaited_once_with("ratelimit:ip:203.0.113.50")
 
 
@@ -117,14 +118,13 @@ async def test_check_ip_rate_limit_falls_back_to_client_host():
 
 
 @pytest.mark.anyio
-async def test_check_ip_rate_limit_unknown_ip_handled_gracefully():
-    """If request.client is None, the key should use 'unknown'."""
-    with patch("app.core.rate_limit.redis_client") as mock_redis:
-        mock_redis.incr = AsyncMock(return_value=1)
-        mock_redis.expire = AsyncMock(return_value=True)
-        request = make_mock_request(client_host=None, headers={})
+async def test_check_ip_rate_limit_raises_400_when_client_ip_unknown():
+    """If request.client is None, a 400 is raised immediately (no shared 'unknown' bucket)."""
+    request = make_mock_request(client_host=None, headers={})
+    with pytest.raises(HTTPException) as exc_info:
         await check_ip_rate_limit(request)
-        mock_redis.incr.assert_awaited_once_with("ratelimit:ip:unknown")
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+    assert exc_info.value.detail == "Client IP cannot be determined"
 
 
 # ---------------------------------------------------------------------------

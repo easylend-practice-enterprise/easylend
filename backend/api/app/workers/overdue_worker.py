@@ -1,51 +1,56 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
 from app.db.database import AsyncSessionLocal
 from app.db.models import Loan, LoanStatus
+from app.db.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVAL_HOURS = 1
+BATCH_SIZE = 100
+# Distributed lock TTL must be strictly shorter than the run interval to ensure
+# the lock is released before the next expected run.
+DISTRIBUTED_LOCK_TTL_SECONDS = 3500
 
 
-async def process_overdue_loans(
-    db: Any,
-    *,
-    now: datetime | None = None,
-) -> int:
-    """Mark ACTIVE loans past their due_date as OVERDUE.
-
-    Args:
-        db: An AsyncSession instance.
-        now: Optional reference time (defaults to utcnow). Exposed for testing.
-
-    Returns:
-        The number of loans that were transitioned to OVERDUE.
+async def _process_single_loan(
+    loan_id: UUID,
+    reference_now: datetime,
+) -> bool:
     """
-    reference_now = now or datetime.now(UTC)
+    Process one overdue loan in its own transaction.
 
-    overdue_result = await db.execute(
-        select(Loan)
-        .where(
-            Loan.loan_status == LoanStatus.ACTIVE,
-            Loan.due_date.is_not(None),
-            Loan.due_date < reference_now,
-            Loan.asset.has(is_deleted=False),
-        )
-        .with_for_update(skip_locked=True)
-    )
-    overdue_loans = overdue_result.scalars().all()
+    Acquires a NOWAIT lock on the specific loan row before mutating. If the row
+    is already locked (e.g. concurrent checkout), skips this loan cleanly.
 
-    if not overdue_loans:
-        return 0
+    Returns True if the loan was successfully marked OVERDUE, False otherwise.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
+            )
+        except OperationalError:
+            # Another worker has the row locked — skip.
+            return False
 
-    for loan in overdue_loans:
+        loan = result.scalar_one_or_none()
+        if loan is None:
+            return False
+
+        # Re-check conditions inside the row lock to prevent TOCTOU races.
+        if loan.loan_status != LoanStatus.ACTIVE:
+            return False
+        if loan.due_date is None or loan.due_date >= reference_now:
+            return False
+
         loan.loan_status = LoanStatus.OVERDUE
         await log_audit_event(
             db,
@@ -55,9 +60,64 @@ async def process_overdue_loans(
                 "asset_id": str(loan.asset_id),
             },
         )
+        await db.commit()
+        return True
 
-    await db.commit()
-    return len(overdue_loans)
+
+async def process_overdue_loans(
+    *,
+    now: datetime | None = None,
+) -> int:
+    """
+    Mark ACTIVE loans past their due_date as OVERDUE.
+
+    Fetches loan IDs in batches (no lock held on the result set) then processes
+    each loan individually in its own transaction with a per-row NOWAIT lock.
+    A distributed Redis lock ensures only one worker instance runs per interval.
+
+    Args:
+        now: Optional reference time (defaults to utcnow). Exposed for testing.
+
+    Returns:
+        The number of loans that were transitioned to OVERDUE.
+    """
+    reference_now = now or datetime.now(UTC)
+    total_processed = 0
+    offset = 0
+
+    while True:
+        # Fetch a batch of overdue loan IDs only (no row lock held on this result).
+        # Using yield_per would keep a cursor open — fetching IDs in small batches
+        # achieves the same memory safety without cursor complexity.
+        result = await AsyncSessionLocal().execute(
+            select(Loan.loan_id)
+            .where(
+                Loan.loan_status == LoanStatus.ACTIVE,
+                Loan.due_date.is_not(None),
+                Loan.due_date < reference_now,
+                Loan.asset.has(is_deleted=False),
+            )
+            .order_by(Loan.due_date)
+            .offset(offset)
+            .limit(BATCH_SIZE)
+        )
+        batch_ids = list(result.scalars().all())
+
+        if not batch_ids:
+            break
+
+        for loan_id in batch_ids:
+            try:
+                processed = await _process_single_loan(loan_id, reference_now)
+                if processed:
+                    total_processed += 1
+            except Exception:
+                logger.exception("Failed to process overdue loan_id=%s", loan_id)
+                # Continue to next loan — one failure must not stop the batch.
+
+        offset += BATCH_SIZE
+
+    return total_processed
 
 
 async def overdue_worker_loop(
@@ -68,8 +128,25 @@ async def overdue_worker_loop(
     interval_seconds = interval_hours * 3600
     while not stop_event.is_set():
         try:
-            async with AsyncSessionLocal() as db:
-                await process_overdue_loans(db)
+            # Distributed lock: only one instance of the worker runs per interval.
+            # NX=True means SET only if key does not exist. EX sets TTL in seconds.
+            lock_acquired = await redis_client.set(
+                "lock:overdue-worker",
+                "1",
+                nx=True,
+                ex=DISTRIBUTED_LOCK_TTL_SECONDS,
+            )
+            if lock_acquired:
+                processed = await process_overdue_loans()
+                if processed:
+                    logger.info(
+                        "Overdue worker: marked %d loan(s) as OVERDUE.",
+                        processed,
+                    )
+            else:
+                logger.debug(
+                    "Overdue worker: lock held by another instance, skipping this cycle."
+                )
         except Exception:
             logger.exception("Overdue worker iteration failed")
 

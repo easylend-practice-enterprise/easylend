@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
@@ -14,36 +14,47 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MINUTES = 3
 DEFAULT_INTERVAL_SECONDS = 60
+BATCH_SIZE = 100
 
 
-async def process_reserved_loan_timeouts(
-    db: Any,
-    *,
-    now: datetime | None = None,
-    timeout_minutes: int = DEFAULT_TIMEOUT_MINUTES,
-) -> int:
-    reference_now = now or datetime.now(UTC)
+async def _process_single_reserved_loan(
+    loan_id: UUID,
+    reference_now: datetime,
+    timeout_minutes: int,
+) -> bool:
+    """
+    Process one RESERVED loan timeout in its own transaction.
+
+    Acquires a NOWAIT lock on the loan, asset, and locker rows before mutating.
+    If any row is already locked (e.g. concurrent checkout), skips cleanly.
+
+    Returns True if the loan was transitioned, False otherwise.
+    """
     cutoff = reference_now - timedelta(minutes=timeout_minutes)
-
-    timed_out_loans_result = await db.execute(
-        select(Loan)
-        .where(
-            Loan.loan_status == LoanStatus.RESERVED,
-            Loan.reserved_at.is_not(None),
-            Loan.reserved_at < cutoff,
-            Loan.asset.has(is_deleted=False),  # skip loans for soft-deleted assets
-        )
-        .with_for_update(skip_locked=True)
-    )
-    timed_out_loans = timed_out_loans_result.scalars().all()
-
-    if not timed_out_loans:
-        return 0
-
-    for loan in timed_out_loans:
+    async with AsyncSessionLocal() as db:
         try:
-            # Lock related rows in a deterministic order (Asset -> Locker)
-            # to match the vision flow and reduce deadlock risk.
+            # Lock loan row first (deterministic order: Asset -> Locker).
+            loan_result = await db.execute(
+                select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
+            )
+        except OperationalError:
+            # Another transaction holds the loan lock — skip.
+            return False
+
+        loan = loan_result.scalar_one_or_none()
+        if loan is None:
+            return False
+
+        # Re-check conditions inside the row lock (TOCTOU prevention).
+        if loan.loan_status != LoanStatus.RESERVED:
+            return False
+        if loan.reserved_at is None or loan.reserved_at >= cutoff:
+            return False
+
+        # Lock related rows in deterministic order (Asset -> Locker).
+        asset = None
+        locker = None
+        try:
             asset_result = await db.execute(
                 select(Asset)
                 .where(Asset.asset_id == loan.asset_id)
@@ -51,19 +62,21 @@ async def process_reserved_loan_timeouts(
             )
             asset = asset_result.scalar_one_or_none()
 
-            locker_result = await db.execute(
-                select(Locker)
-                .where(Locker.locker_id == loan.checkout_locker_id)
-                .with_for_update(nowait=True)
-            )
-            locker = locker_result.scalar_one_or_none()
+            if loan.checkout_locker_id is not None:
+                locker_result = await db.execute(
+                    select(Locker)
+                    .where(Locker.locker_id == loan.checkout_locker_id)
+                    .with_for_update(nowait=True)
+                )
+                locker = locker_result.scalar_one_or_none()
         except OperationalError:
-            await db.rollback()
-            continue
+            # A related row is locked — skip this loan, retry next cycle.
+            return False
 
+        # Apply state mutations inside the lock.
         loan.loan_status = LoanStatus.PENDING_INSPECTION
 
-        locker_id = None
+        locker_id: str | None = None
         if locker is not None:
             locker.locker_status = LockerStatus.MAINTENANCE
             locker_id = str(locker.locker_id)
@@ -83,9 +96,67 @@ async def process_reserved_loan_timeouts(
             action_type="LOAN_RESERVED_TIMEOUT",
             payload=payload,
         )
+        await db.commit()
+        return True
 
-    await db.commit()
-    return len(timed_out_loans)
+
+async def process_reserved_loan_timeouts(
+    *,
+    now: datetime | None = None,
+    timeout_minutes: int = DEFAULT_TIMEOUT_MINUTES,
+) -> int:
+    """
+    Mark RESERVED loans that have exceeded the timeout as PENDING_INSPECTION.
+
+    Fetches loan IDs in batches then processes each individually in its own
+    transaction with per-row NOWAIT locks. One loan failure does not affect others.
+
+    Args:
+        now: Optional reference time (defaults to utcnow). Exposed for testing.
+        timeout_minutes: Minutes after reserved_at after which a loan times out.
+
+    Returns:
+        The number of loans transitioned to PENDING_INSPECTION.
+    """
+    reference_now = now or datetime.now(UTC)
+    total_processed = 0
+    offset = 0
+
+    while True:
+        cutoff = reference_now - timedelta(minutes=timeout_minutes)
+        result = await AsyncSessionLocal().execute(
+            select(Loan.loan_id)
+            .where(
+                Loan.loan_status == LoanStatus.RESERVED,
+                Loan.reserved_at.is_not(None),
+                Loan.reserved_at < cutoff,
+                Loan.asset.has(is_deleted=False),
+            )
+            .order_by(Loan.reserved_at)
+            .offset(offset)
+            .limit(BATCH_SIZE)
+        )
+        batch_ids = list(result.scalars().all())
+
+        if not batch_ids:
+            break
+
+        for loan_id in batch_ids:
+            try:
+                processed = await _process_single_reserved_loan(
+                    loan_id,
+                    reference_now,
+                    timeout_minutes,
+                )
+                if processed:
+                    total_processed += 1
+            except Exception:
+                logger.exception("Failed to process timeout for loan_id=%s", loan_id)
+                # Continue to next loan.
+
+        offset += BATCH_SIZE
+
+    return total_processed
 
 
 async def reserved_loan_timeout_worker_loop(
@@ -96,10 +167,13 @@ async def reserved_loan_timeout_worker_loop(
 ) -> None:
     while not stop_event.is_set():
         try:
-            async with AsyncSessionLocal() as db:
-                await process_reserved_loan_timeouts(
-                    db,
-                    timeout_minutes=timeout_minutes,
+            processed = await process_reserved_loan_timeouts(
+                timeout_minutes=timeout_minutes,
+            )
+            if processed:
+                logger.info(
+                    "Reserved-loan timeout worker: marked %d loan(s) as PENDING_INSPECTION.",
+                    processed,
                 )
         except Exception:
             logger.exception("Reserved-loan timeout worker iteration failed")
