@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
 from app.db.database import AsyncSessionLocal
@@ -30,6 +31,7 @@ async def process_reserved_loan_timeouts(
             Loan.loan_status == LoanStatus.RESERVED,
             Loan.reserved_at.is_not(None),
             Loan.reserved_at < cutoff,
+            Loan.asset.has(is_deleted=False),  # skip loans for soft-deleted assets
         )
         .with_for_update(skip_locked=True)
     )
@@ -39,22 +41,33 @@ async def process_reserved_loan_timeouts(
         return 0
 
     for loan in timed_out_loans:
+        try:
+            # Lock related rows in a deterministic order (Asset -> Locker)
+            # to match the vision flow and reduce deadlock risk.
+            asset_result = await db.execute(
+                select(Asset)
+                .where(Asset.asset_id == loan.asset_id)
+                .with_for_update(nowait=True)
+            )
+            asset = asset_result.scalar_one_or_none()
+
+            locker_result = await db.execute(
+                select(Locker)
+                .where(Locker.locker_id == loan.checkout_locker_id)
+                .with_for_update(nowait=True)
+            )
+            locker = locker_result.scalar_one_or_none()
+        except OperationalError:
+            await db.rollback()
+            continue
+
         loan.loan_status = LoanStatus.PENDING_INSPECTION
 
-        locker_result = await db.execute(
-            select(Locker).where(Locker.locker_id == loan.checkout_locker_id)
-        )
-        locker = locker_result.scalar_one_or_none()
         locker_id = None
         if locker is not None:
             locker.locker_status = LockerStatus.MAINTENANCE
             locker_id = str(locker.locker_id)
 
-        # Fetch the asset to prevent it from being orphaned
-        asset_result = await db.execute(
-            select(Asset).where(Asset.asset_id == loan.asset_id)
-        )
-        asset = asset_result.scalar_one_or_none()
         if asset is not None:
             asset.asset_status = AssetStatus.PENDING_INSPECTION
             asset.locker_id = locker.locker_id if locker is not None else None

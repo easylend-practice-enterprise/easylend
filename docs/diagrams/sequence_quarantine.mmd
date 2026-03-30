@@ -5,27 +5,47 @@ sequenceDiagram
     participant Admin as Administrator
 
     Note over API,VB: System is in PENDING_INSPECTION state (orange LED active)
+    Note over API,VB: Locker is OCCUPIED, asset is PENDING_INSPECTION
 
-    Admin->>API: GET /api/v1/admin/loans?status=PENDING_INSPECTION [JWT admin]
-    API-->>Admin: List of loans in quarantine
+    Admin->>API: GET /api/v1/admin/quarantine [JWT Admin]
+    Note over Admin,API: Paginated list: skip, limit query params
+    API-->>Admin: List[QuarantineLoanView] {loan_id, asset_name, user_name, kiosk_name, loan_status, ...}
 
-    Admin->>API: GET /api/v1/admin/evaluations/{evaluation_id}
-    API->>DB: SELECT loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence FROM ai_evaluations WHERE evaluation_id = {evaluation_id}
-    DB-->>API: loan_id, asset_id, photo_url, detected_objects, has_damage_detected, ai_confidence
-    API-->>Admin: Photo (photo_url), detected objects (detected_objects), damage indicator (has_damage_detected), AI confidence (ai_confidence) (incl. loan_id, asset_id)
+    Admin->>API: GET /api/v1/admin/evaluations/{loan_id} [JWT Admin]
+    Note over Admin,API: Returns most recent evaluation for the loan (ordered by analyzed_at DESC)
+    API->>DB: SELECT * FROM ai_evaluations WHERE loan_id = ? ORDER BY analyzed_at DESC LIMIT 1
+    DB-->>API: evaluation record
+    API-->>Admin: EvaluationDetailView {evaluation_id, evaluation_type, photo_url, ai_confidence, has_damage_detected, detected_objects, model_version, analyzed_at}
 
-    alt Administrator approves damage (Real damage or Fraud)
-        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: true}
-        API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = {loan_id}
-        API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = {asset_id}
-        API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_CONFIRMED'}
-        API-->>Admin: 200 OK (Damage confirmed, user flagged)
-    else Administrator rejects AI report (False positive)
-        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id} {is_approved: false}
-        API->>DB: UPDATE loans SET loan_status = 'COMPLETED' WHERE loan_id = {loan_id}
-        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = {asset_id}
-        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = <return_locker_id>
-        API->>DB: INSERT INTO audit_logs {action_type: 'DAMAGE_REJECTED_FALSE_POSITIVE'}
-        API->>VB: WSS: set_led {locker_id: <return_locker_id>, color: green}
-        API-->>Admin: 200 OK (Quarantine lifted)
+    Note over Admin: Admin reviews photo and AI report
+
+    alt Administrator approves (AI was correct: damage is real)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: true, rejection_reason?}
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        API->>DB: UPDATE ai_evaluations SET is_approved = true, rejection_reason = ? WHERE evaluation_id = ?
+        API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = ?
+        API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = ?
+        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_APPROVED', payload: {evaluation_id, loan_id, is_approved}}
+        Note over API,VB: Fire-and-forget: WSS command sent, no slot_opened event processed
+        API->>VB: WSS: set_led {locker_id: logical_number, color: red}
+        API-->>Admin: 204 No Content
+    else Administrator rejects (AI was wrong: false positive)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: false, rejection_reason}
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        API->>DB: UPDATE ai_evaluations SET is_approved = false, rejection_reason = ? WHERE evaluation_id = ?
+
+        alt Evaluation was CHECKOUT type
+            API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
+            API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+        else Evaluation was RETURN type
+            API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
+            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+        end
+
+        API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_REJECTED', payload: {evaluation_id, loan_id, is_approved}}
+        API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+        API-->>Admin: 204 No Content
     end

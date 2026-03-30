@@ -67,3 +67,5 @@ __pycache__/
 datasets/
 runs/
 *_openvino_model/
+
+.claude/

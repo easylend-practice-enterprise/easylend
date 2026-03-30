@@ -20,6 +20,8 @@ class LoanBase(BaseModel):
     returned_at).
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     user_id: UUID
     asset_id: UUID
     checkout_locker_id: UUID
@@ -50,6 +52,8 @@ class LoanResponse(LoanBase):
 class LoanListResponse(BaseModel):
     """Paginated list of loans."""
 
+    model_config = ConfigDict(extra="forbid")
+
     items: list[LoanResponse]
     total: int
 
@@ -68,6 +72,8 @@ class CheckoutRequest(BaseModel):
     record, and then frees the locker.
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     aztec_code: str = Field(..., min_length=1, max_length=100)
 
 
@@ -78,6 +84,8 @@ class ReturnInitiateRequest(BaseModel):
     locker at the kiosk identified by ``kiosk_id`` (the kiosk where the
     user is currently standing), and begins the return process.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     loan_id: UUID
     kiosk_id: UUID

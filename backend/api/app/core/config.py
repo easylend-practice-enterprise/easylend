@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,6 +23,10 @@ class Settings(BaseSettings):
     VISION_BOX_API_KEY: str = _DUMMY_SECRET
     SIMULATION_API_KEY: str = _DUMMY_SECRET
     JWT_ALGORITHM: str = "HS256"
+    # Absolute path to the upload directory. Defaults to ./uploads relative to
+    # the app root (i.e. one level above the api/ directory). Can be overridden
+    # via the UPLOAD_DIR environment variable.
+    UPLOAD_DIR: Path = Path(__file__).parent.parent.parent / "uploads"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 

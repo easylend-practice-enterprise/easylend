@@ -1,22 +1,28 @@
+import logging
+
 from redis.asyncio import Redis
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 
 async def check_redis_connection():
     try:
-        await redis_client.ping()  # type: ignore
-        print("Successfully connected to Redis Cache.")
-    except Exception as e:
-        print(f"Could not connect to Redis: {e}")
+        await redis_client.ping()
+        logger.info("Successfully connected to Redis Cache.")
+    except Exception as exc:
+        logger.warning("Could not connect to Redis: %s", exc)
 
 
 async def store_refresh_token(user_id: str, jti: str, expires_in_seconds: int):
     """
     Stores a valid refresh token in the Redis whitelist.
     """
+    if expires_in_seconds <= 0:
+        raise ValueError("expires_in_seconds must be a positive integer.")
     await redis_client.setex(f"refresh:{user_id}:{jti}", expires_in_seconds, "valid")
 
 

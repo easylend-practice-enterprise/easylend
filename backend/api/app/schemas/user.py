@@ -5,6 +5,8 @@ from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr = Field(..., max_length=255)
@@ -17,6 +19,8 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     first_name: str | None = Field(default=None, min_length=1, max_length=100)
     last_name: str | None = Field(default=None, min_length=1, max_length=100)
     email: EmailStr | None = Field(default=None, max_length=255)
@@ -30,6 +34,8 @@ class UserUpdate(BaseModel):
 
 
 class UserNfcUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
 
 
@@ -57,5 +63,7 @@ class UserResponse(BaseModel):
 
 
 class UserListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[UserResponse]
     total: int

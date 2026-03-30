@@ -59,7 +59,7 @@ erDiagram
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
-        uuid locker_id FK "Nullable: NULL when on loan"
+        uuid locker_id FK "Nullable: NULL when on loan or in inspection"
         varchar name
         varchar aztec_code UK
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
@@ -76,20 +76,23 @@ erDiagram
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
         timestamp returned_at "Nullable"
-        enum loan_status "RESERVED, ACTIVE, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
+    %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
+    %%     (409 if loan_status != RETURNING for a RETURN evaluation).
     
     AI_EVALUATIONS {
         uuid evaluation_id PK
         uuid loan_id FK
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
-        float ai_confidence
-        jsonb detected_objects "E.g. Aztec code location, object type"
+        float ai_confidence "NOT NULL: 0.0 when no detections"
+        jsonb detected_objects "E.g. detections list with bounding boxes"
         boolean has_damage_detected "Quickly filter problem evaluations"
-        varchar model_version
-        boolean is_approved
-        varchar rejection_reason "Nullable"
+        varchar model_version "NOT NULL: e.g. 'yolo26-dual-model'"
+        boolean is_approved "Nullable: set by admin judge endpoint"
+        varchar rejection_reason "Nullable: admin note when is_approved=false"
         timestamp analyzed_at
     }
 
@@ -97,7 +100,7 @@ erDiagram
         uuid damage_id PK
         uuid evaluation_id FK
         varchar damage_type "E.g. scratch, crack, missing key"
-        varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
+        varchar severity "Free-form string"
         jsonb segmentation_data "YOLO polygon/bounding box coordinates"
         boolean requires_repair
     }
@@ -105,9 +108,9 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
         jsonb payload
-        varchar previous_hash
-        varchar current_hash
+        varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
+        varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"
         timestamp created_at
     }

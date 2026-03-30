@@ -2,14 +2,16 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
 from app.core.config import settings
+from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
 from app.db.models import User
 from app.db.redis import (
@@ -34,16 +36,22 @@ _REFRESH_TOKEN_TTL_SECONDS = int(
 
 
 class NfcLoginRequest(BaseModel):
-    nfc_tag_id: str
+    model_config = ConfigDict(extra="forbid")
+
+    nfc_tag_id: str = Field(..., min_length=1, max_length=100)
 
 
 class PinLoginRequest(BaseModel):
-    nfc_tag_id: str
-    pin: str
+    model_config = ConfigDict(extra="forbid")
+
+    nfc_tag_id: str = Field(..., min_length=1, max_length=100)
+    pin: str = Field(..., min_length=4, max_length=32)
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str = Field(..., min_length=1, max_length=2048)
 
 
 class TokenResponse(BaseModel):
@@ -56,7 +64,9 @@ class TokenResponse(BaseModel):
 
 
 async def _get_active_user_by_nfc(
-    nfc_tag_id: str, db: AsyncSession, lock_row: bool = False
+    nfc_tag_id: str,
+    db: AsyncSession,
+    lock_row: bool = False,
 ) -> User:
     """
     Fetches a user by nfc_tag_id with the role eagerly loaded.
@@ -71,20 +81,39 @@ async def _get_active_user_by_nfc(
     )
 
     if lock_row:
-        query = query.with_for_update()
+        query = query.with_for_update(nowait=True)
 
-    result = await db.execute(query)
+    try:
+        result = await db.execute(query)
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Account is currently in use. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
     user = result.scalar_one_or_none()
 
-    if (
-        user is None
-        or not user.is_active
-        or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
-    ):
+    if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
         )
+
+    if user.locked_until:
+        if user.locked_until > datetime.now(UTC):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid NFC badge or account status.",
+            )
+        else:
+            # Lockout has expired, grant a fresh set of attempts.
+            # This state is committed by the caller in the normal login flow.
+            user.locked_until = None
+            user.failed_login_attempts = 0
 
     return user
 
@@ -133,19 +162,29 @@ async def pin_login(
 
     Public endpoint for the kiosk sign-in flow.
     """
-    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=True)
+    user = await _get_active_user_by_nfc(
+        body.nfc_tag_id,
+        db,
+        lock_row=True,
+    )
 
     if not security.verify_pin(body.pin, user.pin_hash):
         user.failed_login_attempts += 1
+        remaining_attempts = max(_MAX_ATTEMPTS - user.failed_login_attempts, 0)
+
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
-            # Reset the counter when applying a lockout so that after the lockout
-            # period, the user gets a fresh set of _MAX_ATTEMPTS attempts.
-            user.failed_login_attempts = 0
+            user.failed_login_attempts = _MAX_ATTEMPTS
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is locked. Try again later.",
+            )
+
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid PIN.",
+            detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",
         )
 
     # Successful login: reset brute-force counters
@@ -182,11 +221,11 @@ async def refresh_access_token(
     # 1. Decode and validate the signature and token type
     try:
         refresh_payload = security.verify_refresh_token(body.refresh_token)
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
-        ) from e
+            detail="Invalid or expired refresh token.",
+        )
 
     # 2. Atomically consume the token (prevents token replay / race conditions)
     try:

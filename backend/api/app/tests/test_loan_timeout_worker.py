@@ -50,10 +50,10 @@ async def test_process_reserved_loan_timeouts_updates_loan_locker_and_audit():
 
     # Execute order in process_reserved_loan_timeouts:
     # [1] query timed-out reserved loans
-    # [2] query checkout locker
-    # [3] query asset
+    # [2] query asset
+    # [3] query checkout locker
     # [4] query most recent audit log (inside log_audit_event)
-    fake_db = _QueuedSession([loan], locker, asset, None)
+    fake_db = _QueuedSession([loan], asset, locker, None)
 
     processed_count = await process_reserved_loan_timeouts(fake_db, now=now)
 

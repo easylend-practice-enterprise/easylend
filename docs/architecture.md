@@ -115,8 +115,9 @@ flowchart TD
 
 ## 2. Security & Core Principles
 
-* **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **strictly rate-limited in Step 12** (not yet active in V1). `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`.
-* **Cryptographic Audit Trail:** All critical transactions (`LOGIN`, `DOOR_OPENED`, `SELF_DECLARATION`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row, making the database *tamper-proof*. **Implementation status:** the `AUDIT_LOGS` schema is available from Step 1; the hash-chaining mechanism and tamper-detection endpoint (`GET /api/v1/audit`) will be implemented in Step 13 (Phase 2, after the transaction logic).
+* **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **strictly rate-limited in Step 12** (not yet active in V1). `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`. The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
+* **Role Management:** Admins can enumerate available system roles via `GET /api/v1/roles` (Bearer JWT required).
+* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `ADMIN_FORCED_OPEN`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `ASSET_SOFT_DELETED`, `LOAN_RESERVED_TIMEOUT`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
 * **No Hardcoding:** Hardcoded IP addresses or secrets are prohibited. Everything is configured via a `.env` file, strictly validated by FastAPI `pydantic-settings`.
 * **Database Isolation:** The database is not exposed to the internet (`0.0.0.0` is prohibited) and is accessed by developers via an SSH Tunnel to `127.0.0.1`.
 * **PXE Live Boot Service:** This component is visible in the logical topology but falls **outside the scope of the current implementation (V1/MVP)**. PXE is planned for V2 (Post-MVP). References to `PXE_CHECK` audit actions and PXE-boot hardware tests are reserved for that release.
@@ -132,6 +133,8 @@ The data model (PostgreSQL) is strictly normalised (3NF) and specifically design
 3. **JSONB for Flexibility (NoSQL in SQL):** Because hardware checks and AI models generate unpredictable or varying data structures, we use the powerful `JSONB` data type of PostgreSQL.
    * `AI_EVALUATIONS.detected_objects` stores the raw bounding-box data.
    * `AUDIT_LOGS.payload` captures everything from hardware events to self-declarations (`{"has_damage": false}`). PXE-boot hardware tests (`{"ram_ok": true}`) are reserved for V2 (Post-MVP).
+
+4. **Soft Delete:** Assets are never physically deleted from the database. Setting `is_deleted = true` on an asset is gated by an active-loan guard: the operation returns `409 Conflict` if the asset has any `ACTIVE` or `RESERVED` loans. On successful soft-delete, `asset.locker_id` is set to `NULL` and the associated `Locker.locker_status` transitions to `AVAILABLE`. An `ASSET_SOFT_DELETED` audit event is written to the audit trail.
 
 ### Entity Relationship Diagram
 
@@ -197,7 +200,7 @@ erDiagram
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
-        uuid locker_id FK "Nullable: NULL when on loan"
+        uuid locker_id FK "Nullable: NULL when on loan or in inspection"
         varchar name
         varchar aztec_code UK
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
@@ -214,20 +217,23 @@ erDiagram
         timestamp borrowed_at "Nullable"
         timestamp due_date "Nullable"
         timestamp returned_at "Nullable"
-        enum loan_status "RESERVED, ACTIVE, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
+    %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
+    %%     (409 if loan_status != RETURNING for a RETURN evaluation).
     
     AI_EVALUATIONS {
         uuid evaluation_id PK
         uuid loan_id FK
         enum evaluation_type "CHECKOUT, RETURN"
         varchar photo_url
-        float ai_confidence
-        jsonb detected_objects "E.g. Aztec code location, object type"
+        float ai_confidence "NOT NULL: 0.0 when no detections"
+        jsonb detected_objects "E.g. detections list with bounding boxes"
         boolean has_damage_detected "Quickly filter problem evaluations"
-        varchar model_version
-        boolean is_approved
-        varchar rejection_reason "Nullable"
+        varchar model_version "NOT NULL: e.g. 'yolo26-dual-model'"
+        boolean is_approved "Nullable: set by admin judge endpoint"
+        varchar rejection_reason "Nullable: admin note when is_approved=false"
         timestamp analyzed_at
     }
 
@@ -235,7 +241,7 @@ erDiagram
         uuid damage_id PK
         uuid evaluation_id FK
         varchar damage_type "E.g. scratch, crack, missing key"
-        varchar severity "LOW, MEDIUM, HIGH, CRITICAL"
+        varchar severity "Free-form string"
         jsonb segmentation_data "YOLO polygon/bounding box coordinates"
         boolean requires_repair
     }
@@ -243,10 +249,10 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        enum action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOGIN_SUCCESS, LOGIN_FAILED"
         jsonb payload
-        varchar previous_hash
-        varchar current_hash
+        varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
+        varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"
         timestamp created_at
     }
 
@@ -258,3 +264,7 @@ To ensure system health without heavy overhead, we use lightweight, isolated too
 
 * **Monitoring:** Uptime Kuma runs internally in the Docker stack and monitors the FastAPI health endpoints and database connection.
 * **Backups (Disaster Recovery):** The database is backed up daily to an off-site cloud location, completely outside the scope of the application logic.
+
+### Background Workers
+
+* **Reserved Loan Timeout Worker:** Every 60 seconds, the worker scans for `RESERVED` loans older than 3 minutes (configurable). Transitions them to `PENDING_INSPECTION`, sets the locker to `MAINTENANCE`, and writes a `LOAN_RESERVED_TIMEOUT` audit event. Prevents stuck reservations from blocking the kiosk.

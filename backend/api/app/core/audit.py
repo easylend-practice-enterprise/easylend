@@ -3,6 +3,7 @@ import json
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AuditLog
@@ -19,13 +20,37 @@ def _compute_audit_hash(previous_hash: str, action_type: str, payload: dict) -> 
 async def log_audit_event(
     db: AsyncSession,
     action_type: str,
-    payload: dict,
+    payload: dict | None,
     user_id: UUID | None = None,
 ) -> AuditLog:
-    last_audit_result = await db.execute(
-        select(AuditLog).order_by(AuditLog.created_at.desc()).limit(1).with_for_update()
-    )
+    """Write an audit log entry with hash-chain integrity.
+
+    Uses `FOR UPDATE NOWAIT` to acquire a lock on the most-recent audit row
+    without blocking concurrent writers. If the lock is already held, the call
+    is retried once after a brief delay; if contention persists, the error
+    is propagated so callers can handle it.
+    """
+    for attempt in range(2):
+        try:
+            last_audit_result = await db.execute(
+                select(AuditLog)
+                .order_by(AuditLog.created_at.desc())
+                .limit(1)
+                .with_for_update(nowait=True)
+            )
+            break
+        except OperationalError:
+            if attempt == 0:
+                import asyncio
+
+                await asyncio.sleep(0.05)
+                continue
+            raise
+
     last_audit = last_audit_result.scalar_one_or_none()
+    # Normalise None payload to empty dict — ensures the stored value and
+    # the hash computation are always consistent (null != {} in JSON).
+    payload = payload or {}
     previous_hash = (
         last_audit.current_hash if last_audit is not None else _GENESIS_AUDIT_HASH
     )

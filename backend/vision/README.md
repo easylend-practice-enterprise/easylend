@@ -12,7 +12,8 @@ The Vision Box (Raspberry Pi 4) forwards a photo to the Main API, which proxies 
 
 | Property | Value |
 | --- | --- |
-| Model | YOLO26 Medium (`yolo26m.pt`) |
+| Model | YOLO26 (`best.pt` → OpenVINO for inference) |
+| Dual-model system | Object detection (`/detect`) + damage segmentation (`/segment`) |
 | Framework | [Ultralytics](https://docs.ultralytics.com/) |
 | Training hardware | RTX 3090 (CUDA) |
 | Inference | Proxmox VM (CPU-only) |
@@ -56,6 +57,14 @@ The production environment uses Watchtower to automatically pull the latest imag
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+## Dual-Model System
+
+The Vision service uses a **dual-model approach**:
+1. **Detection model** (`POST /detect`): Counts objects in the locker image to determine if it is empty or occupied.
+2. **Segmentation model** (`POST /segment`): Detects physical damage on assets.
+
+Both models are called in parallel by the Main API during checkout and return evaluations. The Main API evaluates the combined result and transitions the loan accordingly.
+
 ## Model Management & Webhook
 
 To keep the Docker image small, the `models/` directory is excluded from the build.
@@ -72,9 +81,10 @@ curl -X POST http://localhost:8000/update-model \
 
 ## API Endpoints
 
-- `GET /health` - Check service status and model availability.
-- `POST /predict` - Upload an image (multipart/form-data) for object detection. Requires `Authorization: Bearer <VISION_API_KEY>`.
-- `POST /update-model` - Webhook to download new model weights safely. Requires auth.
+- `GET /health` - Check service status and model availability. Returns `model_loaded: true/false`.
+- `POST /detect` - Upload an image (multipart/form-data) for object detection. Returns `status`, `count`, `detections[]`, `locker_empty`. Requires `Authorization: Bearer <VISION_API_KEY>`.
+- `POST /segment` - Upload an image (multipart/form-data) for damage segmentation. Returns `status`, `has_damage_detected`. Requires `Authorization: Bearer <VISION_API_KEY>`.
+- `POST /update-model` - Webhook to download new model weights from a safe HTTPS URL. Triggers a service restart. Requires auth.
 
 ## Testing & Linting
 

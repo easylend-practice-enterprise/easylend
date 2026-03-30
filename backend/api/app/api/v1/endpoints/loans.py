@@ -12,6 +12,7 @@ Business rules (Step 10a, hardware-free path):
     first available locker at the user's kiosk without blocking peers.
 """
 
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -19,8 +20,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.core.db_utils import is_lock_not_available_error
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -42,24 +45,7 @@ from app.schemas.loan import (
     ReturnInitiateRequest,
 )
 
-
-def _is_lock_not_available_error(exc: OperationalError) -> bool:
-    """
-    Best-effort detection of a lock-not-available error coming from the DB.
-    We inspect the wrapped DBAPI error (exc.orig) for a lock-specific
-    SQLSTATE such as PostgreSQL's 55P03 ("lock_not_available").
-    """
-    orig = getattr(exc, "orig", None)
-    if orig is None:
-        return False
-    # PostgreSQL via psycopg/asyncpg exposes SQLSTATE here
-    pgcode = getattr(orig, "pgcode", None) or getattr(orig, "sqlstate", None)
-    if pgcode == "55P03":
-        return True
-
-    # Fallback for SQLite in tests
-    message = str(orig).lower()
-    return "database is locked" in message or "lock not available" in message
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/loans", tags=["loans"])
@@ -129,8 +115,18 @@ async def list_loans(
     - **Admin**: all loans in the system.
     - **Any other role**: only the caller's own loans.
     """
-    query = select(Loan)
-    count_query = select(func.count()).select_from(Loan)
+    query = (
+        select(Loan)
+        .options(selectinload(Loan.user), selectinload(Loan.asset))
+        .join(Asset, Loan.asset_id == Asset.asset_id)
+        .where(Asset.is_deleted.is_(False))
+    )
+    count_query = (
+        select(func.count())
+        .select_from(Loan)
+        .join(Asset, Loan.asset_id == Asset.asset_id)
+        .where(Asset.is_deleted.is_(False))
+    )
 
     if not _is_admin(current_user):
         query = query.where(Loan.user_id == current_user.user_id)
@@ -218,8 +214,8 @@ async def checkout(
     **State transitions (hardware-free path):**
     - `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)
     - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
-    - `Asset.locker_id`: cleared to `None` (asset leaves the locker)
-    - `Locker.locker_status`: `OCCUPIED` → `AVAILABLE` (locker is now empty)
+    - `Asset.locker_id`: unchanged until Vision confirms the checkout result
+    - `Locker.locker_status`: unchanged until Vision confirms the locker is empty
     - New `Loan` record created with `loan_status = RESERVED`
     """
     if not idempotency_key:
@@ -240,8 +236,7 @@ async def checkout(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
-            if _is_lock_not_available_error(exc):
+            if is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Asset is currently being processed. Please try again.",
@@ -255,21 +250,18 @@ async def checkout(
 
         # --- 2. Validate asset ---
         if asset is None or asset.is_deleted:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset not found.",
             )
 
         if asset.asset_status != AssetStatus.AVAILABLE:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset is not available for checkout.",
             )
 
         if asset.locker_id is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Asset has no assigned locker and cannot be checked out.",
@@ -285,8 +277,7 @@ async def checkout(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
-            if _is_lock_not_available_error(exc):
+            if is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Locker is currently being processed. Please try again.",
@@ -298,7 +289,6 @@ async def checkout(
         locker = locker_result.scalar_one_or_none()
 
         if locker is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Locker not found.",
@@ -307,18 +297,15 @@ async def checkout(
         # --- 3b. Hardware Pre-flight Check ---
         kiosk_id_str = str(locker.kiosk_id)
         if kiosk_id_str not in manager.active_connections:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The Vision Box for this locker is currently offline. Cannot checkout.",
             )
 
         # --- 4. Apply state mutations ---
-        # Asset leaves the locker → locker becomes available again
+        # Asset becomes BORROWED immediately; physical locker release is deferred
+        # until Vision confirms the checkout outcome.
         asset.asset_status = AssetStatus.BORROWED
-        asset.locker_id = None
-        if locker.locker_status == LockerStatus.OCCUPIED:
-            locker.locker_status = LockerStatus.AVAILABLE
 
         # --- 5. Create loan record ---
         loan = Loan(
@@ -331,7 +318,14 @@ async def checkout(
         db.add(loan)
         await db.flush()
 
-        # --- 6. Trigger Hardware to open the door (BEFORE COMMIT) ---
+        # --- 6. Commit DB state BEFORE sending hardware command ---
+        # This ensures the loan record is durable. If the hardware command
+        # fails after commit, the DB is consistent and the RESERVED loan will
+        # be cleaned up by the timeout worker.
+        await db.commit()
+        await db.refresh(loan)
+
+        # --- 7. Trigger Hardware to open the door ---
         command_ok = await manager.send_command(
             kiosk_id_str,
             {
@@ -342,18 +336,28 @@ async def checkout(
             },
         )
         if not command_ok:
-            await db.rollback()
+            # DB is committed (loan is RESERVED); hardware failed.
+            # The timeout worker will eventually clean this up.
+            # Log the inconsistency so ops can detect it.
+            logger.warning(
+                "Hardware command failed after DB commit for checkout loan=%s.",
+                loan.loan_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
             )
 
-        await db.commit()
-        await db.refresh(loan)
-
         return LoanResponse.model_validate(loan)
+    except HTTPException:
+        # Re-raise HTTPExceptions directly so FastAPI formats them correctly
+        await redis_client.delete(redis_key)
+        raise
     except Exception:
-        # Clean up idempotency key on any error to allow retries
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB during error handling.")
         await redis_client.delete(redis_key)
         raise
 
@@ -366,7 +370,7 @@ async def checkout(
 @router.post(
     "/return/initiate",
     response_model=LoanResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Loan is not in ACTIVE state"},
         401: {"description": "Not authenticated"},
@@ -451,8 +455,7 @@ async def return_initiate(
                 .with_for_update(nowait=True)
             )
         except OperationalError as exc:
-            await db.rollback()
-            if _is_lock_not_available_error(exc):
+            if is_lock_not_available_error(exc):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="A return is already in progress for this loan. Please try again shortly.",
@@ -464,28 +467,40 @@ async def return_initiate(
 
         locked_loan = locked_loan_result.scalar_one_or_none()
         if locked_loan is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Loan is no longer in a state that can be returned.",
             )
         loan = locked_loan
 
-        # --- 2. Find a free locker at this kiosk (SKIP LOCKED: non-blocking) ---
-        locker_result = await db.execute(
-            select(Locker)
-            .where(
-                Locker.kiosk_id == payload.kiosk_id,
-                Locker.locker_status == LockerStatus.AVAILABLE,
+        # --- 2. Find and lock a free locker at this kiosk (SKIP LOCKED + FOR UPDATE) ---
+        # SKIP LOCKED prevents blocking on other return requests.
+        # FOR UPDATE ensures the selected row is locked: no two concurrent
+        # requests can both select the same locker even with SKIP LOCKED.
+        try:
+            locker_result = await db.execute(
+                select(Locker)
+                .where(
+                    Locker.kiosk_id == payload.kiosk_id,
+                    Locker.locker_status == LockerStatus.AVAILABLE,
+                )
+                .order_by(Locker.logical_number)
+                .limit(1)
+                .with_for_update(skip_locked=True)
             )
-            .order_by(Locker.logical_number)
-            .limit(1)
-            .with_for_update(skip_locked=True)
-        )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="No available lockers at this kiosk. Please try again shortly.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
         locker = locker_result.scalar_one_or_none()
 
         if locker is None:
-            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="No available lockers at this kiosk. Please try again shortly.",
@@ -496,7 +511,14 @@ async def return_initiate(
         loan.return_locker_id = locker.locker_id
         loan.loan_status = LoanStatus.RETURNING
 
-        # --- 4. Trigger Hardware to open the door (BEFORE COMMIT) ---
+        # --- 4. Commit DB state BEFORE sending hardware command ---
+        # This ensures the loan record is durable. If the hardware command
+        # fails after commit, the DB is consistent and the RETURNING loan will
+        # be cleaned up by the timeout worker.
+        await db.commit()
+        await db.refresh(loan)
+
+        # --- 5. Trigger Hardware to open the door ---
         command_ok = await manager.send_command(
             kiosk_id_str,
             {
@@ -507,17 +529,26 @@ async def return_initiate(
             },
         )
         if not command_ok:
-            await db.rollback()
+            # DB is committed (loan is RETURNING); hardware failed.
+            # The timeout worker will eventually clean this up.
+            logger.warning(
+                "Hardware command failed after DB commit for return loan=%s.",
+                loan.loan_id,
+            )
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
             )
 
-        await db.commit()
-        await db.refresh(loan)
-
         return LoanResponse.model_validate(loan)
+    except HTTPException:
+        # Re-raise HTTPExceptions directly so FastAPI formats them correctly
+        await redis_client.delete(redis_key)
+        raise
     except Exception:
-        # Clean up idempotency key on any error to allow retries
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB during error handling.")
         await redis_client.delete(redis_key)
         raise

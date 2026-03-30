@@ -28,16 +28,25 @@ async def get_current_user(
 
     try:
         payload = security.verify_access_token(credentials.credentials)
-    except ValueError as e:
+    except (ValueError, Exception) as e:  # noqa: BLE001 — ValueError for bad token; broad catch for unexpected JWT errors
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e),
+            detail="Invalid or expired token.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
 
-    result = await db.execute(
-        select(User).options(selectinload(User.role)).where(User.user_id == payload.sub)
-    )
+    try:
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.role))
+            .where(User.user_id == payload.sub)
+        )
+    except Exception as exc:  # noqa: BLE001 — database unavailable
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable.",
+        ) from exc
+
     user = result.scalar_one_or_none()
 
     if user is None:

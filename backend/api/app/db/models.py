@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -250,15 +251,13 @@ class AIEvaluation(Base):
     ai_confidence: Mapped[float] = mapped_column(Float, nullable=False)
 
     detected_objects: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-
-    # Performance denormalization for fast queries without joins
     has_damage_detected: Mapped[bool] = mapped_column(Boolean, default=False)
 
     model_version: Mapped[str] = mapped_column(String(50), nullable=False)
     is_approved: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     analyzed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+        DateTime(timezone=True), default=func.now()
     )
 
     loan: Mapped["Loan"] = relationship("Loan", back_populates="evaluations")
@@ -280,8 +279,6 @@ class DamageReport(Base):
 
     damage_type: Mapped[str] = mapped_column(String(100), nullable=False)
     severity: Mapped[str] = mapped_column(String(50), nullable=False)
-
-    # YOLO26 bounding boxes / segmentations data
     segmentation_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     requires_repair: Mapped[bool] = mapped_column(Boolean, default=False)
 

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import WebSocket
@@ -37,16 +38,41 @@ class ConnectionManager:
             logger.info(f"Hardware client disconnected: kiosk_id={kiosk_id}")
 
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
-        if kiosk_id in self.active_connections:
-            websocket = self.active_connections[kiosk_id]
+        websocket = self.active_connections.get(kiosk_id)
+        if websocket:
             try:
-                await websocket.send_json(command)
+                # Use a short timeout to avoid blocking when the hardware TCP stack hangs.
+                await asyncio.wait_for(websocket.send_json(command), timeout=3.0)
                 return True
-            except Exception:
+            except asyncio.TimeoutError:  # noqa: UP041
+                logger.error("Send command to kiosk_id=%s timed out.", kiosk_id)
+                try:
+                    try:
+                        await websocket.close()
+                    except Exception:  # noqa: S110
+                        pass
+                    self.disconnect(kiosk_id, websocket)
+                except Exception:
+                    logger.exception(
+                        "Error while disconnecting websocket for kiosk_id=%s",
+                        kiosk_id,
+                    )
+                return False
+            except Exception as e:
                 logger.exception(
-                    "Failed to send command to kiosk_id=%s. Disconnecting.", kiosk_id
+                    "Error sending command to kiosk_id=%s: %s", kiosk_id, e
                 )
-                self.disconnect(kiosk_id, websocket)
+                try:
+                    try:
+                        await websocket.close()
+                    except Exception:  # noqa: S110
+                        pass
+                    self.disconnect(kiosk_id, websocket)
+                except Exception:
+                    logger.exception(
+                        "Error while disconnecting websocket for kiosk_id=%s",
+                        kiosk_id,
+                    )
                 return False
 
         logger.warning(
