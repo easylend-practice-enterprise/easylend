@@ -60,6 +60,7 @@ class UserResponse(BaseModel):
     locked_until: datetime | None
     is_active: bool
     ban_reason: str | None
+    is_anonymized: bool
 
 
 class UserListResponse(BaseModel):

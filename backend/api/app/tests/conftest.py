@@ -182,6 +182,7 @@ def _make_admin() -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
+        is_anonymized=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 
@@ -201,6 +202,7 @@ def _make_medewerker() -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
+        is_anonymized=False,
         role=SimpleNamespace(role_name="Staff"),
     )
 

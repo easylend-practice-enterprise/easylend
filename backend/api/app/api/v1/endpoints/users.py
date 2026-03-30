@@ -1,3 +1,4 @@
+import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core import security
+from app.core.audit import log_audit_event
 from app.db.database import get_db
 from app.db.models import Role, User
 from app.schemas.user import (
@@ -279,6 +281,58 @@ async def update_user(
             detail="Email address or NFC tag already exists.",
         )
 
+    return await _get_user_with_role_or_404(db, user_id)
+
+
+@router.post(
+    "/{user_id}/anonymize",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "User already anonymized"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+    },
+)
+async def anonymize_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_admin),
+) -> User:
+    """
+    Anonymize a user account (GDPR Right to be Forgotten).
+
+    Strips all PII: first_name, last_name, email, nfc_tag_id, pin_hash.
+    Sets is_active=False and is_anonymized=True.
+    Writes an audit log entry with action_type=USER_ANONYMIZED.
+
+    Requires Admin role.
+    """
+    user = await _get_user_with_role_or_404(db, user_id)
+
+    if user.is_anonymized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already anonymized.",
+        )
+
+    user.first_name = "Anonymized"
+    user.last_name = "User"
+    user.email = f"anon_{uuid.uuid4()}@easylend.local"
+    user.nfc_tag_id = None
+    user.pin_hash = "ANONYMIZED"
+    user.is_active = False
+    user.is_anonymized = True
+
+    await log_audit_event(
+        db,
+        action_type="USER_ANONYMIZED",
+        payload={"user_id": str(user_id)},
+        user_id=user_id,
+    )
+
+    await db.commit()
     return await _get_user_with_role_or_404(db, user_id)
 
 
