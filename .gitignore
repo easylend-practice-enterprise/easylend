@@ -69,3 +69,4 @@ runs/
 *_openvino_model/
 
 .claude/
+CLAUDE.md

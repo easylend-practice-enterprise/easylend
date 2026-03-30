@@ -390,13 +390,13 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
           --> [6] Redis integration
             --> [7] Users CRUD  <-- incl. PATCH /users/{id}/nfc
               --> [8] Kiosks --> Categories --> Lockers --> Assets CRUD (catalog pending)
-                --> [10a] Transaction CRUD (idempotency + timeout worker + audit pending)
+                --> [10a] Transaction CRUD (idempotency + timeout worker + audit)
                   --> [10b] Hardware & AI  <-- decision: Local Docker Volume
-                          WebSockets + fallback + /vision/analyze (PROXY DONE ✅)
+                          WebSockets + fallback + /vision/analyze
                     --> [10c] Admin Quarantine Dashboard
         --> [9] M2M Static Device Tokens (✅ DONE)
         --> [14] Overdue Worker (✅ DONE)
-[11] Input sanitisation (parallel, from step 10+)
+[11] Input sanitisation (parallel, from step 10+) ✅ DONE
 [12] Rate limiting (requires Redis: step 6) ✅ DONE
 [13] Hash-chaining audit logs (requires step 10a) ✅ DONE
 ```
