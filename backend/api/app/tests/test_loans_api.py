@@ -99,6 +99,7 @@ def _make_student(**kwargs) -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
+        is_anonymized=False,
         role=SimpleNamespace(role_name="Student"),
     )
 
@@ -136,6 +137,7 @@ def _make_loan(**kwargs) -> SimpleNamespace:
         due_date=None,
         returned_at=None,
         loan_status=kwargs.get("loan_status", "ACTIVE"),
+        evaluations=[],  # eager-loaded by export; empty list for test fixtures
     )
 
 

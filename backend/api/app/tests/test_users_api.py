@@ -423,6 +423,9 @@ def test_anonymize_user_success(client_with_overrides):
                 "pin_hash",
                 "is_active",
                 "is_anonymized",
+                "ban_reason",
+                "failed_login_attempts",
+                "locked_until",
                 "role",
             )
         },
@@ -433,14 +436,23 @@ def test_anonymize_user_success(client_with_overrides):
         pin_hash="ANONYMIZED",
         is_active=False,
         is_anonymized=True,
+        ban_reason=None,
+        failed_login_attempts=0,
+        locked_until=None,
         role=SimpleNamespace(role_name="Medewerker"),
     )
-    # DB execute order:
-    # [1] get_current_user                       → admin
-    # [2] _get_user_with_role_or_404             → target_user (mutated in-place)
-    # [3] log_audit_event execute (FOR UPDATE)   → None  (no prior audit log)
-    # [4] _get_user_with_role_or_404 after commit → anonymized_user
-    fake_db = _QueuedSession(admin, target_user, None, anonymized_user)
+    # DB execute order (log_audit_event is NOT patched so its internals DO pop):
+    # [1] get_current_user                        → admin
+    # [2] _get_user_with_role_or_404              → target_user (mutated in-place)
+    # [3] active loans check                      → None (no active loans)
+    # [4] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
+    #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log → pollutes scrub)
+    # [5] scrub audit query                        → [] (queue empty: in-session AuditLog returned)
+    # [6] _get_user_with_role_or_404 after commit  → anonymized_user
+    fake_audit_chain = SimpleNamespace(current_hash="0" * 64)
+    fake_db = _QueuedSession(
+        admin, target_user, None, fake_audit_chain, [], anonymized_user
+    )
     with client_with_overrides(fake_db) as client:
         response = client.post(
             f"/api/v1/users/{target_user.user_id}/anonymize",
@@ -454,7 +466,8 @@ def test_anonymize_user_success(client_with_overrides):
     assert response.json()["email"].endswith("@easylend.local")
     assert response.json()["nfc_tag_id"] is None
     assert response.json()["is_active"] is False
-    assert fake_db.commit_calls == 1
+    # 2 commits: user mutations + audit log entry (scrub returns [], no third commit)
+    assert fake_db.commit_calls == 2
     assert any(
         isinstance(o.__class__.__name__, str) and "AuditLog" in str(type(o))
         for o in fake_db.added
@@ -559,36 +572,49 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
 
-    # Track which commit attempt we're on so we can raise on #1 and succeed on #2.
-    commit_attempt = [0]
+    # Patch _get_user_with_role_or_404 to return the right user at each call.
+    _get_user_call = [0]
 
-    async def _fake_commit():
-        commit_attempt[0] += 1
-        if commit_attempt[0] == 1:
-            raise IntegrityError("stmt", "params", Exception("orig"))
-        # On second attempt, do nothing (commit simulated as successful).
+    async def _fake_get_user(db, uid):
+        _get_user_call[0] += 1
+        if _get_user_call[0] == 1:
+            return target_user
+        return anon_user
 
-    # Patch log_audit_event so it doesn't consume the db.execute queue.
+    # Patch log_audit_event so its internal selects don't consume the queue.
     fake_audit_log = AsyncMock()
 
-    # _QueuedSession returns anon_user on the final _get_user_with_role_or_404 call.
-    fake_db = _QueuedSession(admin, target_user, anon_user)
-    # Replace commit with our version that raises on attempt 1.
-    fake_db.commit = _fake_commit
+    # Use a minimal queue that covers get_current_user + active_loans calls.
+    # active_loans is called twice (once per loop iteration) and each call
+    # pops one slot. log_audit_event is patched so its internals don't pop.
+    # Queue slots: get_current_user, active_loans(1), active_loans(2), scrub
+    fake_db = _QueuedSession(admin, None, None, [])
 
-    with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
-        with client_with_overrides(fake_db) as client:
-            response = client.post(
-                f"/api/v1/users/{target_user.user_id}/anonymize",
-                headers=_bearer(admin),
-            )
+    class _RetryCommitSession(_QueuedSession):
+        def __init__(self, *items):
+            super().__init__(*items)
 
-    assert response.status_code == 200
+        async def commit(self):
+            self.commit_calls += 1
+            if self.commit_calls == 1:
+                raise IntegrityError("stmt", "params", Exception("orig"))
+
+    fake_db = _RetryCommitSession(admin, None, None, [])
+
+    with patch("app.api.v1.endpoints.users._get_user_with_role_or_404", _fake_get_user):
+        with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
+            with client_with_overrides(fake_db) as client:
+                response = client.post(
+                    f"/api/v1/users/{target_user.user_id}/anonymize",
+                    headers=_bearer(admin),
+                )
+
+    assert response.status_code == 200, f"got {response.status_code}: {response.json()}"
     assert response.json()["is_anonymized"] is True
-    # log_audit_event should have been called exactly twice (once per loop iteration).
-    assert fake_audit_log.call_count == 2
-    # commit should have been called twice (first raises, second succeeds).
-    assert commit_attempt[0] == 2
+    # log_audit_event called once in the successful (second) loop iteration
+    assert fake_audit_log.call_count == 1
+    # 3 commits: user mutations (raised), audit log entry (succeeded), scrub (no-op)
+    assert fake_db.commit_calls == 3
 
 
 # ─────────────── 10. GET /{user_id}/export (GDPR Right to Portability) ───────
@@ -623,8 +649,8 @@ def test_export_user_data_returns_data_for_self(client_with_overrides):
     # DB execute order:
     # [1] get_current_user             → medewerker
     # [2] _get_user_with_role_or_404 → medewerker
-    # [3] loans query                → [] (no active loans)
-    # [4] audit query                → []
+    # [3] loans query (all loans, eager eval) → [] (no loans)
+    # [4] audit query                  → []
     fake_db = _QueuedSession(medewerker, medewerker, [], [])
     with client_with_overrides(fake_db) as client:
         response = client.get(
@@ -635,7 +661,7 @@ def test_export_user_data_returns_data_for_self(client_with_overrides):
     data = response.json()
     assert data["user"]["email"] == medewerker.email
     assert data["user"]["first_name"] == medewerker.first_name
-    assert data["active_loans"] == []
+    assert data["loans"] == []
     assert data["audit_history"] == []
     # pin_hash must NOT be present
     assert "pin_hash" not in data["user"]

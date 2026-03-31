@@ -12,7 +12,8 @@ from app.api.deps import get_current_admin, get_current_user
 from app.core import security
 from app.core.audit import log_audit_event
 from app.db.database import get_db
-from app.db.models import AuditLog, Loan, LoanStatus, Role, User
+from app.db.models import AIEvaluation, AuditLog, Loan, LoanStatus, Role, User
+from app.db.redis import revoke_all_refresh_tokens
 from app.schemas.user import (
     UserCreate,
     UserListResponse,
@@ -321,6 +322,21 @@ async def anonymize_user(
             detail="User is already anonymized.",
         )
 
+    # TASK 1: Block anonymization if user has active/reserved/overdue loans
+    active_loans_result = await db.execute(
+        select(Loan.loan_id).where(
+            Loan.user_id == user_id,
+            Loan.loan_status.in_(
+                [LoanStatus.RESERVED, LoanStatus.ACTIVE, LoanStatus.OVERDUE]
+            ),
+        )
+    )
+    if active_loans_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot anonymize user with active or reserved loans.",
+        )
+
     for attempt in range(3):
         try:
             user.first_name = "Anonymized"
@@ -330,15 +346,53 @@ async def anonymize_user(
             user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
             user.is_active = False
             user.is_anonymized = True
+            # TASK 2 HIGH-1 & HIGH-2: Clear security/lock state
+            user.ban_reason = None
+            user.failed_login_attempts = 0
+            user.locked_until = None
 
+            # TASK 3 MEDIUM-2: Commit user mutations BEFORE logging audit event
+            await db.commit()
+
+            # TASK 3 MEDIUM-2: Audit event fires only if commit succeeded
             await log_audit_event(
                 db,
                 action_type="USER_ANONYMIZED",
                 payload={"target_user_id": str(user_id)},
                 user_id=current_admin.user_id,
             )
-
             await db.commit()
+
+            # TASK 2 CRITICAL-3: Scrub PII from historical audit log entries
+            # where this user is the actor (user_id column) or target (in payload)
+            PII_KEYS = {"first_name", "last_name", "email"}
+            scrub_result = await db.execute(
+                select(AuditLog).where(
+                    or_(
+                        AuditLog.user_id == user_id,
+                        AuditLog.payload["target_user_id"].astext == str(user_id),  # type: ignore[attr-defined]
+                        AuditLog.payload["user_id"].astext == str(user_id),  # type: ignore[attr-defined]
+                    )
+                )
+            )
+            modified_logs: list[AuditLog] = []
+            for log_entry in scrub_result.scalars().all():
+                if log_entry.payload:
+                    for key in PII_KEYS:
+                        if key in log_entry.payload:
+                            modified_logs.append(log_entry)
+                            log_entry.payload = {
+                                k: ("[REDACTED]" if k in PII_KEYS else v)
+                                for k, v in log_entry.payload.items()
+                            }
+                            break
+
+            if modified_logs:
+                await db.commit()
+
+            # TASK 3 CRITICAL-1b: Revoke all active refresh tokens
+            await revoke_all_refresh_tokens(str(user_id))
+
             break
         except IntegrityError:
             await db.rollback()
@@ -428,27 +482,56 @@ async def export_user_data(
 
     user = await _get_user_with_role_or_404(db, user_id)
 
-    # Fetch active loans (load asset relationship eagerly)
+    # Fetch all loans with asset, evaluations, and damage reports eagerly loaded
     loans_result = await db.execute(
         select(Loan)
-        .options(selectinload(Loan.asset))
-        .where(
-            Loan.user_id == user_id,
-            Loan.loan_status.in_(
-                [LoanStatus.RESERVED, LoanStatus.ACTIVE, LoanStatus.OVERDUE]
-            ),
+        .options(
+            selectinload(Loan.asset),
+            selectinload(Loan.evaluations).selectinload(AIEvaluation.damage_reports),
         )
+        .where(Loan.user_id == user_id)
+        .order_by(Loan.reserved_at.desc())
     )
-    active_loans = [
-        {
+    all_loans = []
+    for loan in loans_result.scalars().all():
+        loan_dict = {
             "loan_id": str(loan.loan_id),
             "asset_name": loan.asset.name if loan.asset else None,
             "status": loan.loan_status,
+            "reserved_at": (loan.reserved_at.isoformat() if loan.reserved_at else None),
             "borrowed_at": (loan.borrowed_at.isoformat() if loan.borrowed_at else None),
-            "due_date": loan.due_date.isoformat() if loan.due_date else None,
+            "due_date": (loan.due_date.isoformat() if loan.due_date else None),
+            "returned_at": (loan.returned_at.isoformat() if loan.returned_at else None),
+            "checkout_locker_id": str(loan.checkout_locker_id)
+            if loan.checkout_locker_id
+            else None,
+            "return_locker_id": str(loan.return_locker_id)
+            if loan.return_locker_id
+            else None,
+            "evaluations": [
+                {
+                    "evaluation_id": str(ev.evaluation_id),
+                    "evaluation_type": ev.evaluation_type,
+                    "ai_confidence": ev.ai_confidence,
+                    "has_damage_detected": ev.has_damage_detected,
+                    "is_approved": ev.is_approved,
+                    "rejection_reason": ev.rejection_reason,
+                    "analyzed_at": (
+                        ev.analyzed_at.isoformat() if ev.analyzed_at else None
+                    ),
+                    "damage_reports": [
+                        {
+                            "damage_type": dr.damage_type,
+                            "severity": dr.severity,
+                            "requires_repair": dr.requires_repair,
+                        }
+                        for dr in ev.damage_reports
+                    ],
+                }
+                for ev in loan.evaluations
+            ],
         }
-        for loan in loans_result.scalars().all()
-    ]
+        all_loans.append(loan_dict)
 
     # Fetch audit history
     audit_result = await db.execute(
@@ -483,6 +566,6 @@ async def export_user_data(
             "is_anonymized": user.is_anonymized,
             "accepted_privacy_policy": user.accepted_privacy_policy,
         },
-        "active_loans": active_loans,
+        "loans": all_loans,
         "audit_history": audit_history,
     }

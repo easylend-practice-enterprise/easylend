@@ -10,34 +10,18 @@ from app.db.models import LoanStatus
 # ---------------------------------------------------------------------------
 
 
-class LoanBase(BaseModel):
-    """Core loan fields shared by loan response schemas.
+class LoanPublicResponse(BaseModel):
+    """Loan response WITHOUT user identity — for regular (non-admin) users.
 
-    These fields are populated and managed by server-side business logic,
-    not supplied by callers. This base schema includes the core foreign key
-    identifiers (user_id, asset_id, checkout_locker_id) but excludes
-    server-managed timestamps (reserved_at, borrowed_at, due_date,
-    returned_at).
+    Excludes user_id to prevent IDOR: regular authenticated users must not
+    learn which other users are associated with specific loans.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
-    user_id: UUID
-    asset_id: UUID
-    checkout_locker_id: UUID
-
-
-# ---------------------------------------------------------------------------
-# Response schemas
-# ---------------------------------------------------------------------------
-
-
-class LoanResponse(LoanBase):
-    """Full representation of a loan record returned from the API."""
-
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     loan_id: UUID
+    asset_id: UUID
+    checkout_locker_id: UUID
     return_locker_id: UUID | None
 
     # Server-managed timestamps
@@ -49,12 +33,30 @@ class LoanResponse(LoanBase):
     loan_status: LoanStatus
 
 
+class LoanResponse(LoanPublicResponse):
+    """Full representation of a loan record returned from the API.
+
+    Includes user_id — for admin users only.
+    """
+
+    user_id: UUID  # admin-only field
+
+
 class LoanListResponse(BaseModel):
-    """Paginated list of loans."""
+    """Paginated list of loans (admin-facing, includes user_id per item)."""
 
     model_config = ConfigDict(extra="forbid")
 
     items: list[LoanResponse]
+    total: int
+
+
+class LoanPublicListResponse(BaseModel):
+    """Paginated list of loans for regular (non-admin) users — no user_id per item."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[LoanPublicResponse]
     total: int
 
 

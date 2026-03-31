@@ -41,6 +41,8 @@ from app.db.redis import redis_client
 from app.schemas.loan import (
     CheckoutRequest,
     LoanListResponse,
+    LoanPublicListResponse,
+    LoanPublicResponse,
     LoanResponse,
     LoanStatusResponse,
     ReturnInitiateRequest,
@@ -98,7 +100,7 @@ async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
 
 @router.get(
     "",
-    response_model=LoanListResponse,
+    response_model=LoanListResponse | LoanPublicListResponse,
     status_code=status.HTTP_200_OK,
     responses={
         401: {"description": "Not authenticated"},
@@ -109,7 +111,7 @@ async def list_loans(
     limit: int = _PAGINATION_LIMIT,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> LoanListResponse:
+) -> LoanListResponse | LoanPublicListResponse:
     """
     List loans with pagination.
 
@@ -136,12 +138,17 @@ async def list_loans(
     result = await db.execute(
         query.order_by(Loan.borrowed_at.desc().nulls_last()).offset(skip).limit(limit)
     )
-    items = [LoanResponse.model_validate(loan) for loan in result.scalars().all()]
+    loans_list = result.scalars().all()
 
     total_result = await db.execute(count_query)
     total = total_result.scalar_one_or_none() or 0
 
-    return LoanListResponse(items=items, total=total)
+    if _is_admin(current_user):
+        admin_items = [LoanResponse.model_validate(loan) for loan in loans_list]
+        return LoanListResponse(items=admin_items, total=total)
+    else:
+        public_items = [LoanPublicResponse.model_validate(loan) for loan in loans_list]
+        return LoanPublicListResponse(items=public_items, total=total)
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +197,7 @@ async def get_loan_status(
 
 @router.post(
     "/checkout",
-    response_model=LoanResponse,
+    response_model=LoanPublicResponse,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Asset unavailable, not found, or has no locker assigned"},
@@ -205,7 +212,7 @@ async def checkout(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-) -> LoanResponse:
+) -> LoanPublicResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
 
@@ -353,7 +360,7 @@ async def checkout(
                 detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
             )
 
-        return LoanResponse.model_validate(loan)
+        return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         await redis_client.delete(redis_key)
@@ -374,7 +381,7 @@ async def checkout(
 
 @router.post(
     "/return/initiate",
-    response_model=LoanResponse,
+    response_model=LoanPublicResponse,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         400: {"description": "Loan is not in ACTIVE state"},
@@ -391,7 +398,7 @@ async def return_initiate(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-) -> LoanResponse:
+) -> LoanPublicResponse:
     """
     Initiate the return process for an active loan.
 
@@ -549,7 +556,7 @@ async def return_initiate(
                 detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
             )
 
-        return LoanResponse.model_validate(loan)
+        return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         await redis_client.delete(redis_key)
