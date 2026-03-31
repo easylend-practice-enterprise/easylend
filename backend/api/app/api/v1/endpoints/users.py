@@ -3,7 +3,7 @@ import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -452,7 +452,13 @@ async def export_user_data(
     # Fetch audit history
     audit_result = await db.execute(
         select(AuditLog)
-        .where(AuditLog.user_id == user_id)
+        .where(
+            or_(
+                AuditLog.user_id == user_id,
+                AuditLog.payload["target_user_id"].astext == str(user_id),
+                AuditLog.payload["user_id"].astext == str(user_id),  # type: ignore[attr-defined]  # backwards-compat with older logs
+            )
+        )
         .order_by(AuditLog.created_at)
     )
     audit_history = [

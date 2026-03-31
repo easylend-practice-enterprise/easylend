@@ -107,19 +107,39 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_docs_credentials(self) -> "Settings":
-        """
-        Enforces that DOCS_USERNAME and DOCS_PASSWORD are explicitly set in
-        production (ENVIRONMENT == 'prod'). Falls back to safe local-dev defaults
-        for any other environment so developers aren't locked out of the docs.
-        """
-        if self.ENVIRONMENT.lower() == "prod":
-            if not self.DOCS_USERNAME or not self.DOCS_PASSWORD:
-                raise ValueError(
-                    "DOCS_USERNAME and DOCS_PASSWORD must be explicitly set in production."
-                )
-        else:
+        env = (self.ENVIRONMENT or "").lower()
+        if env in {"dev", "test"}:
             self.DOCS_USERNAME = self.DOCS_USERNAME or "admin"
             self.DOCS_PASSWORD = self.DOCS_PASSWORD or "easylend"
+            return self
+
+        if not self.DOCS_USERNAME or not self.DOCS_PASSWORD:
+            raise ValueError(
+                "DOCS_USERNAME and DOCS_PASSWORD must be explicitly set for non-dev/test environments."
+            )
+
+        forbidden_placeholders = {
+            "admin",
+            "easylend",
+            "changeme",
+            "password",
+            "test",
+            "user",
+            "dummy_docs_user",
+            "dummy_docs_password_do_not_use",
+        }
+
+        if self.DOCS_USERNAME.lower() in forbidden_placeholders:
+            raise ValueError("DOCS_USERNAME is using a placeholder or weak value.")
+        if self.DOCS_PASSWORD.lower() in forbidden_placeholders:
+            raise ValueError("DOCS_PASSWORD is using a placeholder or weak value.")
+        if len(self.DOCS_PASSWORD) < 12:
+            raise ValueError(
+                "DOCS_PASSWORD must be at least 12 characters long in non-dev environments."
+            )
+        if self.DOCS_USERNAME == self.DOCS_PASSWORD:
+            raise ValueError("DOCS_PASSWORD must not be identical to DOCS_USERNAME.")
+
         return self
 
     model_config = SettingsConfigDict(
