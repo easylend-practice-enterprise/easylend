@@ -3,10 +3,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, Response
 
 from app.api.v1.router import router as v1_router
 from app.api.ws import ws_router
@@ -195,8 +196,19 @@ def _verify_docs_credentials(
 
 
 @app.get("/docs", include_in_schema=False)
-async def get_docs(_: None = Depends(_verify_docs_credentials)) -> RedirectResponse:
-    return RedirectResponse(url="/swagger", status_code=status.HTTP_200_OK)
+async def get_docs(_: None = Depends(_verify_docs_credentials)):
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.PROJECT_NAME} - Swagger UI",
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc(_: None = Depends(_verify_docs_credentials)):
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.PROJECT_NAME} - ReDoc",
+    )
 
 
 @app.get("/openapi.json", include_in_schema=False)
