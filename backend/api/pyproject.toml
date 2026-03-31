@@ -22,7 +22,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["httpx>=0.28.1", "pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+dev = [
+    "httpx>=0.28.1",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "pytest>=9.0.2",
+    "ruff>=0.15.4",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -40,3 +46,28 @@ ignore = ["E501"] # Ignore noisy 'Line too long' warnings
 
 [tool.ruff.lint.per-file-ignores]
 "**/*test_*.py" = ["S101"] # Ignore assert warnings in test files
+
+[tool.pyright]
+typeCheckingMode = "standard"
+
+# --- Zelf-ingestelde Strenge Regels (Standard+) ---
+
+# 1. Vangt de ".astext" SQLAlchemy bugs (Member access op onbekende JSON/Dict types)
+reportUnknownMemberType = "warning"
+
+# 2. Vangt fouten waarbij AI foute types in een Pydantic of DB constructor propt
+reportUnknownArgumentType = "warning"
+
+# 3. Zorgt dat dicts en lists niet per ongeluk [Any] worden, wat bugs verbergt
+strictDictionaryInference = true
+strictListInference = true
+strictSetInference = true
+
+# 4. Voorkomt dat je een Pydantic setter/getter met foute types gebruikt
+reportPropertyTypeMismatch = "error"
+
+# 5. Handig voor Python 3.10+ match/case statements (zorgt dat je geen opties vergeet)
+reportMatchNotExhaustive = "error"
+
+# 6. Optioneel: waarschuwt als third-party libraries slechte typings hebben
+reportMissingTypeStubs = "warning"
