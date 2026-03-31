@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from uuid import UUID
 
@@ -298,7 +299,7 @@ async def update_user(
 async def anonymize_user(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> User:
     """
     Anonymize a user account (GDPR Right to be Forgotten).
@@ -317,22 +318,33 @@ async def anonymize_user(
             detail="User is already anonymized.",
         )
 
-    user.first_name = "Anonymized"
-    user.last_name = "User"
-    user.email = f"anon_{uuid.uuid4()}@easylend.local"
-    user.nfc_tag_id = None
-    user.pin_hash = "ANONYMIZED"
-    user.is_active = False
-    user.is_anonymized = True
+    for attempt in range(3):
+        try:
+            user.first_name = "Anonymized"
+            user.last_name = "User"
+            user.email = f"anon_{uuid.uuid4()}@easylend.local"
+            user.nfc_tag_id = None
+            user.pin_hash = security.get_password_hash(secrets.token_urlsafe(16))
+            user.is_active = False
+            user.is_anonymized = True
 
-    await log_audit_event(
-        db,
-        action_type="USER_ANONYMIZED",
-        payload={"user_id": str(user_id)},
-        user_id=user_id,
-    )
+            await log_audit_event(
+                db,
+                action_type="USER_ANONYMIZED",
+                payload={"user_id": str(user_id)},
+                user_id=current_admin.user_id,
+            )
 
-    await db.commit()
+            await db.commit()
+            break
+        except IntegrityError:
+            await db.rollback()
+            if attempt == 2:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Anonymization failed after multiple attempts. Please try again.",
+                )
+
     return await _get_user_with_role_or_404(db, user_id)
 
 

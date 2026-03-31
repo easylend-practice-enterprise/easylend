@@ -510,3 +510,74 @@ def test_anonymize_user_returns_404_for_unknown_user(client_with_overrides):
         )
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found."
+
+
+def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
+    """Verify that IntegrityError on the first db.commit() triggers a retry loop
+    that eventually succeeds on the second attempt."""
+    from unittest.mock import AsyncMock, patch
+
+    from sqlalchemy.exc import IntegrityError
+
+    admin = _make_admin()
+    target_user = SimpleNamespace(
+        user_id=uuid.uuid4(),
+        role_id=uuid.uuid4(),
+        first_name="Real",
+        last_name="Person",
+        email="real@easylend.be",
+        nfc_tag_id="NFC-REAL-001",
+        pin_hash="real_hash",
+        failed_login_attempts=0,
+        locked_until=None,
+        is_active=True,
+        ban_reason=None,
+        is_anonymized=False,
+        role=SimpleNamespace(role_name="Medewerker"),
+    )
+    anon_user = SimpleNamespace(
+        user_id=target_user.user_id,
+        role_id=target_user.role_id,
+        first_name="Anonymized",
+        last_name="User",
+        email=f"anon_{uuid.uuid4()}@easylend.local",
+        nfc_tag_id=None,
+        pin_hash="ANONYMIZED",
+        failed_login_attempts=0,
+        locked_until=None,
+        is_active=False,
+        ban_reason=None,
+        is_anonymized=True,
+        role=SimpleNamespace(role_name="Medewerker"),
+    )
+
+    # Track which commit attempt we're on so we can raise on #1 and succeed on #2.
+    commit_attempt = [0]
+
+    async def _fake_commit():
+        commit_attempt[0] += 1
+        if commit_attempt[0] == 1:
+            raise IntegrityError("stmt", "params", Exception("orig"))
+        # On second attempt, do nothing (commit simulated as successful).
+
+    # Patch log_audit_event so it doesn't consume the db.execute queue.
+    fake_audit_log = AsyncMock()
+
+    # _QueuedSession returns anon_user on the final _get_user_with_role_or_404 call.
+    fake_db = _QueuedSession(admin, target_user, anon_user)
+    # Replace commit with our version that raises on attempt 1.
+    fake_db.commit = _fake_commit
+
+    with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
+        with client_with_overrides(fake_db) as client:
+            response = client.post(
+                f"/api/v1/users/{target_user.user_id}/anonymize",
+                headers=_bearer(admin),
+            )
+
+    assert response.status_code == 200
+    assert response.json()["is_anonymized"] is True
+    # log_audit_event should have been called exactly twice (once per loop iteration).
+    assert fake_audit_log.call_count == 2
+    # commit should have been called twice (first raises, second succeeds).
+    assert commit_attempt[0] == 2

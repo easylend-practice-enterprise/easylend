@@ -11,7 +11,7 @@ redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 async def check_redis_connection():
     try:
-        await redis_client.ping()
+        await redis_client.ping()  # type: ignore
         logger.info("Successfully connected to Redis Cache.")
     except Exception as exc:
         logger.warning("Could not connect to Redis: %s", exc)

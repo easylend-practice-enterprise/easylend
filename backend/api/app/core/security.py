@@ -10,6 +10,11 @@ from app.core.config import settings
 from app.schemas.token import TokenPayload
 
 
+def get_password_hash(secret: str) -> str:
+    """Hash a secret string using bcrypt."""
+    return bcrypt.hashpw(secret.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
 class RefreshTokenPayload(BaseModel):
     sub: uuid.UUID
     exp: datetime
