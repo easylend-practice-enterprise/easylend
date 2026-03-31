@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from uuid import UUID
@@ -21,6 +22,8 @@ from app.schemas.user import (
     UserResponse,
     UserUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -361,7 +364,13 @@ async def anonymize_user(
             await db.commit()
 
             # After successful commit: revoke tokens (non-critical-path, best-effort)
-            await revoke_all_refresh_tokens(str(user_id))
+            try:
+                await revoke_all_refresh_tokens(str(user_id))
+            except Exception:
+                logger.exception(
+                    "revoke_all_refresh_tokens failed for user %s — best-effort, non-critical",
+                    user_id,
+                )
 
             break
         except (IntegrityError, OperationalError):

@@ -467,10 +467,7 @@ def test_anonymize_user_success(client_with_overrides):
     assert response.json()["is_active"] is False
     # 1 commit: user mutations + audit log entry committed atomically together
     assert fake_db.commit_calls == 1
-    assert any(
-        isinstance(o.__class__.__name__, str) and "AuditLog" in str(type(o))
-        for o in fake_db.added
-    )
+    assert any("AuditLog" in type(o).__name__ for o in fake_db.added)
 
 
 def test_anonymize_user_returns_400_when_already_anonymized(client_with_overrides):
