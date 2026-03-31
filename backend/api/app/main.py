@@ -1,10 +1,12 @@
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from app.api.v1.router import router as v1_router
 from app.api.ws import ws_router
@@ -126,6 +128,9 @@ app = FastAPI(
     description="Core Backend for the EasyLend Practice Enterprise",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # CORS: allow credential-free cross-origin calls from known web origins only.
@@ -154,4 +159,51 @@ async def health_check():
 
 
 app.include_router(v1_router)
+
+
+# ---------------------------------------------------------------------------
+# Protected interactive docs (HTTP Basic Auth)
+# ---------------------------------------------------------------------------
+
+_docs_basic = HTTPBasic()
+
+
+def _docs_creds() -> tuple[str, str]:
+    """
+    Returns the validated docs credentials.
+
+    After startup, the model validator guarantees these are always str
+    (never None). We use a helper so Pylance can narrow the union type.
+    """
+    username: str = settings.DOCS_USERNAME  # type: ignore[assignment]
+    password: str = settings.DOCS_PASSWORD  # type: ignore[assignment]
+    return username, password
+
+
+def _verify_docs_credentials(
+    credentials: HTTPBasicCredentials = Depends(_docs_basic),
+) -> None:
+    doc_user, doc_pass = _docs_creds()
+    username_ok = secrets.compare_digest(credentials.username, doc_user)
+    password_ok = secrets.compare_digest(credentials.password, doc_pass)
+    if not (username_ok and password_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials.",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+@app.get("/docs", include_in_schema=False)
+async def get_docs(_: None = Depends(_verify_docs_credentials)) -> RedirectResponse:
+    return RedirectResponse(url="/swagger", status_code=status.HTTP_200_OK)
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi(
+    _: None = Depends(_verify_docs_credentials),
+) -> JSONResponse:
+    return JSONResponse(content=app.openapi())
+
+
 app.include_router(ws_router)

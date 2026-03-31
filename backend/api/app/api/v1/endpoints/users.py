@@ -12,7 +12,7 @@ from app.api.deps import get_current_admin, get_current_user
 from app.core import security
 from app.core.audit import log_audit_event
 from app.db.database import get_db
-from app.db.models import Role, User
+from app.db.models import AuditLog, Loan, LoanStatus, Role, User
 from app.schemas.user import (
     UserCreate,
     UserListResponse,
@@ -326,14 +326,14 @@ async def anonymize_user(
             user.last_name = "User"
             user.email = f"anon_{uuid.uuid4()}@easylend.local"
             user.nfc_tag_id = None
-            user.pin_hash = security.get_secret_hash(secrets.token_urlsafe(16))
+            user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
             user.is_active = False
             user.is_anonymized = True
 
             await log_audit_event(
                 db,
                 action_type="USER_ANONYMIZED",
-                payload={"user_id": str(user_id)},
+                payload={"target_user_id": str(user_id)},
                 user_id=current_admin.user_id,
             )
 
@@ -395,3 +395,87 @@ async def update_user_nfc(
             detail="NFC tag is already linked to another user.",
         )
     return await _get_user_with_role_or_404(db, user_id)
+
+
+@router.get(
+    "/{user_id}/export",
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+    },
+)
+async def export_user_data(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    Export all personal data for a user (GDPR Right to Portability).
+
+    Accessible by the user themselves OR an Admin. Raises 403 otherwise.
+    """
+    if (
+        current_user.user_id != user_id
+        and current_user.role.role_name.upper() != "ADMIN"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden.",
+        )
+
+    user = await _get_user_with_role_or_404(db, user_id)
+
+    # Fetch active loans (load asset relationship eagerly)
+    loans_result = await db.execute(
+        select(Loan)
+        .options(selectinload(Loan.asset))
+        .where(
+            Loan.user_id == user_id,
+            Loan.loan_status.in_(
+                [LoanStatus.RESERVED, LoanStatus.ACTIVE, LoanStatus.OVERDUE]
+            ),
+        )
+    )
+    active_loans = [
+        {
+            "loan_id": str(loan.loan_id),
+            "asset_name": loan.asset.name if loan.asset else None,
+            "status": loan.loan_status,
+            "borrowed_at": (loan.borrowed_at.isoformat() if loan.borrowed_at else None),
+            "due_date": loan.due_date.isoformat() if loan.due_date else None,
+        }
+        for loan in loans_result.scalars().all()
+    ]
+
+    # Fetch audit history
+    audit_result = await db.execute(
+        select(AuditLog)
+        .where(AuditLog.user_id == user_id)
+        .order_by(AuditLog.created_at)
+    )
+    audit_history = [
+        {
+            "action_type": log.action_type,
+            "payload": log.payload,
+            "created_at": (log.created_at.isoformat() if log.created_at else None),
+        }
+        for log in audit_result.scalars().all()
+    ]
+
+    return {
+        "user": {
+            "user_id": str(user.user_id),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "role_name": user.role.role_name,
+            "nfc_tag_id": user.nfc_tag_id,
+            "is_active": user.is_active,
+            "is_anonymized": user.is_anonymized,
+            "accepted_privacy_policy": user.accepted_privacy_policy,
+        },
+        "active_loans": active_loans,
+        "audit_history": audit_history,
+    }

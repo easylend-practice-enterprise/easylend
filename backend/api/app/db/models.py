@@ -63,6 +63,9 @@ class User(Base):
     is_anonymized: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    accepted_privacy_policy: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), nullable=False
+    )
 
     role: Mapped["Role"] = relationship("Role", back_populates="users")
 

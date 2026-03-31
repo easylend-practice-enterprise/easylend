@@ -200,6 +200,7 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
@@ -280,6 +281,7 @@ def test_update_user_unblocks_locked_account(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
@@ -332,6 +334,7 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     updated_user = SimpleNamespace(**{**vars(target_user), "nfc_tag_id": "NFC-NEW-007"})
@@ -366,6 +369,7 @@ def test_update_user_nfc_returns_400_on_duplicate_tag(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     tag_owner = _make_medewerker()
@@ -402,6 +406,7 @@ def test_anonymize_user_success(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # Clone the user with anonymized=True for the re-fetch after commit
@@ -471,6 +476,7 @@ def test_anonymize_user_returns_400_when_already_anonymized(client_with_override
         is_active=False,
         ban_reason=None,
         is_anonymized=True,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
@@ -533,6 +539,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         is_active=True,
         ban_reason=None,
         is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     anon_user = SimpleNamespace(
@@ -548,6 +555,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         is_active=False,
         ban_reason=None,
         is_anonymized=True,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
 
@@ -581,3 +589,88 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     assert fake_audit_log.call_count == 2
     # commit should have been called twice (first raises, second succeeds).
     assert commit_attempt[0] == 2
+
+
+# ─────────────── 10. GET /{user_id}/export (GDPR Right to Portability) ───────
+
+
+def test_export_user_data_unauthenticated(client_with_overrides):
+    with client_with_overrides(_QueuedSession()) as client:
+        response = client.get(f"/api/v1/users/{uuid.uuid4()}/export")
+    assert response.status_code == 401
+
+
+def test_export_user_data_forbidden_for_non_admin_or_other_user(client_with_overrides):
+    """A non-admin may not export another user's data."""
+    medewerker = _make_medewerker()
+    other = _make_admin()
+    # DB execute order:
+    # [1] get_current_user → medewerker
+    # [2] _get_user_with_role_or_404 → other (but RBAC check fails first → 403)
+    fake_db = _QueuedSession(medewerker, other)
+    with client_with_overrides(fake_db) as client:
+        response = client.get(
+            f"/api/v1/users/{other.user_id}/export",
+            headers=_bearer(medewerker),
+        )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Forbidden."
+
+
+def test_export_user_data_returns_data_for_self(client_with_overrides):
+    """A user may export their own data."""
+    medewerker = _make_medewerker()
+    # DB execute order:
+    # [1] get_current_user             → medewerker
+    # [2] _get_user_with_role_or_404 → medewerker
+    # [3] loans query                → [] (no active loans)
+    # [4] audit query                → []
+    fake_db = _QueuedSession(medewerker, medewerker, [], [])
+    with client_with_overrides(fake_db) as client:
+        response = client.get(
+            f"/api/v1/users/{medewerker.user_id}/export",
+            headers=_bearer(medewerker),
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user"]["email"] == medewerker.email
+    assert data["user"]["first_name"] == medewerker.first_name
+    assert data["active_loans"] == []
+    assert data["audit_history"] == []
+    # pin_hash must NOT be present
+    assert "pin_hash" not in data["user"]
+
+
+def test_export_user_data_returns_data_for_admin(client_with_overrides):
+    """An admin may export any user's data."""
+    admin = _make_admin()
+    target = _make_medewerker()
+    # DB execute order:
+    # [1] get_current_user             → admin
+    # [2] _get_user_with_role_or_404 → target
+    # [3] loans query                → []
+    # [4] audit query                → []
+    fake_db = _QueuedSession(admin, target, [], [])
+    with client_with_overrides(fake_db) as client:
+        response = client.get(
+            f"/api/v1/users/{target.user_id}/export",
+            headers=_bearer(admin),
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user"]["email"] == target.email
+    assert "pin_hash" not in data["user"]
+
+
+def test_export_user_data_returns_404_for_unknown_user(client_with_overrides):
+    admin = _make_admin()
+    # DB execute order:
+    # [1] get_current_user            → admin
+    # [2] _get_user_with_role_or_404 → None → 404
+    fake_db = _QueuedSession(admin, None)
+    with client_with_overrides(fake_db) as client:
+        response = client.get(
+            f"/api/v1/users/{uuid.uuid4()}/export",
+            headers=_bearer(admin),
+        )
+    assert response.status_code == 404

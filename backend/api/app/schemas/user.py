@@ -61,6 +61,7 @@ class UserResponse(BaseModel):
     is_active: bool
     ban_reason: str | None
     is_anonymized: bool
+    accepted_privacy_policy: bool
 
 
 class UserListResponse(BaseModel):
