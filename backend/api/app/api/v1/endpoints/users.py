@@ -176,6 +176,7 @@ async def create_user(
         email=str(payload.email),
         nfc_tag_id=payload.nfc_tag_id,
         pin_hash=security.get_pin_hash(payload.pin),
+        accepted_privacy_policy=payload.accepted_privacy_policy,
     )
 
     db.add(user)

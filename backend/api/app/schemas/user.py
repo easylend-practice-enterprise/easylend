@@ -16,6 +16,7 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     role_id: UUID
     pin: str = Field(..., min_length=4, max_length=32)
+    accepted_privacy_policy: bool = Field(default=False)
 
 
 class UserUpdate(BaseModel):
@@ -31,6 +32,7 @@ class UserUpdate(BaseModel):
     locked_until: datetime | None = None
     is_active: bool | None = None
     ban_reason: str | None = Field(default=None, max_length=255)
+    accepted_privacy_policy: bool | None = None
 
 
 class UserNfcUpdate(BaseModel):
