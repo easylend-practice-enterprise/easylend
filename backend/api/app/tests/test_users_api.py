@@ -446,12 +446,11 @@ def test_anonymize_user_success(client_with_overrides):
     # [2] _get_user_with_role_or_404              → target_user (mutated in-place)
     # [3] active loans check                      → None (no active loans)
     # [4] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
-    #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log → pollutes scrub)
-    # [5] scrub audit query                        → [] (queue empty: in-session AuditLog returned)
-    # [6] _get_user_with_role_or_404 after commit  → anonymized_user
+    #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log)
+    # [5] _get_user_with_role_or_404 after commit  → anonymized_user
     fake_audit_chain = SimpleNamespace(current_hash="0" * 64)
     fake_db = _QueuedSession(
-        admin, target_user, None, fake_audit_chain, [], anonymized_user
+        admin, target_user, None, fake_audit_chain, anonymized_user
     )
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -466,7 +465,7 @@ def test_anonymize_user_success(client_with_overrides):
     assert response.json()["email"].endswith("@easylend.local")
     assert response.json()["nfc_tag_id"] is None
     assert response.json()["is_active"] is False
-    # 2 commits: user mutations + audit log entry (scrub returns [], no third commit)
+    # 2 commits: user mutations + audit log entry (no scrub query)
     assert fake_db.commit_calls == 2
     assert any(
         isinstance(o.__class__.__name__, str) and "AuditLog" in str(type(o))
@@ -587,9 +586,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     # Use a minimal queue that covers get_current_user + active_loans calls.
     # active_loans is called twice (once per loop iteration) and each call
     # pops one slot. log_audit_event is patched so its internals don't pop.
-    # Queue slots: get_current_user, active_loans(1), active_loans(2), scrub
-    fake_db = _QueuedSession(admin, None, None, [])
-
+    # Queue slots: get_current_user, active_loans(1), active_loans(2)
     class _RetryCommitSession(_QueuedSession):
         def __init__(self, *items):
             super().__init__(*items)
@@ -599,7 +596,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
             if self.commit_calls == 1:
                 raise IntegrityError("stmt", "params", Exception("orig"))
 
-    fake_db = _RetryCommitSession(admin, None, None, [])
+    fake_db = _RetryCommitSession(admin, None, None)
 
     with patch("app.api.v1.endpoints.users._get_user_with_role_or_404", _fake_get_user):
         with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):

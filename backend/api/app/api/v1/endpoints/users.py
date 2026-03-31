@@ -3,7 +3,7 @@ import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -363,34 +363,7 @@ async def anonymize_user(
             )
             await db.commit()
 
-            # TASK 2 CRITICAL-3: Scrub PII from historical audit log entries
-            # where this user is the actor (user_id column) or target (in payload)
-            PII_KEYS = {"first_name", "last_name", "email"}
-            scrub_result = await db.execute(
-                select(AuditLog).where(
-                    or_(
-                        AuditLog.user_id == user_id,
-                        AuditLog.payload["target_user_id"].astext == str(user_id),  # type: ignore[attr-defined]
-                        AuditLog.payload["user_id"].astext == str(user_id),  # type: ignore[attr-defined]
-                    )
-                )
-            )
-            modified_logs: list[AuditLog] = []
-            for log_entry in scrub_result.scalars().all():
-                if log_entry.payload:
-                    for key in PII_KEYS:
-                        if key in log_entry.payload:
-                            modified_logs.append(log_entry)
-                            log_entry.payload = {
-                                k: ("[REDACTED]" if k in PII_KEYS else v)
-                                for k, v in log_entry.payload.items()
-                            }
-                            break
-
-            if modified_logs:
-                await db.commit()
-
-            # TASK 3 CRITICAL-1b: Revoke all active refresh tokens
+            # Revoke all active refresh tokens
             await revoke_all_refresh_tokens(str(user_id))
 
             break
@@ -539,8 +512,8 @@ async def export_user_data(
         .where(
             or_(
                 AuditLog.user_id == user_id,
-                AuditLog.payload["target_user_id"].astext == str(user_id),
-                AuditLog.payload["user_id"].astext == str(user_id),  # type: ignore[attr-defined]  # backwards-compat with older logs
+                cast(AuditLog.payload["target_user_id"], String) == str(user_id),
+                cast(AuditLog.payload["user_id"], String) == str(user_id),
             )
         )
         .order_by(AuditLog.created_at)
@@ -548,7 +521,16 @@ async def export_user_data(
     audit_history = [
         {
             "action_type": log.action_type,
-            "payload": log.payload,
+            "payload": (
+                {
+                    k: (
+                        "[REDACTED]" if k in ("first_name", "last_name", "email") else v
+                    )
+                    for k, v in log.payload.items()
+                }
+                if (user.is_anonymized and log.payload)
+                else log.payload
+            ),
             "created_at": (log.created_at.isoformat() if log.created_at else None),
         }
         for log in audit_result.scalars().all()
@@ -557,9 +539,9 @@ async def export_user_data(
     return {
         "user": {
             "user_id": str(user.user_id),
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "email": user.email,
+            "first_name": "[REDACTED]" if user.is_anonymized else user.first_name,
+            "last_name": "[REDACTED]" if user.is_anonymized else user.last_name,
+            "email": "[REDACTED]" if user.is_anonymized else user.email,
             "role_name": user.role.role_name,
             "nfc_tag_id": user.nfc_tag_id,
             "is_active": user.is_active,

@@ -248,6 +248,7 @@ def _build_user(*, pin: str = "123456"):
         locked_until=None,
         is_active=True,
         accepted_privacy_policy=False,
+        is_anonymized=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 

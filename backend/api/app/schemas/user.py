@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
@@ -33,6 +33,13 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
     ban_reason: str | None = Field(default=None, max_length=255)
     accepted_privacy_policy: bool | None = None
+
+    @field_validator("accepted_privacy_policy", mode="before")
+    @classmethod
+    def reject_explicit_none(cls, v):
+        if v is None:
+            raise ValueError("accepted_privacy_policy cannot be explicitly null")
+        return v
 
 
 class UserNfcUpdate(BaseModel):
