@@ -465,8 +465,8 @@ def test_anonymize_user_success(client_with_overrides):
     assert response.json()["email"].endswith("@easylend.local")
     assert response.json()["nfc_tag_id"] is None
     assert response.json()["is_active"] is False
-    # 2 commits: user mutations + audit log entry (no scrub query)
-    assert fake_db.commit_calls == 2
+    # 1 commit: user mutations + audit log entry committed atomically together
+    assert fake_db.commit_calls == 1
     assert any(
         isinstance(o.__class__.__name__, str) and "AuditLog" in str(type(o))
         for o in fake_db.added
@@ -608,10 +608,10 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
 
     assert response.status_code == 200, f"got {response.status_code}: {response.json()}"
     assert response.json()["is_anonymized"] is True
-    # log_audit_event called once in the successful (second) loop iteration
-    assert fake_audit_log.call_count == 1
-    # 3 commits: user mutations (raised), audit log entry (succeeded), scrub (no-op)
-    assert fake_db.commit_calls == 3
+    # log_audit_event called in both loop iterations (inside try block, before commit)
+    assert fake_audit_log.call_count == 2
+    # 2 commits: first fails (IntegrityError → rollback), second succeeds (user mutations + audit log atomically)
+    assert fake_db.commit_calls == 2
 
 
 # ─────────────── 10. GET /{user_id}/export (GDPR Right to Portability) ───────

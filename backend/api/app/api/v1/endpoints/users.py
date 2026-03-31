@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import String, cast, func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -346,15 +346,12 @@ async def anonymize_user(
             user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
             user.is_active = False
             user.is_anonymized = True
-            # TASK 2 HIGH-1 & HIGH-2: Clear security/lock state
             user.ban_reason = None
             user.failed_login_attempts = 0
             user.locked_until = None
 
-            # TASK 3 MEDIUM-2: Commit user mutations BEFORE logging audit event
-            await db.commit()
-
-            # TASK 3 MEDIUM-2: Audit event fires only if commit succeeded
+            # Atomic: audit event is staged before the single commit that covers both
+            # user mutations and the audit log entry — rollback covers both on failure.
             await log_audit_event(
                 db,
                 action_type="USER_ANONYMIZED",
@@ -363,11 +360,11 @@ async def anonymize_user(
             )
             await db.commit()
 
-            # Revoke all active refresh tokens
+            # After successful commit: revoke tokens (non-critical-path, best-effort)
             await revoke_all_refresh_tokens(str(user_id))
 
             break
-        except IntegrityError:
+        except (IntegrityError, OperationalError):
             await db.rollback()
             if attempt == 2:
                 raise HTTPException(
@@ -524,7 +521,9 @@ async def export_user_data(
             "payload": (
                 {
                     k: (
-                        "[REDACTED]" if k in ("first_name", "last_name", "email") else v
+                        "[REDACTED]"
+                        if k in ("first_name", "last_name", "email", "target_user_id")
+                        else v
                     )
                     for k, v in log.payload.items()
                 }
