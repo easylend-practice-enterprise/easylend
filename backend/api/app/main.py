@@ -48,17 +48,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # XSS filter (legacy browsers)
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        # Content Security Policy — allows Swagger UI assets from jsdelivr CDN
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-            "img-src 'self' data: https://fastapi.tiangolo.com; "
-            "connect-src 'self' https://cdn.jsdelivr.net; "
-            "object-src 'none'; "
-            "frame-ancestors 'none'; "
-            "base-uri 'self';"
-        )
+        # Content Security Policy — relaxed only for Swagger/Redoc, strict elsewhere
+        path = request.url.path
+        if (
+            path.startswith("/docs")
+            or path.startswith("/redoc")
+            or path == "/openapi.json"
+        ):
+            csp = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://fastapi.tiangolo.com; "
+                "connect-src 'self' https://cdn.jsdelivr.net; "
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
+            )
+        else:
+            csp = (
+                "default-src 'self'; script-src 'self'; "
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
+            )
+        response.headers["Content-Security-Policy"] = csp
         # Permissions policy: disable unnecessary browser features
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=()"

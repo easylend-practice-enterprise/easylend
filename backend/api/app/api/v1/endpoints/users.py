@@ -304,9 +304,11 @@ async def anonymize_user(
     """
     Anonymize a user account (GDPR Right to be Forgotten).
 
-    Strips all PII: first_name, last_name, email, nfc_tag_id, pin_hash.
-    Sets is_active=False and is_anonymized=True.
-    Writes an audit log entry with action_type=USER_ANONYMIZED.
+    Replaces all PII fields (first_name, last_name, email, nfc_tag_id) with
+    non-identifying placeholder values and replaces pin_hash with a hash of a
+    randomly generated credential, effectively disabling login with the original PIN.
+    Also sets is_active=False and is_anonymized=True.
+    Writes an audit log entry with action_type="USER_ANONYMIZED".
 
     Requires Admin role.
     """
@@ -324,7 +326,7 @@ async def anonymize_user(
             user.last_name = "User"
             user.email = f"anon_{uuid.uuid4()}@easylend.local"
             user.nfc_tag_id = None
-            user.pin_hash = security.get_password_hash(secrets.token_urlsafe(16))
+            user.pin_hash = security.get_secret_hash(secrets.token_urlsafe(16))
             user.is_active = False
             user.is_anonymized = True
 
