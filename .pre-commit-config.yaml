@@ -12,7 +12,8 @@ repos:
   hooks:
     - id: pyright
       name: pyright
-      entry: bash -c "cd backend/api && uv run pyright app/"
+      entry: uv
       language: system
       types: [python]
       pass_filenames: false
+      args: [ "run", "--project", "backend/api", "pyright", "app/" ]
