@@ -1,12 +1,17 @@
+import asyncio
 import hashlib
 import json
+import logging
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.engine import Result
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AuditLog
+
+logger = logging.getLogger(__name__)
 
 _GENESIS_AUDIT_HASH = "0" * 64
 
@@ -30,7 +35,12 @@ async def log_audit_event(
     is retried once after a brief delay; if contention persists, the error
     is propagated so callers can handle it.
     """
-    for attempt in range(2):
+    # Retry up to 5 times with exponential backoff to handle transient lock contention.
+    # Base delay 50ms, doubles each retry: 50ms → 100ms → 200ms → 400ms → 800ms.
+    MAX_ATTEMPTS = 5
+    BASE_DELAY = 0.05
+    last_audit_result: Result | None = None
+    for attempt in range(MAX_ATTEMPTS):
         try:
             last_audit_result = await db.execute(
                 select(AuditLog)
@@ -40,17 +50,21 @@ async def log_audit_event(
             )
             break
         except OperationalError:
-            if attempt == 0:
-                import asyncio
-
-                await asyncio.sleep(0.05)
+            if attempt < MAX_ATTEMPTS - 1:
+                delay = BASE_DELAY * (2**attempt)
+                logger.warning(
+                    "Audit log lock contention (attempt %d/%d), retrying in %.3fs.",
+                    attempt + 1,
+                    MAX_ATTEMPTS,
+                    delay,
+                )
+                await asyncio.sleep(delay)
                 continue
-            raise  # will exit the function; mypy/pyright know this
-    else:
-        # Unreachable — the loop has no `break` on the last iteration, so
-        # the `raise` above always fires. Present only to silence static analysers.
-        raise RuntimeError("audit lock contention exceeded retry limit")
+            # Last attempt exhausted — propagate
+            raise
 
+    if last_audit_result is None:
+        raise RuntimeError("Audit log result cannot be None")
     last_audit = last_audit_result.scalar_one_or_none()
     # Normalise None payload to empty dict — ensures the stored value and
     # the hash computation are always consistent (null != {} in JSON).

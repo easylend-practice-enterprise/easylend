@@ -118,9 +118,9 @@ async def list_loans(
     - **Admin**: all loans in the system.
     - **Any other role**: only the caller's own loans.
     """
-    query = (
+    base_query = (
         select(Loan)
-        .options(selectinload(Loan.user), selectinload(Loan.asset))
+        .options(selectinload(Loan.asset))
         .join(Asset, Loan.asset_id == Asset.asset_id)
         .where(Asset.is_deleted.is_(False))
     )
@@ -131,8 +131,11 @@ async def list_loans(
         .where(Asset.is_deleted.is_(False))
     )
 
-    if not _is_admin(current_user):
-        query = query.where(Loan.user_id == current_user.user_id)
+    if _is_admin(current_user):
+        # Admin sees all loans; eagerly load user for LoanResponse.user_id
+        query = base_query.options(selectinload(Loan.user))
+    else:
+        query = base_query.where(Loan.user_id == current_user.user_id)
         count_query = count_query.where(Loan.user_id == current_user.user_id)
 
     result = await db.execute(

@@ -107,6 +107,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_docs_credentials(self) -> "Settings":
+        # Skip validation during Alembic migrations to avoid breaking DB utility scripts.
+        if sys.argv and "alembic" in sys.argv[0]:
+            return self
+
         env = (self.ENVIRONMENT or "").lower()
         if env in {"dev", "test"}:
             self.DOCS_USERNAME = self.DOCS_USERNAME or "admin"
