@@ -15,7 +15,15 @@ from app.core import security
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
-from app.db.models import AIEvaluation, AuditLog, Loan, LoanStatus, Role, User
+from app.db.models import (
+    AIEvaluation,
+    AuditLog,
+    Loan,
+    LoanStatus,
+    Role,
+    User,
+    UserStatus,
+)
 from app.db.redis import revoke_all_refresh_tokens
 from app.schemas.user import (
     UserCreate,
@@ -225,7 +233,7 @@ async def update_user(
     update_data = payload.model_dump(exclude_unset=True)
 
     # Prevent non-nullable columns from being explicitly set to None
-    non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
+    non_nullable_fields = {"email", "role_id", "first_name", "last_name", "status"}
     invalid_null_fields = [
         field
         for field in non_nullable_fields
@@ -314,14 +322,14 @@ async def anonymize_user(
     Replaces all PII fields (first_name, last_name, email, nfc_tag_id) with
     non-identifying placeholder values and replaces pin_hash with a hash of a
     randomly generated credential, effectively disabling login with the original PIN.
-    Also sets is_active=False and is_anonymized=True.
+    Also sets status=UserStatus.ANONYMIZED.
     Writes an audit log entry with action_type="USER_ANONYMIZED".
 
     Requires Admin role.
     """
     user = await _get_user_with_role_or_404(db, user_id)
 
-    if user.is_anonymized:
+    if user.status == UserStatus.ANONYMIZED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is already anonymized.",
@@ -364,8 +372,7 @@ async def anonymize_user(
             user.email = f"anon_{uuid.uuid4()}@easylend.local"
             user.nfc_tag_id = None
             user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
-            user.is_active = False
-            user.is_anonymized = True
+            user.status = UserStatus.ANONYMIZED
             user.ban_reason = None
             user.failed_login_attempts = 0
             user.locked_until = None
@@ -557,7 +564,7 @@ async def export_user_data(
                     )
                     for k, v in log.payload.items()
                 }
-                if (user.is_anonymized and log.payload)
+                if (user.status == UserStatus.ANONYMIZED and log.payload)
                 else log.payload
             ),
             "created_at": (log.created_at.isoformat() if log.created_at else None),
@@ -568,13 +575,18 @@ async def export_user_data(
     return {
         "user": {
             "user_id": str(user.user_id),
-            "first_name": "[REDACTED]" if user.is_anonymized else user.first_name,
-            "last_name": "[REDACTED]" if user.is_anonymized else user.last_name,
-            "email": "[REDACTED]" if user.is_anonymized else user.email,
+            "first_name": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.first_name,
+            "last_name": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.last_name,
+            "email": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.email,
             "role_name": user.role.role_name,
             "nfc_tag_id": user.nfc_tag_id,
-            "is_active": user.is_active,
-            "is_anonymized": user.is_anonymized,
+            "status": user.status,
             "accepted_privacy_policy": user.accepted_privacy_policy,
         },
         "loans": all_loans,

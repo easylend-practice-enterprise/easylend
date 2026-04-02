@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.core import security
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import User
+from app.db.models import User, UserStatus
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -56,24 +56,32 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account is not active.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    match user.status:
+        case UserStatus.ACTIVE:
+            pass
+        case UserStatus.INACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is not active.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        case UserStatus.BANNED:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account is banned.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        case UserStatus.ANONYMIZED:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is deactivated.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     if user.locked_until is not None and user.locked_until > datetime.now(UTC):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is temporarily locked.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if user.is_anonymized:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account is deactivated.",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

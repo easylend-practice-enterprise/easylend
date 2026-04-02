@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.db_utils import is_lock_not_available_error
 from app.core.rate_limit import check_ip_rate_limit
 from app.db.database import get_db
-from app.db.models import User
+from app.db.models import User, UserStatus
 from app.db.redis import (
     revoke_refresh_token,
     store_refresh_token,
@@ -98,7 +98,7 @@ async def _get_active_user_by_nfc(
         ) from exc
     user = result.scalar_one_or_none()
 
-    if user is None or not user.is_active:
+    if user is None or user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
@@ -195,7 +195,7 @@ async def pin_login(
         ) from exc
 
     user = locked_result.scalar_one_or_none()
-    if user is None or not user.is_active:
+    if user is None or user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
@@ -303,7 +303,7 @@ async def refresh_access_token(
 
     if (
         user is None
-        or not user.is_active
+        or user.status != UserStatus.ACTIVE
         or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
     ):
         raise HTTPException(

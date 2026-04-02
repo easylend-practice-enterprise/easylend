@@ -24,6 +24,7 @@ from sqlalchemy.exc import OperationalError
 
 import app.api.v1.endpoints.loans as loans_endpoints
 from app.core.websockets import manager
+from app.db.models import UserStatus
 from app.tests.conftest import (
     _bearer,
     _make_admin,
@@ -97,9 +98,8 @@ def _make_student(**kwargs) -> SimpleNamespace:
         pin_hash="hashed",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         role=SimpleNamespace(role_name="Student"),
     )
 

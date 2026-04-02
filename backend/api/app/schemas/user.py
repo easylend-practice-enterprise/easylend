@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import AliasPath, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.db.models import UserStatus
+
 
 class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -30,7 +32,7 @@ class UserUpdate(BaseModel):
     pin: str | None = Field(default=None, min_length=4, max_length=32)
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
-    is_active: bool = True
+    status: UserStatus = UserStatus.ACTIVE
     ban_reason: str | None = Field(default=None, max_length=255)
     accepted_privacy_policy: bool | None = None
 
@@ -67,9 +69,8 @@ class UserResponse(BaseModel):
     nfc_tag_id: str | None
     failed_login_attempts: int
     locked_until: datetime | None
-    is_active: bool
+    status: UserStatus
     ban_reason: str | None
-    is_anonymized: bool
     accepted_privacy_policy: bool
 
 

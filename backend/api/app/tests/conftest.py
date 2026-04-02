@@ -169,6 +169,7 @@ class _QueuedSession:
 
 def _make_admin() -> SimpleNamespace:
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -180,9 +181,8 @@ def _make_admin() -> SimpleNamespace:
         pin_hash=security.get_pin_hash("1234"),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Admin"),
     )
@@ -190,6 +190,7 @@ def _make_admin() -> SimpleNamespace:
 
 def _make_medewerker() -> SimpleNamespace:
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -201,9 +202,8 @@ def _make_medewerker() -> SimpleNamespace:
         pin_hash=security.get_pin_hash("1234"),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Staff"),
     )
@@ -239,6 +239,7 @@ class FakeAsyncSession:
 
 def _build_user(*, pin: str = "123456"):
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -246,9 +247,8 @@ def _build_user(*, pin: str = "123456"):
         pin_hash=security.get_pin_hash(pin),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         accepted_privacy_policy=False,
-        is_anonymized=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 

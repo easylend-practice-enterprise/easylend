@@ -22,6 +22,14 @@ class Base(DeclarativeBase):
     pass
 
 
+# USER STATUS ENUM — defined before User class
+class UserStatus(enum.StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    BANNED = "BANNED"
+    ANONYMIZED = "ANONYMIZED"
+
+
 # ROLES
 class Role(Base):
     __tablename__ = "roles"
@@ -58,11 +66,10 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_anonymized: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false"), nullable=False
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False
     )
+    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     accepted_privacy_policy: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
