@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_admin, get_current_user
 from app.core import security
 from app.core.audit import log_audit_event
+from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
 from app.db.models import AIEvaluation, AuditLog, Loan, LoanStatus, Role, User
 from app.db.redis import revoke_all_refresh_tokens
@@ -326,7 +327,20 @@ async def anonymize_user(
             detail="User is already anonymized.",
         )
 
-    # TASK 1: Block anonymization if user has active/reserved/overdue loans
+    # Lock user row to prevent TOCTOU race: between this lock and the loan check,
+    # no concurrent transaction can create a loan for this user.
+    try:
+        await db.execute(select(User).where(User.user_id == user_id).with_for_update())
+    except OperationalError as e:
+        await db.rollback()
+        if is_lock_not_available_error(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is currently being modified. Please retry.",
+            )
+        raise
+
+    # Block anonymization if user has active/reserved/overdue loans
     active_loans_count_result = await db.execute(
         select(func.count())
         .select_from(Loan)
