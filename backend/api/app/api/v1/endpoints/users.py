@@ -332,7 +332,7 @@ async def anonymize_user(
     try:
         await db.execute(select(User).where(User.user_id == user_id).with_for_update())
     except OperationalError as e:
-        await db.rollback()
+        await db.rollback()  # ALWAYS rollback on db error before raising
         if is_lock_not_available_error(e):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
