@@ -1,19 +1,43 @@
+# Exclude common generated directories and virtual environments across all services
+exclude: '^(\.venv/|\.git/|__pycache__/|\.pytest_cache/|\.ruff_cache/)'
+
 repos:
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.15.4
-  hooks:
-    # Run the linter.
-    - id: ruff-check
-      args: [ --fix ]
-    # Run the formatter.
-    - id: ruff-format
-- repo: local
-  hooks:
-    - id: pyright
-      name: pyright
-      entry: uv
-      language: system
-      types: [python]
-      pass_filenames: false
-      args: [ "run", "--project", "backend/api", "pyright", "--project", "backend/api", "backend/api/app/" ]
+  # 1. Essential Hygiene (Runs on all files: yaml, json, md, py, ps1)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ['--maxkb=2048'] # Crucial for vision_service: prevents committing huge ML models or image datasets
+      - id: check-merge-conflict
+
+  # 2. Lightning-fast Spell Checker (Auto-fixes typos in code, comments, and Markdown)
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.44.0
+    hooks:
+      - id: typos
+        args: ["--write-changes"]
+        exclude: '(?i)(.*\.env.*|Setup-Envs\.ps1)' # Prevent it from "fixing" weird API keys or custom variables in your setup scripts
+
+  # 3. Linter & Formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4
+    hooks:
+      - id: ruff-check
+        args: [ "--fix" ]
+      - id: ruff-format
+
+  # 4. Strict Type Checking (Pyright - ensures your type annotations are solid before you commit)
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv
+        language: system
+        types: [python]
+        pass_filenames: false
+        # Currently scoped tightly to the API to respect your strict pyproject.toml rules
+        args: [ "run", "--project", "backend/api", "pyright", "--project", "backend/api", "backend/api/app/" ]
