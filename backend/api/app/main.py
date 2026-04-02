@@ -64,7 +64,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
                 "img-src 'self' data: https://fastapi.tiangolo.com; "
                 "connect-src 'self' https://cdn.jsdelivr.net; "
-                "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
+                "font-src 'self' https://cdn.jsdelivr.net data:;"
             )
         else:
             csp = (

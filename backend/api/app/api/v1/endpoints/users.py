@@ -520,8 +520,8 @@ async def export_user_data(
         .where(
             or_(
                 AuditLog.user_id == user_id,
-                AuditLog.payload["target_user_id"].astext == str(user_id),
-                AuditLog.payload["user_id"].astext == str(user_id),
+                AuditLog.payload["target_user_id"].as_string() == str(user_id),
+                AuditLog.payload["user_id"].as_string() == str(user_id),
             )
         )
         .order_by(AuditLog.created_at)

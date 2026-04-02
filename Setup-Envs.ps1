@@ -40,8 +40,7 @@ $EnvMappings = @(
         )
         RequiredKeys = @(
             "ENVIRONMENT", "JWT_SECRET_KEY", "DATABASE_URL", "REDIS_URL",
-            "VISION_BOX_API_KEY", "SIMULATION_API_KEY", "VISION_API_KEY",
-            "DOCS_USERNAME", "DOCS_PASSWORD"
+            "VISION_BOX_API_KEY", "SIMULATION_API_KEY", "VISION_API_KEY"
         )
     },
     @{

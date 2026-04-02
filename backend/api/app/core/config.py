@@ -65,7 +65,7 @@ class Settings(BaseSettings):
         Skips validation during Alembic migrations to avoid breaking DB utility scripts.
         """
         # Skip validation during Alembic migrations
-        if sys.argv and "alembic" in sys.argv[0]:
+        if sys.argv and any("alembic" in arg for arg in sys.argv):
             return self
 
         is_local_dev = self.ENVIRONMENT.lower() in ("dev", "test")
@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_docs_credentials(self) -> "Settings":
         # Skip validation during Alembic migrations to avoid breaking DB utility scripts.
-        if sys.argv and "alembic" in sys.argv[0]:
+        if sys.argv and any("alembic" in arg for arg in sys.argv):
             return self
 
         env = (self.ENVIRONMENT or "").lower()

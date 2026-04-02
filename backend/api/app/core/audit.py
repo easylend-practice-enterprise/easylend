@@ -32,8 +32,8 @@ async def log_audit_event(
 
     Uses `FOR UPDATE NOWAIT` to acquire a lock on the most-recent audit row
     without blocking concurrent writers. If the lock is already held, the call
-    is retried once after a brief delay; if contention persists, the error
-    is propagated so callers can handle it.
+    is retried with exponential backoff up to 5 times; if contention persists,
+    the error is propagated so callers can handle it.
     """
     # Retry up to 5 times with exponential backoff to handle transient lock contention.
     # Base delay 50ms, doubles each retry: 50ms → 100ms → 200ms → 400ms → 800ms.
