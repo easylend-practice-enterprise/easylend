@@ -132,8 +132,7 @@ async def list_loans(
     )
 
     if _is_admin(current_user):
-        # Admin sees all loans; eagerly load user for LoanResponse.user_id
-        query = base_query.options(selectinload(Loan.user))
+        query = base_query
     else:
         query = base_query.where(Loan.user_id == current_user.user_id)
         count_query = count_query.where(Loan.user_id == current_user.user_id)
