@@ -4,7 +4,7 @@ import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -326,15 +326,17 @@ async def anonymize_user(
         )
 
     # TASK 1: Block anonymization if user has active/reserved/overdue loans
-    active_loans_result = await db.execute(
-        select(Loan.loan_id).where(
+    active_loans_count_result = await db.execute(
+        select(func.count())
+        .select_from(Loan)
+        .where(
             Loan.user_id == user_id,
             Loan.loan_status.in_(
                 [LoanStatus.RESERVED, LoanStatus.ACTIVE, LoanStatus.OVERDUE]
             ),
         )
     )
-    if active_loans_result.scalar_one_or_none() is not None:
+    if (active_loans_count_result.scalar_one_or_none() or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot anonymize user with active or reserved loans.",
@@ -518,8 +520,8 @@ async def export_user_data(
         .where(
             or_(
                 AuditLog.user_id == user_id,
-                cast(AuditLog.payload["target_user_id"], String) == str(user_id),
-                cast(AuditLog.payload["user_id"], String) == str(user_id),
+                AuditLog.payload["target_user_id"].astext == str(user_id),
+                AuditLog.payload["user_id"].astext == str(user_id),
             )
         )
         .order_by(AuditLog.created_at)

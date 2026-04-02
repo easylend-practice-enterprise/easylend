@@ -16,4 +16,4 @@ repos:
       language: system
       types: [python]
       pass_filenames: false
-      args: [ "run", "--project", "backend/api", "pyright", "app/" ]
+      args: [ "run", "--project", "backend/api", "pyright", "backend/api/app/" ]
