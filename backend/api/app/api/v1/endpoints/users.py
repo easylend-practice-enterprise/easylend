@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 import uuid
@@ -339,7 +340,7 @@ async def anonymize_user(
     if (active_loans_count_result.scalar_one_or_none() or 0) > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot anonymize user with active or reserved loans.",
+            detail="Cannot anonymize user with active, reserved, or overdue loans.",
         )
 
     for attempt in range(3):
@@ -377,6 +378,10 @@ async def anonymize_user(
             break
         except (IntegrityError, OperationalError):
             await db.rollback()
+            logger.warning(
+                f"Database error during anonymization, retrying attempt {attempt + 1}/3..."
+            )
+            await asyncio.sleep(0.1 * (2**attempt))
             if attempt == 2:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
