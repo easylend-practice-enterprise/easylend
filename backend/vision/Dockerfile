@@ -49,4 +49,4 @@ EXPOSE 8000
 
 # Start the application with uvicorn
 # optional: uv run gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["fastapi", "run", "main.py", "--host", "0.0.0.0", "--port", "8000"]

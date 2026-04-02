@@ -5,7 +5,7 @@ description = "AI Vision Service for EasyLend using YOLO"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.135.1",
+    "fastapi[standard]>=0.135.1",
     "opencv-python-headless>=4.13.0.92; sys_platform == 'linux'",
     "opencv-python>=4.13.0.92; sys_platform != 'linux'",
     "openvino>=2026.0.0",
