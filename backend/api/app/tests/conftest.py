@@ -162,6 +162,11 @@ class _QueuedSession:
         # Simulate the database: set default values for Assets
         if hasattr(obj, "is_deleted") and getattr(obj, "is_deleted") is None:
             setattr(obj, "is_deleted", False)
+        # Simulate the database: set default values for User status
+        if hasattr(obj, "status") and getattr(obj, "status") is None:
+            from app.db.models import UserStatus
+
+            setattr(obj, "status", UserStatus.ACTIVE)
 
     def add(self, obj):
         self.added.append(obj)

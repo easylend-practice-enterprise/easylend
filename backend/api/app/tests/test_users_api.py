@@ -316,6 +316,46 @@ def test_update_user_returns_404_for_unknown_user(client_with_overrides):
     assert response.status_code == 404
 
 
+def test_update_user_status_change_logs_audit_event(client_with_overrides):
+    from unittest.mock import AsyncMock, patch
+
+    admin = _make_admin()
+    target_user = SimpleNamespace(
+        user_id=uuid.uuid4(),
+        role_id=uuid.uuid4(),
+        first_name="John",
+        last_name="Doe",
+        email="john@easylend.be",
+        nfc_tag_id=None,
+        pin_hash="hashed",
+        failed_login_attempts=0,
+        locked_until=None,
+        status=UserStatus.ACTIVE,
+        ban_reason=None,
+        accepted_privacy_policy=False,
+        role=SimpleNamespace(role_name="Student"),
+    )
+    # Queue order: admin, target_user (before mutations), target_user (after commit refetch)
+    fake_db = _QueuedSession(admin, target_user, target_user)
+    fake_audit_log = AsyncMock()
+    with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
+        with client_with_overrides(fake_db) as client:
+            response = client.patch(
+                f"/api/v1/users/{target_user.user_id}",
+                json={"status": UserStatus.BANNED},
+                headers=_bearer(admin),
+            )
+    assert response.status_code == 200
+    assert response.json()["status"] == UserStatus.BANNED
+    # Verify audit was called with correct arguments
+    assert fake_audit_log.call_count == 1
+    call_kwargs = fake_audit_log.call_args.kwargs
+    assert call_kwargs["action_type"] == "USER_STATUS_CHANGED"
+    assert call_kwargs["payload"]["old_status"] == UserStatus.ACTIVE
+    assert call_kwargs["payload"]["new_status"] == UserStatus.BANNED
+    assert call_kwargs["payload"]["target_user_id"] == str(target_user.user_id)
+
+
 # ─────────────────────────── 8. Admin: PATCH /{user_id}/nfc ──────────────────
 
 

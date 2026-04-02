@@ -221,7 +221,7 @@ async def update_user(
     user_id: UUID,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> User:
     """
     Partially update an existing user.
@@ -229,6 +229,9 @@ async def update_user(
     Requires Admin role.
     """
     user = await _get_user_with_role_or_404(db, user_id)
+
+    # Capture old status for audit logging before any mutations
+    old_status = user.status
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -287,6 +290,20 @@ async def update_user(
 
     for field, value in update_data.items():
         setattr(user, field, value)
+
+    # Audit log status changes (but not anonymization — that has its own endpoint/audit)
+    new_status = update_data.get("status")
+    if new_status is not None and new_status != old_status:
+        await log_audit_event(
+            db,
+            action_type="USER_STATUS_CHANGED",
+            payload={
+                "target_user_id": str(user_id),
+                "old_status": old_status,
+                "new_status": new_status,
+            },
+            user_id=current_admin.user_id,
+        )
 
     try:
         await db.commit()

@@ -117,7 +117,7 @@ flowchart TD
 
 * **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **rate-limited to 500 req/min per IP (Layer 2)**. `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`. The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
 * **Role Management:** Admins can enumerate available system roles via `GET /api/v1/roles` (Bearer JWT required).
-* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `ADMIN_FORCED_OPEN`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `ASSET_SOFT_DELETED`, `LOAN_RESERVED_TIMEOUT`, `LOAN_OVERDUE`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
+* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `ADMIN_FORCED_OPEN`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `ASSET_SOFT_DELETED`, `LOAN_RESERVED_TIMEOUT`, `LOAN_OVERDUE`, `USER_ANONYMIZED`, `USER_STATUS_CHANGED`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
 * **Rate Limiting (Step 12):** Three-layer hybrid approach using Redis:
   * **Layer 2 – Public endpoints:** `POST /api/v1/auth/nfc` and `POST /api/v1/auth/pin` are rate-limited to **500 req/min per IP** to mitigate DDoS and horizontal brute-force while remaining tolerant of campus NAT.
   * **Layer 3 – Authenticated endpoints:** `POST /api/v1/loans/checkout` and `POST /api/v1/loans/return/initiate` are rate-limited to **60 req/min per user/kiosk ID** to prevent a compromised account or glitchy app from overloading the server without penalising other users on the same network.
@@ -255,7 +255,7 @@ erDiagram
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        varchar action_type "EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, USER_ANONYMIZED"
+        varchar action_type "EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, USER_ANONYMIZED, USER_STATUS_CHANGED"
         jsonb payload
         varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
         varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"

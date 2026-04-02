@@ -312,6 +312,11 @@ class AuditLog(Base):
         ForeignKey("users.user_id"), nullable=True
     )
 
+    # Valid action_type values (used as string literals throughout the codebase):
+    # LOGIN_SUCCESS, LOGIN_FAILED, USER_ANONYMIZED, USER_STATUS_CHANGED,
+    # EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED,
+    # VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED,
+    # LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE
     action_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
