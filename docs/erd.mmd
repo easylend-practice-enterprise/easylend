@@ -2,32 +2,32 @@ erDiagram
     %% Lookup Tables
     ROLES ||--o{ USERS : has
     CATEGORIES ||--o{ ASSETS : categorizes
-    
+
     %% Infrastructure
     KIOSKS ||--o{ LOCKERS : contains
     LOCKERS ||--o{ ASSETS : currently_holds
-    
+
     %% Transactions
     USERS ||--o{ LOANS : initiates
     ASSETS ||--o{ LOANS : is_part_of
     LOCKERS ||--o{ LOANS : checkout_location
     LOCKERS ||--o{ LOANS : return_location
-    
+
     %% Analyses, Security & AI
     LOANS ||--o{ AI_EVALUATIONS : evaluated_by
     AI_EVALUATIONS ||--o{ DAMAGE_REPORTS : detects
     USERS ||--o{ AUDIT_LOGS : performs
-    
+
     ROLES {
         uuid role_id PK
         varchar role_name UK
     }
-    
+
     CATEGORIES {
         uuid category_id PK
         varchar category_name UK
     }
-    
+
     USERS {
         uuid user_id PK
         uuid role_id FK
@@ -38,10 +38,11 @@ erDiagram
         varchar pin_hash
         int failed_login_attempts "Anti-brute-force"
         timestamp locked_until "Lockout timer"
-        boolean is_active
+        enum status "ACTIVE, INACTIVE, BANNED, ANONYMIZED"
         varchar ban_reason "Nullable"
+        boolean accepted_privacy_policy
     }
-    
+
     KIOSKS {
         uuid kiosk_id PK
         varchar name
@@ -55,7 +56,7 @@ erDiagram
         int logical_number "Physical number 1, 2, 3... (UK per kiosk: uq_kiosk_logical_number)"
         enum locker_status "AVAILABLE, OCCUPIED, MAINTENANCE, ERROR_OPEN"
     }
-    
+
     ASSETS {
         uuid asset_id PK
         uuid category_id FK
@@ -65,7 +66,7 @@ erDiagram
         enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
         boolean is_deleted
     }
-    
+
     LOANS {
         uuid loan_id PK
         uuid user_id FK
@@ -81,7 +82,7 @@ erDiagram
     %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
     %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
     %%     (409 if loan_status != RETURNING for a RETURN evaluation).
-    
+
     AI_EVALUATIONS {
         uuid evaluation_id PK
         uuid loan_id FK
@@ -104,11 +105,11 @@ erDiagram
         jsonb segmentation_data "YOLO polygon/bounding box coordinates"
         boolean requires_repair
     }
-    
+
     AUDIT_LOGS {
         uuid audit_id PK
         uuid user_id FK "Nullable: For anonymous errors"
-        varchar action_type "LOGIN_SUCCESS, DOOR_FORCED, etc."
+        varchar action_type "EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, USER_ANONYMIZED"
         jsonb payload
         varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
         varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"
