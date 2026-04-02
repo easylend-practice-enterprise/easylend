@@ -89,19 +89,20 @@ async def process_overdue_loans(
         # Fetch a batch of overdue loan IDs only (no row lock held on this result).
         # Using yield_per would keep a cursor open — fetching IDs in small batches
         # achieves the same memory safety without cursor complexity.
-        result = await AsyncSessionLocal().execute(
-            select(Loan.loan_id)
-            .where(
-                Loan.loan_status == LoanStatus.ACTIVE,
-                Loan.due_date.is_not(None),
-                Loan.due_date < reference_now,
-                Loan.asset.has(is_deleted=False),
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Loan.loan_id)
+                .where(
+                    Loan.loan_status == LoanStatus.ACTIVE,
+                    Loan.due_date.is_not(None),
+                    Loan.due_date < reference_now,
+                    Loan.asset.has(is_deleted=False),
+                )
+                .order_by(Loan.due_date)
+                .offset(offset)
+                .limit(BATCH_SIZE)
             )
-            .order_by(Loan.due_date)
-            .offset(offset)
-            .limit(BATCH_SIZE)
-        )
-        batch_ids = list(result.scalars().all())
+            batch_ids = list(result.scalars().all())
 
         if not batch_ids:
             break

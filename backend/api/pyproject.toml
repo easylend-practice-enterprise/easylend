@@ -8,7 +8,7 @@ dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "bcrypt>=5.0.0",
-    "fastapi>=0.133.1",
+    "fastapi[standard]>=0.133.1",
     "psycopg2-binary>=2.9.11",
     "pydantic[email]>=2.12.5",
     "pydantic-settings>=2.13.1",
@@ -22,7 +22,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["httpx>=0.28.1", "pre-commit>=4.5.1", "pytest>=9.0.2", "ruff>=0.15.4"]
+dev = [
+    "httpx>=0.28.1",
+    "pre-commit>=4.5.1",
+    "pyright>=1.1.408",
+    "pytest>=9.0.2",
+    "ruff>=0.15.4",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -40,3 +46,28 @@ ignore = ["E501"] # Ignore noisy 'Line too long' warnings
 
 [tool.ruff.lint.per-file-ignores]
 "**/*test_*.py" = ["S101"] # Ignore assert warnings in test files
+
+[tool.pyright]
+typeCheckingMode = "standard"
+
+# Custom rules (Standard)
+
+# 1. Catch the ".astext" SQLAlchemy bug (member access on unknown JSON/Dict types)
+reportUnknownMemberType = "warning"
+
+# 2. Catch errors where an AI supplies incorrect types into a Pydantic or DB constructor
+reportUnknownArgumentType = "warning"
+
+# 3. Ensure dicts and lists do not accidentally become [Any], which can hide bugs
+strictDictionaryInference = true
+strictListInference = true
+strictSetInference = true
+
+# 4. Prevent using a Pydantic setter/getter with incorrect types
+reportPropertyTypeMismatch = "error"
+
+# 5. Useful for Python 3.10+ match/case statements (ensures cases are exhaustive)
+reportMatchNotExhaustive = "error"
+
+# 6. Optional: warn when third-party libraries have poor or missing type hints
+reportMissingTypeStubs = "warning"

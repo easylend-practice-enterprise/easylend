@@ -31,14 +31,14 @@ env/
 .pub/
 build/
 
-# (Native Android/iOS build folders binnen Flutter)
+# (Native Android/iOS build folders for Flutter)
 android/.gradle/
 android/app/build/
 android/local.properties
 ios/Pods/
 ios/.symlinks/
 
-# Docker & Infrastructuur
+# Docker & Infrastructure
 backend/database/pgdata/
 backend/database/pgadmin-data/
 backend/database/redis_data/
@@ -70,3 +70,4 @@ runs/
 
 .claude/
 CLAUDE.md
+AGENTS.md

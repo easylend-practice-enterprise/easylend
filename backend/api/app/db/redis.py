@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Awaitable
+from typing import cast
 
 from redis.asyncio import Redis
 
@@ -11,7 +13,7 @@ redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 async def check_redis_connection():
     try:
-        await redis_client.ping()
+        await cast(Awaitable[bool], redis_client.ping())
         logger.info("Successfully connected to Redis Cache.")
     except Exception as exc:
         logger.warning("Could not connect to Redis: %s", exc)

@@ -182,6 +182,8 @@ def _make_admin() -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
+        is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 
@@ -201,6 +203,8 @@ def _make_medewerker() -> SimpleNamespace:
         locked_until=None,
         is_active=True,
         ban_reason=None,
+        is_anonymized=False,
+        accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Staff"),
     )
 
@@ -243,6 +247,8 @@ def _build_user(*, pin: str = "123456"):
         failed_login_attempts=0,
         locked_until=None,
         is_active=True,
+        accepted_privacy_policy=False,
+        is_anonymized=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 

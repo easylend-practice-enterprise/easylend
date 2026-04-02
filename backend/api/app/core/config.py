@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed CORS origins. Defaults to localhost for dev safety.
     # Override via CORS_ORIGINS env var (e.g. "https://app.example.com,https://admin.example.com").
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # HTTP Basic Auth credentials for the interactive API docs.
+    # Must be explicitly set via env vars in production (enforced below).
+    DOCS_USERNAME: str | None = None
+    DOCS_PASSWORD: str | None = None
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
@@ -61,7 +65,7 @@ class Settings(BaseSettings):
         Skips validation during Alembic migrations to avoid breaking DB utility scripts.
         """
         # Skip validation during Alembic migrations
-        if sys.argv and "alembic" in sys.argv[0]:
+        if sys.argv and any("alembic" in arg for arg in sys.argv):
             return self
 
         is_local_dev = self.ENVIRONMENT.lower() in ("dev", "test")
@@ -99,6 +103,47 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "CRITICAL: SIMULATION_API_KEY is missing, insecure, or too short in a non-dev environment!"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_docs_credentials(self) -> "Settings":
+        # Skip validation during Alembic migrations to avoid breaking DB utility scripts.
+        if sys.argv and any("alembic" in arg for arg in sys.argv):
+            return self
+
+        env = (self.ENVIRONMENT or "").lower()
+        if env in {"dev", "test"}:
+            self.DOCS_USERNAME = self.DOCS_USERNAME or "admin"
+            self.DOCS_PASSWORD = self.DOCS_PASSWORD or "easylend"
+            return self
+
+        if not self.DOCS_USERNAME or not self.DOCS_PASSWORD:
+            raise ValueError(
+                "DOCS_USERNAME and DOCS_PASSWORD must be explicitly set for non-dev/test environments."
+            )
+
+        forbidden_placeholders = {
+            "admin",
+            "easylend",
+            "changeme",
+            "password",
+            "test",
+            "user",
+            "dummy_docs_user",
+            "dummy_docs_password_do_not_use",
+        }
+
+        if self.DOCS_USERNAME.lower() in forbidden_placeholders:
+            raise ValueError("DOCS_USERNAME is using a placeholder or weak value.")
+        if self.DOCS_PASSWORD.lower() in forbidden_placeholders:
+            raise ValueError("DOCS_PASSWORD is using a placeholder or weak value.")
+        if len(self.DOCS_PASSWORD) < 12:
+            raise ValueError(
+                "DOCS_PASSWORD must be at least 12 characters long in non-dev environments."
+            )
+        if self.DOCS_USERNAME == self.DOCS_PASSWORD:
+            raise ValueError("DOCS_PASSWORD must not be identical to DOCS_USERNAME.")
+
         return self
 
     model_config = SettingsConfigDict(

@@ -48,4 +48,4 @@ USER appuser
 EXPOSE 8000
 
 # Run migrations first, then start uvicorn when migrations succeed
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && fastapi run app/main.py --host 0.0.0.0 --port 8000"]

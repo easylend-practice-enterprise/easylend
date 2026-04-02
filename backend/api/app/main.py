@@ -1,10 +1,13 @@
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.api.v1.router import router as v1_router
 from app.api.ws import ws_router
@@ -48,10 +51,28 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # XSS filter (legacy browsers)
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        # Content Security Policy (strict, no eval/inline)
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'"
-        )
+        # Content Security Policy — relaxed only for Swagger/Redoc, strict elsewhere
+        path = request.url.path
+        if (
+            path.startswith("/docs")
+            or path.startswith("/redoc")
+            or path == "/openapi.json"
+        ):
+            csp = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://fastapi.tiangolo.com; "
+                "connect-src 'self' https://cdn.jsdelivr.net; "
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
+                "font-src 'self' https://cdn.jsdelivr.net data:;"
+            )
+        else:
+            csp = (
+                "default-src 'self'; script-src 'self'; "
+                "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
+            )
+        response.headers["Content-Security-Policy"] = csp
         # Permissions policy: disable unnecessary browser features
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -109,6 +130,9 @@ app = FastAPI(
     description="Core Backend for the EasyLend Practice Enterprise",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # CORS: allow credential-free cross-origin calls from known web origins only.
@@ -137,4 +161,62 @@ async def health_check():
 
 
 app.include_router(v1_router)
+
+
+# ---------------------------------------------------------------------------
+# Protected interactive docs (HTTP Basic Auth)
+# ---------------------------------------------------------------------------
+
+_docs_basic = HTTPBasic()
+
+
+def _docs_creds() -> tuple[str, str]:
+    """
+    Returns the validated docs credentials.
+
+    After startup, the model validator guarantees these are always str
+    (never None). We use a helper so Pylance can narrow the union type.
+    """
+    username: str = settings.DOCS_USERNAME  # type: ignore[assignment]
+    password: str = settings.DOCS_PASSWORD  # type: ignore[assignment]
+    return username, password
+
+
+def _verify_docs_credentials(
+    credentials: HTTPBasicCredentials = Depends(_docs_basic),
+) -> None:
+    doc_user, doc_pass = _docs_creds()
+    username_ok = secrets.compare_digest(credentials.username, doc_user)
+    password_ok = secrets.compare_digest(credentials.password, doc_pass)
+    if not (username_ok and password_ok):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials.",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+@app.get("/docs", include_in_schema=False)
+async def get_docs(_: None = Depends(_verify_docs_credentials)):
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.PROJECT_NAME} - Swagger UI",
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc(_: None = Depends(_verify_docs_credentials)):
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.PROJECT_NAME} - ReDoc",
+    )
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi(
+    _: None = Depends(_verify_docs_credentials),
+) -> JSONResponse:
+    return JSONResponse(content=app.openapi())
+
+
 app.include_router(ws_router)

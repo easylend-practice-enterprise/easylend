@@ -1,15 +1,22 @@
+import asyncio
+import logging
+import secrets
+import uuid
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core import security
+from app.core.audit import log_audit_event
+from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
-from app.db.models import Role, User
+from app.db.models import AIEvaluation, AuditLog, Loan, LoanStatus, Role, User
+from app.db.redis import revoke_all_refresh_tokens
 from app.schemas.user import (
     UserCreate,
     UserListResponse,
@@ -17,6 +24,8 @@ from app.schemas.user import (
     UserResponse,
     UserUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -173,6 +182,7 @@ async def create_user(
         email=str(payload.email),
         nfc_tag_id=payload.nfc_tag_id,
         pin_hash=security.get_pin_hash(payload.pin),
+        accepted_privacy_policy=payload.accepted_privacy_policy,
     )
 
     db.add(user)
@@ -282,6 +292,119 @@ async def update_user(
     return await _get_user_with_role_or_404(db, user_id)
 
 
+@router.post(
+    "/{user_id}/anonymize",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "User already anonymized"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+    },
+)
+async def anonymize_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_admin: User = Depends(get_current_admin),
+) -> User:
+    """
+    Anonymize a user account (GDPR Right to be Forgotten).
+
+    Replaces all PII fields (first_name, last_name, email, nfc_tag_id) with
+    non-identifying placeholder values and replaces pin_hash with a hash of a
+    randomly generated credential, effectively disabling login with the original PIN.
+    Also sets is_active=False and is_anonymized=True.
+    Writes an audit log entry with action_type="USER_ANONYMIZED".
+
+    Requires Admin role.
+    """
+    user = await _get_user_with_role_or_404(db, user_id)
+
+    if user.is_anonymized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already anonymized.",
+        )
+
+    # Lock user row to prevent TOCTOU race: between this lock and the loan check,
+    # no concurrent transaction can create a loan for this user.
+    try:
+        await db.execute(select(User).where(User.user_id == user_id).with_for_update())
+    except OperationalError as e:
+        await db.rollback()  # ALWAYS rollback on db error before raising
+        if is_lock_not_available_error(e):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is currently being modified. Please retry.",
+            )
+        raise
+
+    # Block anonymization if user has active/reserved/overdue loans
+    active_loans_count_result = await db.execute(
+        select(func.count())
+        .select_from(Loan)
+        .where(
+            Loan.user_id == user_id,
+            Loan.loan_status.in_(
+                [LoanStatus.RESERVED, LoanStatus.ACTIVE, LoanStatus.OVERDUE]
+            ),
+        )
+    )
+    if (active_loans_count_result.scalar_one_or_none() or 0) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot anonymize user with active, reserved, or overdue loans.",
+        )
+
+    for attempt in range(3):
+        try:
+            user.first_name = "Anonymized"
+            user.last_name = "User"
+            user.email = f"anon_{uuid.uuid4()}@easylend.local"
+            user.nfc_tag_id = None
+            user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
+            user.is_active = False
+            user.is_anonymized = True
+            user.ban_reason = None
+            user.failed_login_attempts = 0
+            user.locked_until = None
+
+            # Atomic: audit event is staged before the single commit that covers both
+            # user mutations and the audit log entry — rollback covers both on failure.
+            await log_audit_event(
+                db,
+                action_type="USER_ANONYMIZED",
+                payload={"target_user_id": str(user_id)},
+                user_id=current_admin.user_id,
+            )
+            await db.commit()
+
+            # After successful commit: revoke tokens (non-critical-path, best-effort)
+            try:
+                await revoke_all_refresh_tokens(str(user_id))
+            except Exception:
+                logger.exception(
+                    "revoke_all_refresh_tokens failed for user %s — best-effort, non-critical",
+                    user_id,
+                )
+
+            break
+        except (IntegrityError, OperationalError):
+            await db.rollback()
+            logger.warning(
+                f"Database error during anonymization, retrying attempt {attempt + 1}/3..."
+            )
+            await asyncio.sleep(0.1 * (2**attempt))
+            if attempt == 2:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Anonymization failed after multiple attempts. Please try again.",
+                )
+
+    return await _get_user_with_role_or_404(db, user_id)
+
+
 @router.patch(
     "/{user_id}/nfc",
     response_model=UserResponse,
@@ -327,3 +450,133 @@ async def update_user_nfc(
             detail="NFC tag is already linked to another user.",
         )
     return await _get_user_with_role_or_404(db, user_id)
+
+
+@router.get(
+    "/{user_id}/export",
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+    },
+)
+async def export_user_data(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    Export all personal data for a user (GDPR Right to Portability).
+
+    Accessible by the user themselves OR an Admin. Raises 403 otherwise.
+    """
+    if (
+        current_user.user_id != user_id
+        and current_user.role.role_name.upper() != "ADMIN"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden.",
+        )
+
+    user = await _get_user_with_role_or_404(db, user_id)
+
+    # Fetch all loans with asset, evaluations, and damage reports eagerly loaded
+    loans_result = await db.execute(
+        select(Loan)
+        .options(
+            selectinload(Loan.asset),
+            selectinload(Loan.evaluations).selectinload(AIEvaluation.damage_reports),
+        )
+        .where(Loan.user_id == user_id)
+        .order_by(Loan.reserved_at.desc())
+    )
+    all_loans = []
+    for loan in loans_result.scalars().all():
+        loan_dict = {
+            "loan_id": str(loan.loan_id),
+            "asset_name": loan.asset.name if loan.asset else None,
+            "status": loan.loan_status,
+            "reserved_at": (loan.reserved_at.isoformat() if loan.reserved_at else None),
+            "borrowed_at": (loan.borrowed_at.isoformat() if loan.borrowed_at else None),
+            "due_date": (loan.due_date.isoformat() if loan.due_date else None),
+            "returned_at": (loan.returned_at.isoformat() if loan.returned_at else None),
+            "checkout_locker_id": str(loan.checkout_locker_id)
+            if loan.checkout_locker_id
+            else None,
+            "return_locker_id": str(loan.return_locker_id)
+            if loan.return_locker_id
+            else None,
+            "evaluations": [
+                {
+                    "evaluation_id": str(ev.evaluation_id),
+                    "evaluation_type": ev.evaluation_type,
+                    "ai_confidence": ev.ai_confidence,
+                    "has_damage_detected": ev.has_damage_detected,
+                    "is_approved": ev.is_approved,
+                    "rejection_reason": ev.rejection_reason,
+                    "analyzed_at": (
+                        ev.analyzed_at.isoformat() if ev.analyzed_at else None
+                    ),
+                    "damage_reports": [
+                        {
+                            "damage_type": dr.damage_type,
+                            "severity": dr.severity,
+                            "requires_repair": dr.requires_repair,
+                        }
+                        for dr in ev.damage_reports
+                    ],
+                }
+                for ev in loan.evaluations
+            ],
+        }
+        all_loans.append(loan_dict)
+
+    # Fetch audit history
+    audit_result = await db.execute(
+        select(AuditLog)
+        .where(
+            or_(
+                AuditLog.user_id == user_id,
+                AuditLog.payload["target_user_id"].as_string() == str(user_id),
+                AuditLog.payload["user_id"].as_string() == str(user_id),
+            )
+        )
+        .order_by(AuditLog.created_at)
+    )
+    audit_history = [
+        {
+            "action_type": log.action_type,
+            "payload": (
+                {
+                    k: (
+                        "[REDACTED]"
+                        if k in ("first_name", "last_name", "email", "target_user_id")
+                        else v
+                    )
+                    for k, v in log.payload.items()
+                }
+                if (user.is_anonymized and log.payload)
+                else log.payload
+            ),
+            "created_at": (log.created_at.isoformat() if log.created_at else None),
+        }
+        for log in audit_result.scalars().all()
+    ]
+
+    return {
+        "user": {
+            "user_id": str(user.user_id),
+            "first_name": "[REDACTED]" if user.is_anonymized else user.first_name,
+            "last_name": "[REDACTED]" if user.is_anonymized else user.last_name,
+            "email": "[REDACTED]" if user.is_anonymized else user.email,
+            "role_name": user.role.role_name,
+            "nfc_tag_id": user.nfc_tag_id,
+            "is_active": user.is_active,
+            "is_anonymized": user.is_anonymized,
+            "accepted_privacy_policy": user.accepted_privacy_policy,
+        },
+        "loans": all_loans,
+        "audit_history": audit_history,
+    }

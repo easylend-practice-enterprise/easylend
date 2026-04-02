@@ -113,7 +113,7 @@ class _QuarantineSession(_QueuedSession):
         super().__init__(admin)
         self._loans = loans
 
-    async def execute(self, query):
+    async def execute(self, query):  # type: ignore[override]
         result = await super().execute(query)
         query_str = str(query)
         if "FROM loans" in query_str:
