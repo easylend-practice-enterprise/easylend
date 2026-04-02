@@ -1,0 +1,99 @@
+import 'package:dio/dio.dart';
+
+import '../../models/auth/nfc_login_request.dart';
+import '../../models/auth/pin_login_request.dart';
+import '../../models/auth/token_response.dart';
+import '../../models/auth/user.dart';
+import '../../models/auth/refresh_token_request.dart';
+import '../../models/loans/checkout_request.dart';
+import '../../models/loans/loan_response.dart';
+import '../../models/loans/loan_status_response.dart';
+import '../../models/loans/return_initiate_request.dart';
+
+class ApiClient {
+  final Dio _dio;
+
+  ApiClient(this._dio);
+
+  // Auth endpoints
+
+  Future<void> nfcLogin(NfcLoginRequest request) async {
+    await _dio.post('/api/v1/auth/nfc', data: request.toJson());
+  }
+
+  Future<TokenResponse> pinLogin(PinLoginRequest request) async {
+    final response = await _dio.post('/api/v1/auth/pin', data: request.toJson());
+    return TokenResponse.fromJson(response.data);
+  }
+
+  Future<TokenResponse> refreshToken(RefreshTokenRequest request) async {
+    final response = await _dio.post('/api/v1/auth/refresh', data: request.toJson());
+    return TokenResponse.fromJson(response.data);
+  }
+
+  Future<void> logout(RefreshTokenRequest request) async {
+    await _dio.post('/api/v1/auth/logout', data: request.toJson());
+  }
+
+  // User endpoints
+
+  Future<User> getMe() async {
+    final response = await _dio.get('/api/v1/users/me');
+    return User.fromJson(response.data);
+  }
+
+  // Catalog endpoints
+
+  Future<List<dynamic>> getCatalog({int skip = 0, int limit = 100}) async {
+    final response = await _dio.get('/api/v1/catalog', queryParameters: {
+      'skip': skip,
+      'limit': limit,
+    });
+    return response.data as List<dynamic>;
+  }
+
+  // Loan endpoints
+
+  Future<PaginatedLoansResponse> getLoans({int skip = 0, int limit = 100}) async {
+    final response = await _dio.get('/api/v1/loans', queryParameters: {
+      'skip': skip,
+      'limit': limit,
+    });
+    return PaginatedLoansResponse.fromJson(response.data);
+  }
+
+  Future<LoanStatusResponse> getLoanStatus(String loanId) async {
+    final response = await _dio.get('/api/v1/loans/$loanId/status');
+    return LoanStatusResponse.fromJson(response.data);
+  }
+
+  Future<LoanPublicResponse> checkout(CheckoutRequest request, String? idempotencyKey) async {
+    final options = idempotencyKey != null
+        ? Options(headers: {'Idempotency-Key': idempotencyKey})
+        : null;
+    final response = await _dio.post('/api/v1/loans/checkout', data: request.toJson(), options: options);
+    return LoanPublicResponse.fromJson(response.data);
+  }
+
+  Future<LoanPublicResponse> returnInitiate(ReturnInitiateRequest request, String? idempotencyKey) async {
+    final options = idempotencyKey != null
+        ? Options(headers: {'Idempotency-Key': idempotencyKey})
+        : null;
+    final response = await _dio.post('/api/v1/loans/return/initiate', data: request.toJson(), options: options);
+    return LoanPublicResponse.fromJson(response.data);
+  }
+}
+
+class PaginatedLoansResponse {
+  final List<LoanPublicResponse> items;
+  final int total;
+
+  PaginatedLoansResponse({required this.items, required this.total});
+
+  factory PaginatedLoansResponse.fromJson(Map<String, dynamic> json) {
+    return PaginatedLoansResponse(
+      items: (json['items'] as List).map((e) => LoanPublicResponse.fromJson(e)).toList(),
+      total: json['total'] as int,
+    );
+  }
+}

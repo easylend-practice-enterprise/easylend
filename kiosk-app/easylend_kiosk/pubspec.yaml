@@ -37,6 +37,23 @@ dependencies:
   camera: ^0.10.0
   google_mlkit_barcode_scanning: ^0.5.0
 
+  # API & networking
+  dio: ^5.4.0
+  retrofit: ^4.0.0
+  json_annotation: ^4.8.0
+
+  # State management
+  flutter_riverpod: ^2.4.0
+
+  # Navigation
+  go_router: ^13.0.0
+
+  # Secure storage
+  flutter_secure_storage: ^9.0.0
+
+  # Utilities
+  uuid: ^4.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -47,6 +64,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  json_serializable: ^6.7.0
+  retrofit_generator: ^10.2.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
