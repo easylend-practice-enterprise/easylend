@@ -437,12 +437,32 @@ async def analyze_image(
             asset.asset_status = AssetStatus.AVAILABLE
             locker.locker_status = LockerStatus.OCCUPIED
             led_color = "red"
+            await log_audit_event(
+                db,
+                action_type="LOAN_CHECKOUT_FRAUD",
+                payload={
+                    "loan_id": str(loan.loan_id),
+                    "asset_id": str(asset.asset_id),
+                    "locker_id": str(locker.locker_id),
+                },
+                user_id=loan.user_id,
+            )
         else:
             loan.loan_status = LoanStatus.ACTIVE
             loan.borrowed_at = datetime.now(UTC)
             asset.locker_id = None
             locker.locker_status = LockerStatus.AVAILABLE
             led_color = "green"
+            await log_audit_event(
+                db,
+                action_type="LOAN_CHECKOUT_CONFIRMED",
+                payload={
+                    "loan_id": str(loan.loan_id),
+                    "asset_id": str(asset.asset_id),
+                    "locker_id": str(locker.locker_id),
+                },
+                user_id=loan.user_id,
+            )
     else:
         if locker_empty or has_damage:
             loan.loan_status = LoanStatus.PENDING_INSPECTION
@@ -457,6 +477,16 @@ async def analyze_image(
             asset.locker_id = locker.locker_id
             locker.locker_status = LockerStatus.OCCUPIED
             led_color = "green"
+            await log_audit_event(
+                db,
+                action_type="LOAN_RETURN_CONFIRMED",
+                payload={
+                    "loan_id": str(loan.loan_id),
+                    "asset_id": str(asset.asset_id),
+                    "locker_id": str(locker.locker_id),
+                },
+                user_id=loan.user_id,
+            )
 
     try:
         async with aiofiles.open(file_path, "wb") as buffer:

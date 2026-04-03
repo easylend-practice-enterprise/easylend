@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.audit import log_audit_event
 from app.core.config import settings
 from app.core.db_utils import is_lock_not_available_error
 from app.core.rate_limit import check_ip_rate_limit
@@ -214,12 +215,30 @@ async def pin_login(
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
             user.failed_login_attempts = _MAX_ATTEMPTS
             await db.commit()
+            await log_audit_event(
+                db,
+                action_type="LOGIN_FAILED",
+                payload={
+                    "nfc_tag_id": body.nfc_tag_id,
+                    "reason": "ACCOUNT_LOCKED",
+                    "lockout_until": str(user.locked_until),
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Account is locked. Try again later.",
             )
 
         await db.commit()
+        await log_audit_event(
+            db,
+            action_type="LOGIN_FAILED",
+            payload={
+                "nfc_tag_id": body.nfc_tag_id,
+                "reason": "INVALID_PIN",
+                "remaining_attempts": remaining_attempts,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",
@@ -229,6 +248,13 @@ async def pin_login(
     user.failed_login_attempts = 0
     user.locked_until = None
     await db.commit()
+
+    await log_audit_event(
+        db,
+        action_type="LOGIN_SUCCESS",
+        payload={"nfc_tag_id": body.nfc_tag_id},
+        user_id=user.user_id,
+    )
 
     access_token = security.create_access_token(
         user_id=user.user_id,

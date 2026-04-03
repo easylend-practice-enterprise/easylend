@@ -48,6 +48,12 @@ def mock_hardware_manager(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def mock_audit_logger(monkeypatch):
+    """Mock log_audit_event so audit DB calls don't hit the fake session queue."""
+    monkeypatch.setattr(loans_endpoints, "log_audit_event", AsyncMock())
+
+
+@pytest.fixture(autouse=True)
 def mock_idempotency_redis(monkeypatch):
     """Use per-test in-memory Redis emulation for idempotency keys."""
 

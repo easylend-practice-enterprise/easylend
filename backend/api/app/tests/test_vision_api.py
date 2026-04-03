@@ -27,6 +27,7 @@ def _vision_form_data(
 def _make_loan(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
+        user_id=kwargs.get("user_id", uuid.uuid4()),
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
         return_locker_id=kwargs.get("return_locker_id"),
@@ -207,7 +208,7 @@ def _mock_common_vision_runtime(monkeypatch, tmp_path):
     send_command_mock = AsyncMock(return_value=True)
     audit_mock = AsyncMock()
     monkeypatch.setattr(vision_endpoints.manager, "send_command", send_command_mock)
-    monkeypatch.setattr(vision_endpoints, "log_audit_event", audit_mock)
+    monkeypatch.setattr("app.api.v1.endpoints.vision.log_audit_event", audit_mock)
     monkeypatch.setattr(vision_endpoints, "UPLOAD_DIR", tmp_path)
     return send_command_mock, audit_mock
 
@@ -324,11 +325,15 @@ def test_checkout_success_branch_sets_active_and_green_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "7", "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
-    assert kwargs["action_type"] == "VISION_EVALUATION_PROCESSED"
+    # There are now two audit calls: LOAN_CHECKOUT_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -464,10 +469,15 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "8", "color": "red"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_CHECKOUT_FRAUD + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -530,10 +540,15 @@ def test_return_success_branch_sets_completed_and_green_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "9", "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_RETURN_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "RETURN"
     assert kwargs["payload"]["has_damage_detected"] is False
 

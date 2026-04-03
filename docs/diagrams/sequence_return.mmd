@@ -50,6 +50,7 @@ sequenceDiagram
                         else Locker found
                             API->>DB: UPDATE loans SET return_locker_id = locker_id, loan_status = 'RETURNING' WHERE loan_id = ?
                             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+                            API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_INITIATED', payload: {loan_id, asset_id, return_locker_id}}
 
                             %% Hardware command sent BEFORE DB commit
                             Note over API,VB: DB committed AFTER send, hardware failure leaves RETURNING loan for cleanup
@@ -108,6 +109,7 @@ sequenceDiagram
         API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
         API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
         API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_CONFIRMED', payload: {loan_id, asset_id, locker_id}}
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: green}

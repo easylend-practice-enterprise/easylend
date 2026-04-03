@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
 from app.core.rate_limit import check_token_rate_limit
 from app.core.websockets import manager
@@ -332,6 +333,18 @@ async def checkout(
         db.add(loan)
         await db.flush()
 
+        await log_audit_event(
+            db,
+            action_type="LOAN_CHECKOUT_INITIATED",
+            payload={
+                "loan_id": str(loan.loan_id),
+                "asset_id": str(asset.asset_id),
+                "locker_id": str(checkout_locker_id),
+                "kiosk_id": str(kiosk_id_str),
+            },
+            user_id=current_user.user_id,
+        )
+
         # --- 6. Commit DB state BEFORE sending hardware command ---
         # This ensures the loan record is durable. If the hardware command
         # fails after commit, the DB is consistent and the RESERVED loan will
@@ -528,6 +541,18 @@ async def return_initiate(
         locker.locker_status = LockerStatus.OCCUPIED
         loan.return_locker_id = locker.locker_id
         loan.loan_status = LoanStatus.RETURNING
+
+        await log_audit_event(
+            db,
+            action_type="LOAN_RETURN_INITIATED",
+            payload={
+                "loan_id": str(loan.loan_id),
+                "asset_id": str(loan.asset_id),
+                "return_locker_id": str(locker.locker_id),
+                "kiosk_id": str(kiosk_id_str),
+            },
+            user_id=current_user.user_id,
+        )
 
         # --- 4. Commit DB state BEFORE sending hardware command ---
         # This ensures the loan record is durable. If the hardware command
