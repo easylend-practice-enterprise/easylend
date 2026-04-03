@@ -15,8 +15,9 @@ def main():
             / "laptop_damage_detection_YOLO26-seg"
             / "data.yaml"
         ),
-        epochs=100,
-        imgsz=640,
+        epochs=150,
+        batch=8,
+        imgsz=960,
         device=0,
         name="yolo26m-seg_laptop_damage_detection",
         project=str(VISION_ROOT / "runs" / "laptop-damage-detection"),
