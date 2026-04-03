@@ -288,24 +288,41 @@ async def update_user(
     else:
         update_data.pop("pin", None)
 
+    old_pin_hash = getattr(user, "pin_hash", None)
+
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    # Audit log status changes (but not anonymization — that has its own endpoint/audit)
-    new_status = update_data.get("status")
-    if new_status is not None and new_status != old_status:
-        await log_audit_event(
-            db,
-            action_type="USER_STATUS_CHANGED",
-            payload={
-                "target_user_id": str(user_id),
-                "old_status": old_status,
-                "new_status": new_status,
-            },
-            user_id=current_admin.user_id,
+    if update_data.get("status") == UserStatus.ANONYMIZED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot set status to ANONYMIZED via update. Use the dedicated /anonymize endpoint.",
         )
 
+    new_status = update_data.get("status")
+
     try:
+        await db.flush()
+        if new_status is not None and new_status != old_status:
+            await log_audit_event(
+                db,
+                action_type="USER_STATUS_CHANGED",
+                payload={
+                    "target_user_id": str(user_id),
+                    "old_status": getattr(old_status, "value", old_status),
+                    "new_status": getattr(new_status, "value", new_status),
+                },
+                user_id=current_admin.user_id,
+            )
+        if "pin_hash" in update_data and update_data["pin_hash"] != old_pin_hash:
+            await log_audit_event(
+                db,
+                action_type="USER_PIN_CHANGED",
+                payload={
+                    "target_user_id": str(user_id),
+                },
+                user_id=current_admin.user_id,
+            )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -444,7 +461,7 @@ async def update_user_nfc(
     user_id: UUID,
     payload: UserNfcUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> User:
     """
     Update the NFC tag linked to a user account.
@@ -465,6 +482,15 @@ async def update_user_nfc(
         )
 
     user.nfc_tag_id = payload.nfc_tag_id
+    await log_audit_event(
+        db,
+        action_type="USER_NFC_ASSIGNED",
+        payload={
+            "target_user_id": str(user_id),
+            "nfc_tag_id": payload.nfc_tag_id,
+        },
+        user_id=current_admin.user_id,
+    )
     try:
         await db.commit()
     except IntegrityError:

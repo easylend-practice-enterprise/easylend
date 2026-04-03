@@ -359,7 +359,11 @@ def test_update_user_status_change_logs_audit_event(client_with_overrides):
 # ─────────────────────────── 8. Admin: PATCH /{user_id}/nfc ──────────────────
 
 
-def test_update_user_nfc_links_new_tag(client_with_overrides):
+def test_update_user_nfc_links_new_tag(client_with_overrides, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.users.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     target_user = SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -393,7 +397,13 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
     assert fake_db.commit_calls == 1
 
 
-def test_update_user_nfc_returns_400_on_duplicate_tag(client_with_overrides):
+def test_update_user_nfc_returns_400_on_duplicate_tag(
+    client_with_overrides, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.users.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     target_user = SimpleNamespace(
         user_id=uuid.uuid4(),

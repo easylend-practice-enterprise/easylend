@@ -335,7 +335,7 @@ async def update_kiosk_status(
     kiosk_id: UUID,
     payload: KioskStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> KioskResponse:
     """
     Update a kiosk's operational status.
@@ -345,9 +345,27 @@ async def update_kiosk_status(
     """
     kiosk = await _get_kiosk_or_404(db, kiosk_id)
 
+    old_kiosk_status = kiosk.kiosk_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in update_data.items():
         setattr(kiosk, field, value)
+
+    new_kiosk_status = update_data.get("kiosk_status")
+    if new_kiosk_status is not None and new_kiosk_status != getattr(
+        old_kiosk_status, "value", old_kiosk_status
+    ):
+        await log_audit_event(
+            db,
+            action_type="KIOSK_STATUS_CHANGED",
+            payload={
+                "kiosk_id": str(kiosk_id),
+                "old_kiosk_status": getattr(
+                    old_kiosk_status, "value", old_kiosk_status
+                ),
+                "new_kiosk_status": new_kiosk_status,
+            },
+            user_id=current_admin.user_id,
+        )
 
     await db.commit()
     await db.refresh(kiosk)
@@ -549,7 +567,7 @@ async def update_locker_status(
     locker_id: UUID,
     payload: LockerStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> LockerResponse:
     """
     Update a locker's operational status.
@@ -562,10 +580,28 @@ async def update_locker_status(
     """
     locker = await _get_locker_or_404(db, locker_id)
 
+    old_locker_status = locker.locker_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     for field, value in update_data.items():
         setattr(locker, field, value)
+
+    new_locker_status = update_data.get("locker_status")
+    if new_locker_status is not None and new_locker_status != getattr(
+        old_locker_status, "value", old_locker_status
+    ):
+        await log_audit_event(
+            db,
+            action_type="LOCKER_STATUS_CHANGED",
+            payload={
+                "locker_id": str(locker_id),
+                "old_locker_status": getattr(
+                    old_locker_status, "value", old_locker_status
+                ),
+                "new_locker_status": new_locker_status,
+            },
+            user_id=current_admin.user_id,
+        )
 
     await db.commit()
     await db.refresh(locker)
@@ -809,7 +845,7 @@ async def get_asset_by_id(
 async def create_asset(
     payload: AssetCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> AssetResponse:
     """
     Register a new physical asset in the system.
@@ -857,6 +893,17 @@ async def create_asset(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An asset with this aztec_code already exists.",
         )
+    await log_audit_event(
+        db,
+        action_type="ASSET_CREATED",
+        payload={
+            "asset_id": str(asset.asset_id),
+            "name": asset.name,
+            "aztec_code": asset.aztec_code,
+            "asset_status": getattr(asset.asset_status, "value", asset.asset_status),
+        },
+        user_id=current_admin.user_id,
+    )
     return AssetResponse.model_validate(asset)
 
 
@@ -877,7 +924,7 @@ async def update_asset(
     asset_id: UUID,
     payload: AssetUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> AssetResponse:
     """
     Update an existing asset.
@@ -900,6 +947,7 @@ async def update_asset(
             detail="Asset not found.",
         )
 
+    old_asset_status = asset.asset_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if "category_id" in update_data and update_data["category_id"] is not None:
@@ -926,6 +974,23 @@ async def update_asset(
 
     for field, value in update_data.items():
         setattr(asset, field, value)
+
+    new_asset_status = update_data.get("asset_status")
+    if new_asset_status is not None and new_asset_status != getattr(
+        old_asset_status, "value", old_asset_status
+    ):
+        await log_audit_event(
+            db,
+            action_type="ASSET_STATUS_CHANGED",
+            payload={
+                "asset_id": str(asset_id),
+                "old_asset_status": getattr(
+                    old_asset_status, "value", old_asset_status
+                ),
+                "new_asset_status": new_asset_status,
+            },
+            user_id=current_admin.user_id,
+        )
 
     try:
         await db.commit()
