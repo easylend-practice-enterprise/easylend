@@ -19,14 +19,16 @@ Auth rules:
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core.audit import log_audit_event
+from app.core.db_utils import is_lock_not_available_error
+from app.core.idempotency import _guard_idempotency, release_idempotency_key
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -511,6 +513,7 @@ async def force_open_locker(
     locker_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_admin),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> dict:
     """
     Force-open a locker door via the Vision Box WebSocket.
@@ -518,39 +521,60 @@ async def force_open_locker(
     Requires Admin role. Sends an `open_slot` WSS command to the kiosk that
     owns the locker and writes an `ADMIN_FORCED_OPEN` audit log entry.
     Returns 503 if the Vision Box for the associated kiosk is offline.
+    Idempotency: requires Idempotency-Key header. Duplicate keys return 409.
     """
-    locker = await _get_locker_or_404(db, locker_id)
-
-    # Write audit record and commit BEFORE sending hardware command.
-    # This ensures the audit trail is durable even if the hardware fails.
-    # The locker will be opened physically after the DB commit succeeds.
-    await log_audit_event(
-        db,
-        user_id=current_user.user_id,
-        action_type="ADMIN_FORCED_OPEN",
-        payload={"locker_id": str(locker_id)},
-    )
-    await db.commit()
-
-    kiosk_id_str = str(locker.kiosk_id)
-    command_ok = await manager.send_command(
-        kiosk_id_str,
-        {
-            "action": "open_slot",
-            "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
-        },
-    )
-    if not command_ok:
-        logger.warning(
-            "Hardware command failed after DB commit for admin forced open locker=%s.",
-            locker_id,
-        )
+    if not idempotency_key:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
         )
+    await _guard_idempotency(idempotency_key)
 
-    return {"detail": "Locker opened successfully."}
+    try:
+        locker = await _get_locker_or_404(db, locker_id)
+
+        # Write audit record and commit BEFORE sending hardware command.
+        # This ensures the audit trail is durable even if the hardware fails.
+        # The locker will be opened physically after the DB commit succeeds.
+        await log_audit_event(
+            db,
+            user_id=current_user.user_id,
+            action_type="ADMIN_FORCED_OPEN",
+            payload={"locker_id": str(locker_id)},
+        )
+        await db.commit()
+
+        kiosk_id_str = str(locker.kiosk_id)
+        command_ok = await manager.send_command(
+            kiosk_id_str,
+            {
+                "action": "open_slot",
+                "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+            },
+        )
+        if not command_ok:
+            logger.warning(
+                "Hardware command failed after DB commit for admin forced open locker=%s.",
+                locker_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
+            )
+
+        return {"detail": "Locker opened successfully."}
+    except HTTPException:
+        await release_idempotency_key(idempotency_key)
+        raise
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception(
+                "Failed to rollback DB during error handling in force_open_locker."
+            )
+        await release_idempotency_key(idempotency_key)
+        raise
 
 
 @lockers_router.patch(
@@ -836,7 +860,21 @@ async def update_asset(
     `is_deleted` is deliberately **not** updatable here: use the
     dedicated `DELETE /{asset_id}` endpoint for soft-deletion.
     """
-    asset = await _get_asset_allowing_deleted(db, asset_id)
+    try:
+        result = await db.execute(
+            select(Asset).where(Asset.asset_id == asset_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset is currently being modified. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
+    asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -844,7 +882,7 @@ async def update_asset(
         )
 
     old_asset_status = asset.asset_status
-    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
+    update_data = payload.model_dump(exclude_unset=True)
 
     if "category_id" in update_data and update_data["category_id"] is not None:
         cat_exists = await db.execute(
@@ -928,7 +966,21 @@ async def soft_delete_asset(
 
     Returns 409 Conflict if the asset has an ACTIVE or RESERVED loan.
     """
-    asset = await _get_asset_allowing_deleted(db, asset_id)
+    try:
+        result = await db.execute(
+            select(Asset).where(Asset.asset_id == asset_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset is currently being modified. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
+    asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

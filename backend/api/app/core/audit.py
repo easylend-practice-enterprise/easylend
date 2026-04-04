@@ -9,6 +9,7 @@ from sqlalchemy.engine import Result
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.db_utils import is_lock_not_available_error
 from app.db.models import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -49,8 +50,8 @@ async def log_audit_event(
                 .with_for_update(nowait=True)
             )
             break
-        except OperationalError:
-            if attempt < MAX_ATTEMPTS - 1:
+        except OperationalError as exc:
+            if attempt < MAX_ATTEMPTS - 1 and is_lock_not_available_error(exc):
                 delay = BASE_DELAY * (2**attempt)
                 logger.warning(
                     "Audit log lock contention (attempt %d/%d), retrying in %.3fs.",
@@ -60,7 +61,7 @@ async def log_audit_event(
                 )
                 await asyncio.sleep(delay)
                 continue
-            # Last attempt exhausted — propagate
+            # Non-lock OperationalError or last attempt exhausted — propagate immediately
             raise
 
     if last_audit_result is None:

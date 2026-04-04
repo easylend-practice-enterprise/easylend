@@ -248,6 +248,12 @@ async def update_user(
             detail="Request contains fields that cannot be set to null.",
         )
 
+    if "status" in payload.model_fields_set and payload.status is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User status cannot be set to null.",
+        )
+
     if "email" in update_data and update_data["email"] is not None:
         new_email = str(update_data["email"])
         existing_email = await db.execute(

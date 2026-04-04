@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
+from app.core.idempotency import _guard_idempotency, release_idempotency_key
 from app.core.rate_limit import check_token_rate_limit
 from app.core.websockets import manager
 from app.db.database import get_db
@@ -38,7 +39,9 @@ from app.db.models import (
     LockerStatus,
     User,
 )
-from app.db.redis import redis_client
+from app.db.redis import (
+    redis_client,  # noqa: F401 — test fixtures monkeypatch this name
+)
 from app.schemas.loan import (
     CheckoutRequest,
     LoanListResponse,
@@ -64,23 +67,10 @@ _PAGINATION_LIMIT = Query(
 )
 
 _IS_ADMIN_ROLE = "ADMIN"
-_IDEMPOTENCY_TTL_SECONDS = 86400
 
 
 def _is_admin(user: User) -> bool:
     return user.role is not None and user.role.role_name.upper() == _IS_ADMIN_ROLE
-
-
-async def _guard_idempotency(idempotency_key: str) -> None:
-    redis_key = f"idempotency:{idempotency_key}"
-    was_set = await redis_client.set(
-        redis_key, "processing", ex=_IDEMPOTENCY_TTL_SECONDS, nx=True
-    )
-    if not was_set:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Duplicate request with this idempotency key is already being processed or has completed.",
-        )
 
 
 async def _get_loan_or_404(db: AsyncSession, loan_id: UUID) -> Loan:
@@ -240,7 +230,6 @@ async def checkout(
         )
 
     await _guard_idempotency(idempotency_key)
-    redis_key = f"idempotency:{idempotency_key}"
 
     try:
         # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
@@ -311,7 +300,7 @@ async def checkout(
 
         # --- 3b. Hardware Pre-flight Check ---
         kiosk_id_str = str(locker.kiosk_id)
-        if kiosk_id_str not in manager.active_connections:
+        if not await manager.is_kiosk_online(kiosk_id_str):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The Vision Box for this locker is currently offline. Cannot checkout.",
@@ -378,14 +367,14 @@ async def checkout(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await redis_client.delete(redis_key)
+        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await redis_client.delete(redis_key)
+        await release_idempotency_key(idempotency_key)
         raise
 
 
@@ -437,7 +426,6 @@ async def return_initiate(
         )
 
     await _guard_idempotency(idempotency_key)
-    redis_key = f"idempotency:{idempotency_key}"
 
     try:
         # --- 0. Validate that the kiosk exists (BEFORE hardware check) ---
@@ -453,7 +441,7 @@ async def return_initiate(
 
         # --- 0b. Hardware Pre-flight Check ---
         kiosk_id_str = str(payload.kiosk_id)
-        if kiosk_id_str not in manager.active_connections:
+        if not await manager.is_kiosk_online(kiosk_id_str):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="The chosen Vision Box is currently offline. Cannot return here.",
@@ -586,12 +574,12 @@ async def return_initiate(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await redis_client.delete(redis_key)
+        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await redis_client.delete(redis_key)
+        await release_idempotency_key(idempotency_key)
         raise

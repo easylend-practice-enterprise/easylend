@@ -83,14 +83,14 @@ async def process_overdue_loans(
     """
     reference_now = now or datetime.now(UTC)
     total_processed = 0
-    offset = 0
+    failed_ids: set[UUID] = set()
 
     while True:
         # Fetch a batch of overdue loan IDs only (no row lock held on this result).
         # Using yield_per would keep a cursor open — fetching IDs in small batches
         # achieves the same memory safety without cursor complexity.
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
+            query = (
                 select(Loan.loan_id)
                 .where(
                     Loan.loan_status == LoanStatus.ACTIVE,
@@ -99,9 +99,12 @@ async def process_overdue_loans(
                     Loan.asset.has(is_deleted=False),
                 )
                 .order_by(Loan.due_date)
-                .offset(offset)
-                .limit(BATCH_SIZE)
             )
+
+            if failed_ids:
+                query = query.where(Loan.loan_id.not_in(failed_ids))
+
+            result = await db.execute(query.limit(BATCH_SIZE))
             batch_ids = list(result.scalars().all())
 
         if not batch_ids:
@@ -114,9 +117,8 @@ async def process_overdue_loans(
                     total_processed += 1
             except Exception:
                 logger.exception("Failed to process overdue loan_id=%s", loan_id)
+                failed_ids.add(loan_id)
                 # Continue to next loan — one failure must not stop the batch.
-
-        offset += BATCH_SIZE
 
     return total_processed
 

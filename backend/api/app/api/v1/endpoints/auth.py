@@ -129,7 +129,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
             jti=str(refresh_payload.jti),
             expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
         )
-    except RedisError as exc:
+    except (TimeoutError, RedisError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service is temporarily unavailable. Please try again later.",
@@ -255,14 +255,17 @@ async def pin_login(
     # Successful login: reset brute-force counters
     user.failed_login_attempts = 0
     user.locked_until = None
+    try:
+        await log_audit_event(
+            db,
+            action_type="LOGIN_SUCCESS",
+            payload={"nfc_tag_id": body.nfc_tag_id},
+            user_id=user.user_id,
+        )
+    except Exception:
+        await db.rollback()
+        raise
     await db.commit()
-
-    await log_audit_event(
-        db,
-        action_type="LOGIN_SUCCESS",
-        payload={"nfc_tag_id": body.nfc_tag_id},
-        user_id=user.user_id,
-    )
 
     access_token = security.create_access_token(
         user_id=user.user_id,
