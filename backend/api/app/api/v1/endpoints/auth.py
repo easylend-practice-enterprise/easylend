@@ -214,31 +214,39 @@ async def pin_login(
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
             user.failed_login_attempts = _MAX_ATTEMPTS
+            try:
+                await log_audit_event(
+                    db,
+                    action_type="LOGIN_FAILED",
+                    payload={
+                        "nfc_tag_id": body.nfc_tag_id,
+                        "reason": "ACCOUNT_LOCKED",
+                        "lockout_until": str(user.locked_until),
+                    },
+                )
+            except Exception:
+                await db.rollback()
+                raise
             await db.commit()
-            await log_audit_event(
-                db,
-                action_type="LOGIN_FAILED",
-                payload={
-                    "nfc_tag_id": body.nfc_tag_id,
-                    "reason": "ACCOUNT_LOCKED",
-                    "lockout_until": str(user.locked_until),
-                },
-            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Account is locked. Try again later.",
             )
 
+        try:
+            await log_audit_event(
+                db,
+                action_type="LOGIN_FAILED",
+                payload={
+                    "nfc_tag_id": body.nfc_tag_id,
+                    "reason": "INVALID_PIN",
+                    "remaining_attempts": remaining_attempts,
+                },
+            )
+        except Exception:
+            await db.rollback()
+            raise
         await db.commit()
-        await log_audit_event(
-            db,
-            action_type="LOGIN_FAILED",
-            payload={
-                "nfc_tag_id": body.nfc_tag_id,
-                "reason": "INVALID_PIN",
-                "remaining_attempts": remaining_attempts,
-            },
-        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",

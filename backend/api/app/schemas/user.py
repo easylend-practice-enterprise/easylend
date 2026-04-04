@@ -32,7 +32,7 @@ class UserUpdate(BaseModel):
     pin: str | None = Field(default=None, min_length=4, max_length=32)
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
-    status: UserStatus = UserStatus.ACTIVE
+    status: UserStatus | None = None
     ban_reason: str | None = Field(default=None, max_length=255)
     accepted_privacy_policy: bool | None = None
 

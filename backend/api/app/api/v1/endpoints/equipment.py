@@ -580,9 +580,9 @@ async def update_locker_status(
     """
     locker = await _get_locker_or_404(db, locker_id)
 
-    old_locker_status = locker.locker_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
+    old_locker_status = locker.locker_status
     for field, value in update_data.items():
         setattr(locker, field, value)
 
@@ -611,115 +611,6 @@ async def update_locker_status(
 # ---------------------------------------------------------------------------
 # ASSETS
 # ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# CATALOG
-# ---------------------------------------------------------------------------
-
-catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
-
-
-CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
-
-
-@catalog_router.get(
-    "",
-    response_model=CatalogResponse,
-    status_code=status.HTTP_200_OK,
-    responses={
-        401: {"description": "Not authenticated"},
-    },
-)
-@catalog_router.get(
-    "/",
-    include_in_schema=False,
-    response_model=CatalogResponse,
-    status_code=status.HTTP_200_OK,
-    responses={
-        401: {"description": "Not authenticated"},
-    },
-)
-async def get_catalog(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CatalogResponse:
-    """Role-aware catalog view.
-
-    - Admins: return one row per asset including active/reserved loan context.
-    - Non-admins: return grouped counts per category of AVAILABLE assets.
-    """
-    # Admin path: per-asset detail with loan context (if any)
-    if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
-        loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
-        query = (
-            select(Asset, Loan.loan_status, User.first_name, User.last_name)
-            .outerjoin(
-                Loan,
-                (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
-            )
-            .outerjoin(User, User.user_id == Loan.user_id)
-            .where(Asset.is_deleted.is_(False))
-            .order_by(Asset.name)
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await db.execute(query)
-        rows = result.all()
-
-        admin_items: list[CatalogAdminView] = []
-        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
-            admin_items.append(
-                CatalogAdminView.model_validate(
-                    {
-                        "asset_id": asset.asset_id,
-                        "asset_name": asset.name,
-                        "category_id": asset.category_id,
-                        "asset_status": asset.asset_status,
-                        "locker_id": asset.locker_id,
-                        "is_deleted": asset.is_deleted,
-                        "loan_status": loan_status,
-                        "borrower_first_name": borrower_first_name,
-                        "borrower_last_name": borrower_last_name,
-                    }
-                )
-            )
-        return admin_items
-
-    # Non-admin path: categories with available counts.
-    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
-    # in-maintenance) are still returned with available_count=0, rather than
-    # silently disappearing from the user catalog.
-    query = (
-        select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
-        .outerjoin(
-            Asset,
-            (Asset.category_id == Category.category_id)
-            & (Asset.asset_status == AssetStatus.AVAILABLE)
-            & (Asset.is_deleted.is_(False)),
-        )
-        .group_by(Category.category_id, Category.category_name)
-        .order_by(Category.category_name)
-    )
-    result = await db.execute(query)
-    rows = result.all()
-
-    user_items: list[CatalogUserView] = []
-    for category_id, name, available_count in rows:
-        user_items.append(
-            CatalogUserView.model_validate(
-                {
-                    "category_id": category_id,
-                    "category_name": name,
-                    "available_count": int(available_count or 0),
-                }
-            )
-        )
-
-    return user_items
-
 
 assets_router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -885,8 +776,7 @@ async def create_asset(
     )
     db.add(asset)
     try:
-        await db.commit()
-        await db.refresh(asset)
+        await db.flush()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -904,6 +794,12 @@ async def create_asset(
         },
         user_id=current_admin.user_id,
     )
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    await db.refresh(asset)
     return AssetResponse.model_validate(asset)
 
 
@@ -1071,3 +967,111 @@ async def soft_delete_asset(
         user_id=current_user.user_id,
     )
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# CATALOG
+# ---------------------------------------------------------------------------
+
+catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
+
+
+@catalog_router.get(
+    "",
+    response_model=CatalogResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@catalog_router.get(
+    "/",
+    include_in_schema=False,
+    response_model=CatalogResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def get_catalog(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CatalogResponse:
+    """Role-aware catalog view.
+
+    - Admins: return one row per asset including active/reserved loan context.
+    - Non-admins: return grouped counts per category of AVAILABLE assets.
+    """
+    # Admin path: per-asset detail with loan context (if any)
+    if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
+        loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
+        query = (
+            select(Asset, Loan.loan_status, User.first_name, User.last_name)
+            .outerjoin(
+                Loan,
+                (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
+            )
+            .outerjoin(User, User.user_id == Loan.user_id)
+            .where(Asset.is_deleted.is_(False))
+            .order_by(Asset.name)
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await db.execute(query)
+        rows = result.all()
+
+        admin_items: list[CatalogAdminView] = []
+        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
+            admin_items.append(
+                CatalogAdminView.model_validate(
+                    {
+                        "asset_id": asset.asset_id,
+                        "asset_name": asset.name,
+                        "category_id": asset.category_id,
+                        "asset_status": asset.asset_status,
+                        "locker_id": asset.locker_id,
+                        "is_deleted": asset.is_deleted,
+                        "loan_status": loan_status,
+                        "borrower_first_name": borrower_first_name,
+                        "borrower_last_name": borrower_last_name,
+                    }
+                )
+            )
+        return admin_items
+
+    # Non-admin path: categories with available counts.
+    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
+    # in-maintenance) are still returned with available_count=0, rather than
+    # silently disappearing from the user catalog.
+    query = (
+        select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
+        .outerjoin(
+            Asset,
+            (Asset.category_id == Category.category_id)
+            & (Asset.asset_status == AssetStatus.AVAILABLE)
+            & (Asset.is_deleted.is_(False)),
+        )
+        .group_by(Category.category_id, Category.category_name)
+        .order_by(Category.category_name)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    user_items: list[CatalogUserView] = []
+    for category_id, name, available_count in rows:
+        user_items.append(
+            CatalogUserView.model_validate(
+                {
+                    "category_id": category_id,
+                    "category_name": name,
+                    "available_count": int(available_count or 0),
+                }
+            )
+        )
+
+    return user_items
