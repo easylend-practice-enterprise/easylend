@@ -17,18 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import verify_vision_box_token
 from app.core.audit import log_audit_event
 from app.core.config import settings
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.core.uploads import UPLOAD_DIR
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
     AIEvaluation,
     Asset,
-    AssetStatus,
     EvaluationType,
     Loan,
     LoanStatus,
     Locker,
-    LockerStatus,
 )
 from app.schemas.vision import (
     ModelUpdateRequest,
@@ -84,6 +83,22 @@ class VisionAIServiceError(Exception):
         super().__init__(
             f"VisionAIServiceError(status_code={self.status_code}, detail={self.detail})"
         )
+
+
+def _apply_loan_transition(
+    loan: Loan,
+    asset: Asset,
+    locker: Locker,
+    target_status: LoanStatus,
+) -> None:
+    transition = LoanStateMachine.transition(loan.loan_status, target_status)
+    loan.loan_status = transition.loan_status
+
+    if transition.asset_status is not None:
+        asset.asset_status = transition.asset_status
+
+    if transition.locker_status is not None:
+        locker.locker_status = transition.locker_status
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -277,9 +292,12 @@ async def analyze_image(
         # admins are alerted and the quarantine flow handles the stuck item.
         if evaluation_type in (EvaluationType.CHECKOUT, EvaluationType.RETURN):
             try:
-                loan.loan_status = LoanStatus.PENDING_INSPECTION
-                asset.asset_status = AssetStatus.PENDING_INSPECTION
-                locker.locker_status = LockerStatus.MAINTENANCE
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.PENDING_INSPECTION,
+                )
                 asset.locker_id = locker.locker_id
 
                 command_ok = await manager.send_command(
@@ -430,63 +448,82 @@ async def analyze_image(
             detail="Vision evaluation is already processing for this loan. Please try again.",
         )
 
-    if evaluation_type == EvaluationType.CHECKOUT:
-        if not locker_empty:
-            loan.loan_status = LoanStatus.FRAUD_SUSPECTED
-            asset.locker_id = locker.locker_id
-            asset.asset_status = AssetStatus.AVAILABLE
-            locker.locker_status = LockerStatus.OCCUPIED
-            led_color = "red"
-            await log_audit_event(
-                db,
-                action_type="LOAN_CHECKOUT_FRAUD",
-                payload={
-                    "loan_id": str(loan.loan_id),
-                    "asset_id": str(asset.asset_id),
-                    "locker_id": str(locker.locker_id),
-                },
-                user_id=loan.user_id,
-            )
+    try:
+        if evaluation_type == EvaluationType.CHECKOUT:
+            if not locker_empty:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.FRAUD_SUSPECTED,
+                )
+                asset.locker_id = locker.locker_id
+                led_color = "red"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_CHECKOUT_FRAUD",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
+            else:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.ACTIVE,
+                )
+                loan.borrowed_at = datetime.now(UTC)
+                asset.locker_id = None
+                led_color = "green"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_CHECKOUT_CONFIRMED",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
         else:
-            loan.loan_status = LoanStatus.ACTIVE
-            loan.borrowed_at = datetime.now(UTC)
-            asset.locker_id = None
-            locker.locker_status = LockerStatus.AVAILABLE
-            led_color = "green"
-            await log_audit_event(
-                db,
-                action_type="LOAN_CHECKOUT_CONFIRMED",
-                payload={
-                    "loan_id": str(loan.loan_id),
-                    "asset_id": str(asset.asset_id),
-                    "locker_id": str(locker.locker_id),
-                },
-                user_id=loan.user_id,
-            )
-    else:
-        if locker_empty or has_damage:
-            loan.loan_status = LoanStatus.PENDING_INSPECTION
-            asset.asset_status = AssetStatus.PENDING_INSPECTION
-            asset.locker_id = locker.locker_id
-            locker.locker_status = LockerStatus.MAINTENANCE
-            led_color = "orange"
-        else:
-            loan.loan_status = LoanStatus.COMPLETED
-            loan.returned_at = datetime.now(UTC)
-            asset.asset_status = AssetStatus.AVAILABLE
-            asset.locker_id = locker.locker_id
-            locker.locker_status = LockerStatus.OCCUPIED
-            led_color = "green"
-            await log_audit_event(
-                db,
-                action_type="LOAN_RETURN_CONFIRMED",
-                payload={
-                    "loan_id": str(loan.loan_id),
-                    "asset_id": str(asset.asset_id),
-                    "locker_id": str(locker.locker_id),
-                },
-                user_id=loan.user_id,
-            )
+            if locker_empty or has_damage:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.PENDING_INSPECTION,
+                )
+                asset.locker_id = locker.locker_id
+                led_color = "orange"
+            else:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.COMPLETED,
+                )
+                loan.returned_at = datetime.now(UTC)
+                asset.locker_id = locker.locker_id
+                led_color = "green"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_RETURN_CONFIRMED",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
+    except InvalidLoanTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     try:
         async with aiofiles.open(file_path, "wb") as buffer:

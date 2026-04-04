@@ -27,6 +27,7 @@ from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
 from app.core.idempotency import _guard_idempotency, release_idempotency_key
 from app.core.rate_limit import check_token_rate_limit
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -311,6 +312,15 @@ async def checkout(
         # until Vision confirms the checkout outcome.
         asset.asset_status = AssetStatus.BORROWED
 
+        # Validate initial state selection through the centralized state machine.
+        try:
+            LoanStateMachine.assert_initial_status(LoanStatus.RESERVED)
+        except InvalidLoanTransitionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Invalid initial loan state configuration.",
+            ) from exc
+
         # --- 5. Create loan record ---
         loan = Loan(
             user_id=current_user.user_id,
@@ -526,9 +536,21 @@ async def return_initiate(
             )
 
         # --- 3. Reserve the locker and update the loan ---
-        locker.locker_status = LockerStatus.OCCUPIED
+        try:
+            transition = LoanStateMachine.transition(
+                loan.loan_status,
+                LoanStatus.RETURNING,
+            )
+        except InvalidLoanTransitionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+
+        if transition.locker_status is not None:
+            locker.locker_status = transition.locker_status
         loan.return_locker_id = locker.locker_id
-        loan.loan_status = LoanStatus.RETURNING
+        loan.loan_status = transition.loan_status
 
         await log_audit_event(
             db,
