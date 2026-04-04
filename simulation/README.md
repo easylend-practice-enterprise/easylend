@@ -35,17 +35,20 @@ The simulation behaves like a Vision Box: it receives `open_slot` and `set_led` 
 ## Setup
 
 1. Copy `.env.example` to `.env` and set your API URL and simulation key:
+
    ```bash
    cp .env.example .env
    ```
 
 2. Install dependencies:
+
    ```bash
    cd simulation
    uv sync
    ```
 
 3. Run the simulation:
+
    ```bash
    uv run python main.py
    ```

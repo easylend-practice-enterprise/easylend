@@ -44,8 +44,10 @@ sequenceDiagram
                         API->>DB: INSERT INTO loans {loan_status: 'RESERVED', reserved_at: NOW()}
                         API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_INITIATED', payload: {loan_id, asset_id, locker_id}}
 
-                        %% Hardware command sent BEFORE DB commit
-                        Note over API,VB: DB committed AFTER send&#59; hardware failure leaves RESERVED loan for timeout worker
+                        %% Hardware command sent AFTER DB commit
+                        Note over API,VB: DB committed BEFORE send&#59; hardware failure leaves RESERVED loan for timeout worker
+                        API->>DB: COMMIT
+
                         Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                         API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
@@ -53,7 +55,6 @@ sequenceDiagram
                             API-->>App: 503 Service Unavailable
                             Note over API: RESERVED loan left in DB&#59; timeout worker will clean up
                         else Hardware command accepted
-                            API->>DB: COMMIT
                             API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
                             App-->>User: Show loader: "Go to locker #N"
                         end

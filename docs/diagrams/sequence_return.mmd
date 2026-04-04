@@ -52,15 +52,17 @@ sequenceDiagram
                             API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
                             API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_INITIATED', payload: {loan_id, asset_id, return_locker_id}}
 
-                            %% Hardware command sent BEFORE DB commit
-                            Note over API,VB: DB committed AFTER send, hardware failure leaves RETURNING loan for cleanup
+                            %% Hardware command sent AFTER DB commit
+                            Note over API,VB: DB committed BEFORE send, hardware failure leaves RETURNING loan for cleanup
+                            API->>DB: COMMIT
+
                             Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                             API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: RETURN}
 
                             alt Hardware command failed / timeout
                                 API-->>App: 503 Service Unavailable
+                                Note over API: RETURNING loan left in DB&#59; timeout worker will clean up
                             else Hardware command accepted
-                                API->>DB: COMMIT
                                 API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
                                 App-->>User: Show loader: "Bring item to locker #N"
                             end
