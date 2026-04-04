@@ -56,6 +56,6 @@ The simulation behaves like a Vision Box: it receives `open_slot` and `set_led` 
 ## Environment Variables
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `VISIONBOX_WS_URL` | `ws://localhost:8000/ws/visionbox/00000000-0000-0000-0000-000000000000` | WebSocket URL of the API |
 | `SIMULATION_API_KEY` | `local-dev-sim-key-123` | Static device token (must match backend `SIMULATION_API_KEY`) |
