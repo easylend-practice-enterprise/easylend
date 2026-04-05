@@ -8,7 +8,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+redis_client = Redis.from_url(
+    settings.REDIS_URL,
+    decode_responses=True,
+    socket_connect_timeout=2,
+    socket_timeout=3,
+)
 
 
 async def check_redis_connection():

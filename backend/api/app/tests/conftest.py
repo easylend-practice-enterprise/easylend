@@ -6,6 +6,8 @@ import os
 # starting during pytest runs.
 os.environ.setdefault("ENVIRONMENT", "test")
 
+import asyncio
+import fnmatch
 import uuid
 from types import SimpleNamespace
 
@@ -20,24 +22,124 @@ import app.db.redis as _redis_mod
 # raise "Future exception was never retrieved" warnings during pytest
 # teardown. Apply the fake before importing `app.main` so modules that
 # import the module-level `redis_client` will see the fake instance.
+class _FakePubSub:
+    def __init__(self, redis: "_GlobalFakeRedis") -> None:
+        self._redis = redis
+        self._channels: set[str] = set()
+        self._queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+        self._closed = False
+
+    async def subscribe(self, *channels: str):
+        for channel in channels:
+            self._channels.add(channel)
+            self._redis._register_pubsub(channel, self)
+        return None
+
+    async def unsubscribe(self, *channels: str):
+        if not channels:
+            channels = tuple(self._channels)
+        for channel in channels:
+            self._channels.discard(channel)
+            self._redis._unregister_pubsub(channel, self)
+        return None
+
+    async def get_message(
+        self,
+        ignore_subscribe_messages: bool = True,  # noqa: FBT001, FBT002
+        timeout: float | int | None = 0,
+    ):
+        _ = ignore_subscribe_messages
+
+        if self._closed:
+            return None
+
+        if timeout is None or timeout <= 0:
+            try:
+                return self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return None
+
+        try:
+            return await asyncio.wait_for(self._queue.get(), timeout=float(timeout))
+        except TimeoutError:
+            return None
+
+    async def aclose(self):
+        if self._closed:
+            return None
+        self._closed = True
+        await self.unsubscribe()
+        return None
+
+    async def close(self):
+        return await self.aclose()
+
+    async def _push_message(self, channel: str, message: str) -> None:
+        if self._closed or channel not in self._channels:
+            return
+        await self._queue.put(
+            {
+                "type": "message",
+                "channel": channel,
+                "data": message,
+            }
+        )
+
+
 class _GlobalFakeRedis:
+    def __init__(self) -> None:
+        self._keys: dict[str, str] = {}
+        self._pubsubs_by_channel: dict[str, set[_FakePubSub]] = {}
+
+    def _register_pubsub(self, channel: str, pubsub: _FakePubSub) -> None:
+        subscribers = self._pubsubs_by_channel.setdefault(channel, set())
+        subscribers.add(pubsub)
+
+    def _unregister_pubsub(self, channel: str, pubsub: _FakePubSub) -> None:
+        subscribers = self._pubsubs_by_channel.get(channel)
+        if not subscribers:
+            return
+        subscribers.discard(pubsub)
+        if not subscribers:
+            self._pubsubs_by_channel.pop(channel, None)
+
     async def ping(self):
         return True
 
-    async def setex(self, *a, **kw):  # noqa: ARG002
-        return None
-
-    async def set(self, *a, **kw):  # noqa: ARG002
+    async def setex(self, key: str, seconds: int, value: str):  # noqa: ARG002
+        self._keys[key] = value
         return True
 
-    async def exists(self, *a, **kw):  # noqa: ARG002
-        return 0
+    async def set(self, key, value, ex=None, nx=False, **kwargs):  # noqa: ARG002
+        if nx and key in self._keys:
+            return None
+        self._keys[key] = value
+        return True
 
-    async def delete(self, *a, **kw):  # noqa: ARG002
-        return 0
+    async def exists(self, *keys: str):
+        return sum(1 for key in keys if key in self._keys)
+
+    async def delete(self, *keys: str) -> int:
+        deleted = sum(1 for k in keys if self._keys.pop(k, None) is not None)
+        return deleted
 
     async def scan(self, cursor, match=None):
-        return (0, [])
+        if int(cursor) != 0:
+            return (0, [])
+
+        keys = list(self._keys.keys())
+        if match:
+            keys = [key for key in keys if fnmatch.fnmatch(key, match)]
+        return (0, keys)
+
+    def pubsub(self):
+        return _FakePubSub(self)
+
+    async def publish(self, channel: str, message: str) -> int:
+        subscribers = list(self._pubsubs_by_channel.get(channel, set()))
+        for subscriber in subscribers:
+            await subscriber._push_message(channel, message)
+        return len(subscribers)
 
     async def incr(self, key: str):  # noqa: ARG002
         # Rate-limit: always return 1 so requests are always allowed in tests
@@ -47,6 +149,14 @@ class _GlobalFakeRedis:
         return True
 
     async def aclose(self):
+        all_subscribers = {
+            subscriber
+            for subscribers in self._pubsubs_by_channel.values()
+            for subscriber in subscribers
+        }
+        for subscriber in all_subscribers:
+            await subscriber.aclose()
+        self._pubsubs_by_channel.clear()
         return None
 
     def pipeline(self):
@@ -162,6 +272,11 @@ class _QueuedSession:
         # Simulate the database: set default values for Assets
         if hasattr(obj, "is_deleted") and getattr(obj, "is_deleted") is None:
             setattr(obj, "is_deleted", False)
+        # Simulate the database: set default values for User status
+        if hasattr(obj, "status") and getattr(obj, "status") is None:
+            from app.db.models import UserStatus
+
+            setattr(obj, "status", UserStatus.ACTIVE)
 
     def add(self, obj):
         self.added.append(obj)
@@ -169,6 +284,7 @@ class _QueuedSession:
 
 def _make_admin() -> SimpleNamespace:
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -180,9 +296,8 @@ def _make_admin() -> SimpleNamespace:
         pin_hash=security.get_pin_hash("1234"),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Admin"),
     )
@@ -190,6 +305,7 @@ def _make_admin() -> SimpleNamespace:
 
 def _make_medewerker() -> SimpleNamespace:
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -201,9 +317,8 @@ def _make_medewerker() -> SimpleNamespace:
         pin_hash=security.get_pin_hash("1234"),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Staff"),
     )
@@ -239,6 +354,7 @@ class FakeAsyncSession:
 
 def _build_user(*, pin: str = "123456"):
     from app.core import security
+    from app.db.models import UserStatus
 
     return SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -246,9 +362,8 @@ def _build_user(*, pin: str = "123456"):
         pin_hash=security.get_pin_hash(pin),
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         accepted_privacy_policy=False,
-        is_anonymized=False,
         role=SimpleNamespace(role_name="Admin"),
     )
 

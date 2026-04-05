@@ -307,13 +307,19 @@ def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides
     assert response.json()["detail"] == "Kiosk not found."
 
 
-def test_update_kiosk_status_returns_200_and_mutates_status(client_with_overrides):
+def test_update_kiosk_status_returns_200_and_mutates_status(
+    client_with_overrides, monkeypatch
+):
     """PATCH /kiosks/{id}/status (admin) transitions kiosk to MAINTENANCE.
 
     DB execute order:
     [1] get_current_user  → admin
     [2] _get_kiosk_or_404 → kiosk
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     kiosk = _make_kiosk(kiosk_status="ONLINE")
 
@@ -427,7 +433,7 @@ def test_get_locker_by_id_returns_200_for_admin(client_with_overrides):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_create_asset_returns_201_for_admin(client_with_overrides):
+def test_create_asset_returns_201_for_admin(client_with_overrides, monkeypatch):
     """POST /assets (admin) registers a new asset with category + locker.
 
     DB execute order:
@@ -435,6 +441,10 @@ def test_create_asset_returns_201_for_admin(client_with_overrides):
     [2] category_exists check → category_id (exists)
     [3] locker_exists check   → locker_id   (exists)
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     category_id = uuid.uuid4()
     locker_id = uuid.uuid4()
@@ -589,13 +599,19 @@ def test_get_asset_by_id_returns_404_for_unknown_asset(client_with_overrides):
     assert response.json()["detail"] == "Asset not found."
 
 
-def test_update_asset_returns_200_and_mutates_status(client_with_overrides):
+def test_update_asset_returns_200_and_mutates_status(
+    client_with_overrides, monkeypatch
+):
     """PATCH /assets/{id} (admin) changes asset_status to MAINTENANCE in-place.
 
     DB execute order:
     [1] get_current_user  → admin
     [2] _get_asset_or_404 → asset
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     asset = _make_asset(asset_status="AVAILABLE")
 
@@ -695,8 +711,14 @@ def test_list_lockers_returns_403_for_medewerker(client_with_overrides):
     assert response.status_code == 403
 
 
-def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
+def test_update_locker_status_returns_200_and_mutates(
+    client_with_overrides, monkeypatch
+):
     """PATCH /lockers/{id}/status correctly updates the status."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     locker = SimpleNamespace(
         locker_id=uuid.uuid4(),

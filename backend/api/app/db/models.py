@@ -22,6 +22,14 @@ class Base(DeclarativeBase):
     pass
 
 
+# USER STATUS ENUM — defined before User class
+class UserStatus(enum.StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    BANNED = "BANNED"
+    ANONYMIZED = "ANONYMIZED"
+
+
 # ROLES
 class Role(Base):
     __tablename__ = "roles"
@@ -58,11 +66,10 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_anonymized: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false"), nullable=False
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False
     )
+    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     accepted_privacy_policy: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
@@ -305,6 +312,13 @@ class AuditLog(Base):
         ForeignKey("users.user_id"), nullable=True
     )
 
+    # Valid action_type values (used as string literals throughout the codebase):
+    # LOGIN_SUCCESS, LOGIN_FAILED, USER_ANONYMIZED, USER_STATUS_CHANGED,
+    # EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED,
+    # VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED,
+    # LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, ASSET_CREATED, ASSET_STATUS_CHANGED,
+    # USER_PIN_CHANGED, USER_NFC_ASSIGNED, LOCKER_STATUS_CHANGED,
+    # KIOSK_STATUS_CHANGED
     action_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

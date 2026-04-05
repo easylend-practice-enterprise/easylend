@@ -23,6 +23,8 @@ services:
       - VISION_API_KEY=${VISION_API_KEY}
       - VISION_BOX_API_KEY=${VISION_BOX_API_KEY}
       - SIMULATION_API_KEY=${SIMULATION_API_KEY}
+      - DOCS_USERNAME=${DOCS_USERNAME}
+      - DOCS_PASSWORD=${DOCS_PASSWORD}
     mem_limit: 4g
     networks:
       - backend-net

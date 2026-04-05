@@ -27,6 +27,7 @@ def _vision_form_data(
 def _make_loan(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
+        user_id=kwargs.get("user_id", uuid.uuid4()),
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
         return_locker_id=kwargs.get("return_locker_id"),
@@ -207,7 +208,7 @@ def _mock_common_vision_runtime(monkeypatch, tmp_path):
     send_command_mock = AsyncMock(return_value=True)
     audit_mock = AsyncMock()
     monkeypatch.setattr(vision_endpoints.manager, "send_command", send_command_mock)
-    monkeypatch.setattr(vision_endpoints, "log_audit_event", audit_mock)
+    monkeypatch.setattr("app.api.v1.endpoints.vision.log_audit_event", audit_mock)
     monkeypatch.setattr(vision_endpoints, "UPLOAD_DIR", tmp_path)
     return send_command_mock, audit_mock
 
@@ -324,11 +325,15 @@ def test_checkout_success_branch_sets_active_and_green_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "7", "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
-    assert kwargs["action_type"] == "VISION_EVALUATION_PROCESSED"
+    # There are now two audit calls: LOAN_CHECKOUT_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -464,10 +469,15 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "8", "color": "red"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_CHECKOUT_FRAUD + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -530,10 +540,15 @@ def test_return_success_branch_sets_completed_and_green_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "9", "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_RETURN_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "RETURN"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -661,7 +676,7 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -694,7 +709,7 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -727,7 +742,7 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -762,7 +777,7 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -798,7 +813,7 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -835,7 +850,7 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -873,7 +888,7 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1064,7 +1079,7 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="AVAILABLE",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1118,7 +1133,7 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="OCCUPIED",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1136,4 +1151,85 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "5", "color": "orange"},
+    )
+
+
+def test_checkout_ai_timeout_mutates_only_locked_phase_entities(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    """Fallback state mutation must target Phase 2 locked rows, not Phase 1 snapshots."""
+
+    async def mock_post(*args, **kwargs):
+        raise httpx.RequestError("Mocked Timeout")
+
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+    send_command_mock, _audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    phase1_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    phase1_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    phase1_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    locked_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    locked_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locked_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    fake_db = _QueuedSession(
+        phase1_loan,
+        phase1_asset,
+        phase1_locker,
+        locked_loan,
+        locked_asset,
+        locked_locker,
+    )
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 503
+
+    # Phase 1 snapshots must remain untouched.
+    assert phase1_loan.loan_status == "RESERVED"
+    assert phase1_asset.asset_status == "BORROWED"
+    assert phase1_asset.locker_id is None
+    assert phase1_locker.locker_status == "AVAILABLE"
+
+    # Locked Phase 2 rows receive the fallback mutation.
+    assert locked_loan.loan_status == "PENDING_INSPECTION"
+    assert locked_asset.asset_status == "PENDING_INSPECTION"
+    assert locked_asset.locker_id == locker_id
+    assert locked_locker.locker_status == "MAINTENANCE"
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": "7", "color": "orange"},
     )

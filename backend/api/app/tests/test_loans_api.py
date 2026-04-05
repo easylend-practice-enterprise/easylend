@@ -24,6 +24,7 @@ from sqlalchemy.exc import OperationalError
 
 import app.api.v1.endpoints.loans as loans_endpoints
 from app.core.websockets import manager
+from app.db.models import UserStatus
 from app.tests.conftest import (
     _bearer,
     _make_admin,
@@ -44,6 +45,12 @@ def mock_hardware_manager(monkeypatch):
 
     monkeypatch.setattr(manager, "active_connections", AlwaysConnectedDict())
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def mock_audit_logger(monkeypatch):
+    """Mock log_audit_event so audit DB calls don't hit the fake session queue."""
+    monkeypatch.setattr(loans_endpoints, "log_audit_event", AsyncMock())
 
 
 @pytest.fixture(autouse=True)
@@ -97,9 +104,8 @@ def _make_student(**kwargs) -> SimpleNamespace:
         pin_hash="hashed",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         role=SimpleNamespace(role_name="Student"),
     )
 

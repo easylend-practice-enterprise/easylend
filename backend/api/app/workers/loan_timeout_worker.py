@@ -8,8 +8,9 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
 from app.core.redis_utils import acquire_distributed_lock
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import AsyncSessionLocal
-from app.db.models import Asset, AssetStatus, Loan, LoanStatus, Locker, LockerStatus
+from app.db.models import Asset, Loan, LoanStatus, Locker
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +80,29 @@ async def _process_single_reserved_loan(
             return False
 
         # Apply state mutations inside the lock.
-        loan.loan_status = LoanStatus.PENDING_INSPECTION
+        try:
+            transition = LoanStateMachine.transition(
+                loan.loan_status,
+                LoanStatus.PENDING_INSPECTION,
+            )
+        except InvalidLoanTransitionError:
+            logger.warning(
+                "Skipping loan timeout due to illegal transition for loan_id=%s",
+                loan.loan_id,
+            )
+            return False
+
+        loan.loan_status = transition.loan_status
 
         locker_id: str | None = None
         if locker is not None:
-            locker.locker_status = LockerStatus.MAINTENANCE
+            if transition.locker_status is not None:
+                locker.locker_status = transition.locker_status
             locker_id = str(locker.locker_id)
 
         if asset is not None:
-            asset.asset_status = AssetStatus.PENDING_INSPECTION
+            if transition.asset_status is not None:
+                asset.asset_status = transition.asset_status
             asset.locker_id = locker.locker_id if locker is not None else None
 
         payload = {
@@ -125,12 +140,12 @@ async def process_reserved_loan_timeouts(
     """
     reference_now = now or datetime.now(UTC)
     total_processed = 0
-    offset = 0
+    failed_ids: set[UUID] = set()
 
     while True:
         cutoff = reference_now - timedelta(minutes=timeout_minutes)
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
+            query = (
                 select(Loan.loan_id)
                 .where(
                     Loan.loan_status == LoanStatus.RESERVED,
@@ -139,9 +154,12 @@ async def process_reserved_loan_timeouts(
                     Loan.asset.has(is_deleted=False),
                 )
                 .order_by(Loan.reserved_at)
-                .offset(offset)
-                .limit(BATCH_SIZE)
             )
+
+            if failed_ids:
+                query = query.where(Loan.loan_id.not_in(failed_ids))
+
+            result = await db.execute(query.limit(BATCH_SIZE))
             batch_ids = list(result.scalars().all())
 
         if not batch_ids:
@@ -158,9 +176,8 @@ async def process_reserved_loan_timeouts(
                     total_processed += 1
             except Exception:
                 logger.exception("Failed to process timeout for loan_id=%s", loan_id)
+                failed_ids.add(loan_id)
                 # Continue to next loan.
-
-        offset += BATCH_SIZE
 
     return total_processed
 

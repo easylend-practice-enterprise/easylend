@@ -17,18 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import verify_vision_box_token
 from app.core.audit import log_audit_event
 from app.core.config import settings
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.core.uploads import UPLOAD_DIR
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
     AIEvaluation,
     Asset,
-    AssetStatus,
     EvaluationType,
     Loan,
     LoanStatus,
     Locker,
-    LockerStatus,
 )
 from app.schemas.vision import (
     ModelUpdateRequest,
@@ -84,6 +83,57 @@ class VisionAIServiceError(Exception):
         super().__init__(
             f"VisionAIServiceError(status_code={self.status_code}, detail={self.detail})"
         )
+
+
+def _map_vision_failure_to_http_exception(exc: Exception) -> HTTPException:
+    if isinstance(exc, httpx.RequestError):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vision AI service is unavailable.",
+        )
+
+    if isinstance(exc, VisionAIServiceError):
+        upstream = getattr(exc, "status_code", None)
+        if upstream in (401, 403):
+            return HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Vision AI authentication is misconfigured.",
+            )
+        if upstream == 503:
+            return HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Vision AI service is temporarily unavailable.",
+            )
+        if upstream == 400:
+            return HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded image is invalid or unsupported.",
+            )
+        return HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Vision AI service returned an unexpected response.",
+        )
+
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Vision AI service returned invalid data format.",
+    )
+
+
+def _apply_loan_transition(
+    loan: Loan,
+    asset: Asset,
+    locker: Locker,
+    target_status: LoanStatus,
+) -> None:
+    transition = LoanStateMachine.transition(loan.loan_status, target_status)
+    loan.loan_status = transition.loan_status
+
+    if transition.asset_status is not None:
+        asset.asset_status = transition.asset_status
+
+    if transition.locker_status is not None:
+        locker.locker_status = transition.locker_status
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
@@ -180,6 +230,13 @@ async def analyze_image(
             status_code=status.HTTP_404_NOT_FOUND, detail="Locker not found."
         )
 
+    locker_empty: bool | None = None
+    has_damage: bool | None = None
+    validated_data: VisionAnalyzeResponse | None = None
+    vision_failure: Exception | None = None
+    mapped_failure_http_exception: HTTPException | None = None
+    failure_error_summary = ""
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             detect_req = client.post(
@@ -269,95 +326,9 @@ async def analyze_image(
             f"Vision AI evaluation failed: {str(exc)}",
             extra={"vision_url": settings.VISION_SERVICE_URL},
         )
-        # When the AI call fails we do NOT acquire row locks (holding them
-        # during a retry would extend the contention window indefinitely).
-        # The Vision Box will re-send the same image; the loan will be
-        # re-processed on the next attempt with fresh locks.
-        # We do however transition the loan/asset to PENDING_INSPECTION so that
-        # admins are alerted and the quarantine flow handles the stuck item.
-        if evaluation_type in (EvaluationType.CHECKOUT, EvaluationType.RETURN):
-            try:
-                loan.loan_status = LoanStatus.PENDING_INSPECTION
-                asset.asset_status = AssetStatus.PENDING_INSPECTION
-                locker.locker_status = LockerStatus.MAINTENANCE
-                asset.locker_id = locker.locker_id
-
-                command_ok = await manager.send_command(
-                    str(locker.kiosk_id),
-                    {
-                        "action": "set_led",
-                        "locker_id": str(
-                            getattr(locker, "logical_number", locker.locker_id)
-                        ),
-                        "color": "orange",
-                    },
-                )
-                if not command_ok:
-                    logger.warning(
-                        "Failed to set LED color to orange for locker_id=%s",
-                        locker_id_for_eval,
-                    )
-
-                try:
-                    error_summary = str(exc)[:200].replace("\n", " ")
-                    await log_audit_event(
-                        db,
-                        action_type="VISION_EVALUATION_FAILED",
-                        payload={
-                            "evaluation_type": evaluation_type.value,
-                            "loan_id": str(loan.loan_id),
-                            "asset_id": str(asset.asset_id),
-                            "locker_id": str(locker.locker_id),
-                            "error_summary": error_summary,
-                        },
-                    )
-                except Exception as audit_exc:
-                    # Audit log failure is non-negotiable — re-raise so the outer
-                    # handler rolls back the state instead of committing without
-                    # a forensic trail. Log the full exception context first.
-                    logger.exception(
-                        "Failed to write audit log for Vision AI failure fallback. "
-                        "Re-raising to prevent state-only commit.",
-                    )
-                    raise audit_exc
-
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                logger.exception(
-                    "Failed to persist fallback state after Vision AI failure."
-                )
-
-        if isinstance(exc, httpx.RequestError):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Vision AI service is unavailable.",
-            ) from exc
-        if isinstance(exc, VisionAIServiceError):
-            upstream = getattr(exc, "status_code", None)
-            if upstream in (401, 403):
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Vision AI authentication is misconfigured.",
-                ) from exc
-            if upstream == 503:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Vision AI service is temporarily unavailable.",
-                ) from exc
-            if upstream == 400:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Uploaded image is invalid or unsupported.",
-                ) from exc
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Vision AI service returned an unexpected response.",
-            ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Vision AI service returned invalid data format.",
-        ) from exc
+        vision_failure = exc
+        mapped_failure_http_exception = _map_vision_failure_to_http_exception(exc)
+        failure_error_summary = str(exc)[:200].replace("\n", " ")
 
     # --- Phase 2: Acquire row locks ONLY after AI analysis is complete ---
     # Locking order: Loan → Asset → Locker (deterministic, matches judge_evaluation).
@@ -383,6 +354,18 @@ async def analyze_image(
             status_code=status.HTTP_409_CONFLICT,
             detail="Vision evaluation is already processing for this loan. Please try again.",
         )
+
+    locked_locker_id_for_eval = (
+        loan.checkout_locker_id
+        if evaluation_type == EvaluationType.CHECKOUT
+        else loan.return_locker_id
+    )
+    if locked_locker_id_for_eval is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Return locker must be assigned before evaluation.",
+        )
+    locker_id_for_eval = locked_locker_id_for_eval
 
     try:
         locked_asset_result = await db.execute(
@@ -430,33 +413,151 @@ async def analyze_image(
             detail="Vision evaluation is already processing for this loan. Please try again.",
         )
 
-    if evaluation_type == EvaluationType.CHECKOUT:
-        if not locker_empty:
-            loan.loan_status = LoanStatus.FRAUD_SUSPECTED
+    if vision_failure is not None:
+        try:
+            _apply_loan_transition(
+                loan,
+                asset,
+                locker,
+                LoanStatus.PENDING_INSPECTION,
+            )
             asset.locker_id = locker.locker_id
-            asset.asset_status = AssetStatus.AVAILABLE
-            locker.locker_status = LockerStatus.OCCUPIED
-            led_color = "red"
+
+            command_ok = await manager.send_command(
+                str(locker.kiosk_id),
+                {
+                    "action": "set_led",
+                    "locker_id": str(
+                        getattr(locker, "logical_number", locker.locker_id)
+                    ),
+                    "color": "orange",
+                },
+            )
+            if not command_ok:
+                logger.warning(
+                    "Failed to set LED color to orange for locker_id=%s",
+                    locker_id_for_eval,
+                )
+
+            await log_audit_event(
+                db,
+                action_type="VISION_EVALUATION_FAILED",
+                payload={
+                    "evaluation_type": evaluation_type.value,
+                    "loan_id": str(loan.loan_id),
+                    "asset_id": str(asset.asset_id),
+                    "locker_id": str(locker.locker_id),
+                    "error_summary": failure_error_summary,
+                },
+            )
+            await db.commit()
+        except InvalidLoanTransitionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception(
+                    "Failed to rollback DB during Vision fallback finalization error handling."
+                )
+
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize vision evaluation.",
+            ) from exc
+
+        if mapped_failure_http_exception is None:
+            mapped_failure_http_exception = HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Vision AI service returned invalid data format.",
+            )
+        raise mapped_failure_http_exception from vision_failure
+
+    if locker_empty is None or has_damage is None or validated_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Vision evaluation did not produce complete data.",
+        )
+
+    try:
+        if evaluation_type == EvaluationType.CHECKOUT:
+            if not locker_empty:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.FRAUD_SUSPECTED,
+                )
+                asset.locker_id = locker.locker_id
+                led_color = "red"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_CHECKOUT_FRAUD",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
+            else:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.ACTIVE,
+                )
+                loan.borrowed_at = datetime.now(UTC)
+                asset.locker_id = None
+                led_color = "green"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_CHECKOUT_CONFIRMED",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
         else:
-            loan.loan_status = LoanStatus.ACTIVE
-            loan.borrowed_at = datetime.now(UTC)
-            asset.locker_id = None
-            locker.locker_status = LockerStatus.AVAILABLE
-            led_color = "green"
-    else:
-        if locker_empty or has_damage:
-            loan.loan_status = LoanStatus.PENDING_INSPECTION
-            asset.asset_status = AssetStatus.PENDING_INSPECTION
-            asset.locker_id = locker.locker_id
-            locker.locker_status = LockerStatus.MAINTENANCE
-            led_color = "orange"
-        else:
-            loan.loan_status = LoanStatus.COMPLETED
-            loan.returned_at = datetime.now(UTC)
-            asset.asset_status = AssetStatus.AVAILABLE
-            asset.locker_id = locker.locker_id
-            locker.locker_status = LockerStatus.OCCUPIED
-            led_color = "green"
+            if locker_empty or has_damage:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.PENDING_INSPECTION,
+                )
+                asset.locker_id = locker.locker_id
+                led_color = "orange"
+            else:
+                _apply_loan_transition(
+                    loan,
+                    asset,
+                    locker,
+                    LoanStatus.COMPLETED,
+                )
+                loan.returned_at = datetime.now(UTC)
+                asset.locker_id = locker.locker_id
+                led_color = "green"
+                await log_audit_event(
+                    db,
+                    action_type="LOAN_RETURN_CONFIRMED",
+                    payload={
+                        "loan_id": str(loan.loan_id),
+                        "asset_id": str(asset.asset_id),
+                        "locker_id": str(locker.locker_id),
+                    },
+                    user_id=loan.user_id,
+                )
+    except InvalidLoanTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
     try:
         async with aiofiles.open(file_path, "wb") as buffer:
