@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
 from app.core.redis_utils import acquire_distributed_lock
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import AsyncSessionLocal
 from app.db.models import Loan, LoanStatus
 
@@ -51,7 +52,18 @@ async def _process_single_loan(
         if loan.due_date is None or loan.due_date >= reference_now:
             return False
 
-        loan.loan_status = LoanStatus.OVERDUE
+        try:
+            transition = LoanStateMachine.transition(
+                loan.loan_status, LoanStatus.OVERDUE
+            )
+        except InvalidLoanTransitionError:
+            logger.warning(
+                "Skipping overdue transition due to illegal state for loan_id=%s",
+                loan.loan_id,
+            )
+            return False
+
+        loan.loan_status = transition.loan_status
         await log_audit_event(
             db,
             action_type="LOAN_OVERDUE",

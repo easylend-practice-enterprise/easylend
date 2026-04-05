@@ -46,6 +46,7 @@ sequenceDiagram
         API-->>App: List[QuarantineLoanView] {loan_id, asset_name, user_name, kiosk_name, loan_status, ...}
         App->>API: GET /api/v1/admin/evaluations/{loan_id}
         API-->>App: EvaluationDetailView {evaluation_id, evaluation_type, photo_url, ai_confidence, ...}
+        Note over API,DB: /admin/evaluations/{evaluation_id}/judge uses LoanStateMachine under FOR UPDATE NOWAIT locks
         Note right of App: See sequence_quarantine.mmd for full handling flow
 
     else 3. Asset Catalog

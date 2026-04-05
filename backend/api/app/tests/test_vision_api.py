@@ -676,7 +676,7 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -709,7 +709,7 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -742,7 +742,7 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -777,7 +777,7 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -813,7 +813,7 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -850,7 +850,7 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -888,7 +888,7 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1079,7 +1079,7 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="AVAILABLE",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1133,7 +1133,7 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="OCCUPIED",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(

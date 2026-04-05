@@ -20,16 +20,15 @@ from sqlalchemy.orm import joinedload
 from app.api.deps import get_current_user
 from app.core import audit as audit_core
 from app.core.db_utils import is_lock_not_available_error
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import get_db
 from app.db.models import (
     AIEvaluation,
     Asset,
-    AssetStatus,
     EvaluationType,
     Loan,
     LoanStatus,
     Locker,
-    LockerStatus,
     User,
 )
 from app.schemas.admin import (
@@ -303,28 +302,36 @@ async def judge_evaluation(
     evaluation.is_approved = judgment.is_approved
     evaluation.rejection_reason = judgment.rejection_reason
 
+    target_status: LoanStatus
     if judgment.is_approved:
         # AI was right: mark loan as disputed, asset as maintenance
-        loan.loan_status = LoanStatus.DISPUTED
-        asset.asset_status = AssetStatus.MAINTENANCE
-        if locker is not None:
-            locker.locker_status = LockerStatus.MAINTENANCE
+        target_status = LoanStatus.DISPUTED
         audit_action = "EVALUATION_APPROVED"
     else:
         # AI was wrong: revert to normal flow
         if evaluation.evaluation_type == EvaluationType.CHECKOUT:
-            loan.loan_status = LoanStatus.ACTIVE
-            asset.asset_status = AssetStatus.BORROWED
-            if locker is not None:
-                locker.locker_status = LockerStatus.AVAILABLE
+            target_status = LoanStatus.ACTIVE
         else:
             # RETURN evaluation
-            loan.loan_status = LoanStatus.COMPLETED
-            loan.returned_at = datetime.now(UTC)
-            asset.asset_status = AssetStatus.AVAILABLE
-            if locker is not None:
-                locker.locker_status = LockerStatus.OCCUPIED
+            target_status = LoanStatus.COMPLETED
         audit_action = "EVALUATION_REJECTED"
+
+    try:
+        transition = LoanStateMachine.transition(loan.loan_status, target_status)
+    except InvalidLoanTransitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    loan.loan_status = transition.loan_status
+    if transition.asset_status is not None:
+        asset.asset_status = transition.asset_status
+    if locker is not None and transition.locker_status is not None:
+        locker.locker_status = transition.locker_status
+
+    if transition.loan_status == LoanStatus.COMPLETED:
+        loan.returned_at = datetime.now(UTC)
 
     # Write admin judgment to audit chain before committing
     await audit_core.log_audit_event(

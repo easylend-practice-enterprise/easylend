@@ -1,11 +1,10 @@
 sequenceDiagram
     participant API as FastAPI Backend
+    participant FSM as LoanStateMachine
     participant DB as PostgreSQL
-    participant VB as Vision Box (RPi 4)
     participant Admin as Administrator
 
-    Note over API,VB: System is in PENDING_INSPECTION state (orange LED active)
-    Note over API,VB: Locker is OCCUPIED, asset is PENDING_INSPECTION
+    Note over API,DB: Quarantine state: loan=PENDING_INSPECTION, asset=PENDING_INSPECTION, locker=MAINTENANCE
 
     Admin->>API: GET /api/v1/admin/quarantine [JWT Admin]
     Note over Admin,API: Paginated list: skip, limit query params
@@ -23,29 +22,43 @@ sequenceDiagram
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: true, rejection_reason?}
         Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
         API->>DB: UPDATE ai_evaluations SET is_approved = true, rejection_reason = ? WHERE evaluation_id = ?
-        API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
-        API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_APPROVED', payload: {evaluation_id, loan_id, is_approved}}
-        Note over API,VB: Fire-and-forget: WSS command sent, no slot_opened event processed
-        API->>VB: WSS: set_led {locker_id: logical_number, color: red}
-        API-->>Admin: 204 No Content
+        API->>FSM: transition(PENDING_INSPECTION -> DISPUTED)
+        alt Transition invalid
+            API-->>Admin: 409 Conflict {"Illegal loan transition"}
+        else Transition valid
+            API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = ?
+            API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = ?
+            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+            API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_APPROVED', payload: {evaluation_id, loan_id, is_approved}}
+            API->>DB: COMMIT
+            API-->>Admin: 204 No Content
+        end
     else Administrator rejects (AI was wrong: false positive)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: false, rejection_reason}
         Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
         API->>DB: UPDATE ai_evaluations SET is_approved = false, rejection_reason = ? WHERE evaluation_id = ?
 
         alt Evaluation was CHECKOUT type
-            API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+            API->>FSM: transition(PENDING_INSPECTION -> ACTIVE)
+            alt Transition invalid
+                API-->>Admin: 409 Conflict {"Illegal loan transition"}
+            else Transition valid
+                API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
+                API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
+                API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+            end
         else Evaluation was RETURN type
-            API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+            API->>FSM: transition(PENDING_INSPECTION -> COMPLETED)
+            alt Transition invalid
+                API-->>Admin: 409 Conflict {"Illegal loan transition"}
+            else Transition valid
+                API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
+                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
+                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+            end
         end
 
         API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_REJECTED', payload: {evaluation_id, loan_id, is_approved}}
-        API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+        API->>DB: COMMIT
         API-->>Admin: 204 No Content
     end
