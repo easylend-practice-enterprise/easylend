@@ -355,6 +355,18 @@ async def analyze_image(
             detail="Vision evaluation is already processing for this loan. Please try again.",
         )
 
+    locked_locker_id_for_eval = (
+        loan.checkout_locker_id
+        if evaluation_type == EvaluationType.CHECKOUT
+        else loan.return_locker_id
+    )
+    if locked_locker_id_for_eval is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Return locker must be assigned before evaluation.",
+        )
+    locker_id_for_eval = locked_locker_id_for_eval
+
     try:
         locked_asset_result = await db.execute(
             select(Asset)

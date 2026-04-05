@@ -1152,3 +1152,84 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
         str(kiosk_id),
         {"action": "set_led", "locker_id": "5", "color": "orange"},
     )
+
+
+def test_checkout_ai_timeout_mutates_only_locked_phase_entities(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    """Fallback state mutation must target Phase 2 locked rows, not Phase 1 snapshots."""
+
+    async def mock_post(*args, **kwargs):
+        raise httpx.RequestError("Mocked Timeout")
+
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+    send_command_mock, _audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    phase1_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    phase1_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    phase1_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    locked_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    locked_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locked_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    fake_db = _QueuedSession(
+        phase1_loan,
+        phase1_asset,
+        phase1_locker,
+        locked_loan,
+        locked_asset,
+        locked_locker,
+    )
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 503
+
+    # Phase 1 snapshots must remain untouched.
+    assert phase1_loan.loan_status == "RESERVED"
+    assert phase1_asset.asset_status == "BORROWED"
+    assert phase1_asset.locker_id is None
+    assert phase1_locker.locker_status == "AVAILABLE"
+
+    # Locked Phase 2 rows receive the fallback mutation.
+    assert locked_loan.loan_status == "PENDING_INSPECTION"
+    assert locked_asset.asset_status == "PENDING_INSPECTION"
+    assert locked_asset.locker_id == locker_id
+    assert locked_locker.locker_status == "MAINTENANCE"
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": "7", "color": "orange"},
+    )
