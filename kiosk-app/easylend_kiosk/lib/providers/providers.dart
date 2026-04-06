@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/auth/user.dart';
 import '../models/auth/nfc_login_request.dart';
 import '../models/auth/pin_login_request.dart';
+import '../models/catalog/catalog_item.dart';
 import '../models/loans/loan_response.dart';
 import '../models/api/error_response.dart';
 import '../services/api/api_service.dart';
@@ -127,7 +128,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         acceptedPrivacyPolicy: true,
       );
 
-      await _ref.read(secureStorageProvider).saveUser(user.toJson().toString());
+      await _ref.read(secureStorageProvider).saveUser(jsonEncode(user.toJson()));
       await _ref.read(secureStorageProvider).saveTokens(
             accessToken: 'debug_access_token_$username',
             refreshToken: 'debug_refresh_token_$username',
@@ -178,7 +179,7 @@ final isAdminProvider = Provider<bool>((ref) {
 // Catalog
 // ============================================================================
 
-final catalogProvider = FutureProvider<List<dynamic>>((ref) async {
+final catalogProvider = FutureProvider<List<CatalogUserView>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final response = await client.getCatalog();
   return response;

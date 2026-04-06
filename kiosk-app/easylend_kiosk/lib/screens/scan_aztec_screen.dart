@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
+import 'package:uuid/uuid.dart';
 
 import '../theme.dart';
 import '../services/api/api_service.dart';
@@ -52,7 +54,7 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
         _cameraDescription!,
         ResolutionPreset.low,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
       await _controller!.initialize();
@@ -134,7 +136,7 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
     );
     if (rotation == null) return null;
 
-    final inputImageFormat = InputImageFormat.nv21;
+    final inputImageFormat = Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
     final Uint8List bytes = image.planes[0].bytes;
 
     return InputImage.fromBytes(
@@ -281,8 +283,7 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
   }
 
   String _generateIdempotencyKey() {
-    final random = DateTime.now().millisecondsSinceEpoch;
-    return random.toRadixString(16);
+    return const Uuid().v4();
   }
 
   @override

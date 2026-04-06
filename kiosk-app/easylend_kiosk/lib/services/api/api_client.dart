@@ -5,6 +5,7 @@ import '../../models/auth/pin_login_request.dart';
 import '../../models/auth/token_response.dart';
 import '../../models/auth/user.dart';
 import '../../models/auth/refresh_token_request.dart';
+import '../../models/catalog/catalog_item.dart';
 import '../../models/loans/checkout_request.dart';
 import '../../models/loans/loan_response.dart';
 import '../../models/loans/loan_status_response.dart';
@@ -44,12 +45,13 @@ class ApiClient {
 
   // Catalog endpoints
 
-  Future<List<dynamic>> getCatalog({int skip = 0, int limit = 100}) async {
+  Future<List<CatalogUserView>> getCatalog({int skip = 0, int limit = 100}) async {
     final response = await _dio.get('/api/v1/catalog', queryParameters: {
       'skip': skip,
       'limit': limit,
     });
-    return response.data as List<dynamic>;
+    final List<dynamic> data = response.data as List<dynamic>;
+    return data.map((e) => CatalogUserView.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   // Loan endpoints

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -59,14 +60,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _nfcDetectionTimer?.cancel();
 
     // NFC integration pending - using simulated detection for now
-    _nfcDetectionTimer = Timer(const Duration(seconds: 2), () {
-      if (!mounted || !_isNfcScanning) {
-        return;
-      }
+    // Only run in debug mode; release builds require real NFC hardware
+    if (kDebugMode) {
+      _nfcDetectionTimer = Timer(const Duration(seconds: 2), () {
+        if (!mounted || !_isNfcScanning) {
+          return;
+        }
 
-      // Simulate detecting an NFC tag
-      _onNfcDetected('NFC-TAG-12345');
-    });
+        // Simulate detecting an NFC tag
+        _onNfcDetected('NFC-TAG-12345');
+      });
+    }
   }
 
   void _stopNfcListening() {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,7 +19,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     redirect: (context, state) {
       final loggingIn = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/pin';
+          state.matchedLocation.startsWith('/pin/');
 
       // If not authenticated and not on login/pin screen, redirect to login
       if (!isAuthenticated && !loggingIn) {
@@ -82,12 +83,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
-      // Debug screen switcher (only in debug mode)
-      GoRoute(
-        path: '/debug',
-        name: 'debug',
-        builder: (context, state) => const ScreenSwitcher(),
-      ),
+      if (kDebugMode)
+        GoRoute(
+          path: '/debug',
+          name: 'debug',
+          builder: (context, state) => const ScreenSwitcher(),
+        ),
     ],
     errorBuilder: (context, state) => Scaffold(
       body: Center(

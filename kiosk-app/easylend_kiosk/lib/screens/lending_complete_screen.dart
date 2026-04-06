@@ -15,7 +15,7 @@ class LendingCompleteScreen extends ConsumerStatefulWidget {
 }
 
 class _LendingCompleteScreenState extends ConsumerState<LendingCompleteScreen> {
-  // 5 hour grace period - for demo using 5 minutes
+  // 5 hour grace period
   late Duration _remainingTime;
   late Duration _totalTime;
   Timer? _timer;

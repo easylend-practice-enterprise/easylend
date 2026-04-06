@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/auth/user.dart';
@@ -22,12 +23,14 @@ final dioProvider = Provider<Dio>((ref) {
 
   // Auth interceptor for attaching tokens
   dio.interceptors.add(AuthInterceptor(ref));
-  // Log interceptor for debugging
-  dio.interceptors.add(LogInterceptor(
-    requestBody: true,
-    responseBody: true,
-    error: true,
-  ));
+  // Log interceptor for debugging - only in debug mode to avoid leaking sensitive data
+  if (kDebugMode) {
+    dio.interceptors.add(LogInterceptor(
+      requestBody: true,
+      responseBody: true,
+      error: true,
+    ));
+  }
 
   return dio;
 });
@@ -56,6 +59,12 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
+    // Skip refresh loop for refresh/logout endpoints
+    final path = err.requestOptions.path;
+    if (path.contains('/auth/refresh') || path.contains('/auth/logout')) {
+      return handler.next(err);
+    }
+
     if (err.response?.statusCode == 401) {
       // Try to refresh the token
       final refreshed = await _ref.read(authServiceProvider).refreshToken();

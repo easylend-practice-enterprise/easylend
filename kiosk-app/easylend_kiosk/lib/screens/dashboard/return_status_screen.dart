@@ -26,6 +26,12 @@ class _ReturnStatusScreenState extends ConsumerState<ReturnStatusScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    ref.read(loanPollingProvider(widget.loanId).notifier).stopPolling();
+    super.dispose();
+  }
+
   String _getStatusMessage(String? status) {
     switch (status) {
       case LoanStatus.reserved:

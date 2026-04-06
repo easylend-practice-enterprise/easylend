@@ -212,8 +212,8 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
     );
   }
 
-  Widget _buildCatalogList(List<dynamic> items) {
-    final userItems = items.whereType<CatalogUserView>().toList();
+  Widget _buildCatalogList(List<CatalogUserView> items) {
+    final userItems = items;
     final adminItems = items.whereType<CatalogAdminView>().toList();
 
     // If admin view items exist, show them
