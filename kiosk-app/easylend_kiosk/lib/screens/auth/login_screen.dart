@@ -60,8 +60,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     _nfcDetectionTimer?.cancel();
 
     // NFC integration pending - using simulated detection for now
-    // Only run in debug mode; release builds require real NFC hardware
-    if (kDebugMode) {
+    // Only run in debug mode; release builds and widget tests require real NFC hardware
+    if (kDebugMode && !const bool.fromEnvironment('FLUTTER_TEST', defaultValue: false)) {
       _nfcDetectionTimer = Timer(const Duration(seconds: 2), () {
         if (!mounted || !_isNfcScanning) {
           return;

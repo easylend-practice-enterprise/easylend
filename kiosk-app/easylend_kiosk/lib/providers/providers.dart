@@ -243,6 +243,8 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
 
   Future<void> startPolling() async {
     _startTime = DateTime.now();
+    // Reset error state so retry clears previous error UI
+    state = state.copyWith(hasError: false, error: null, isComplete: false);
     await _poll();
   }
 

@@ -59,6 +59,6 @@ static const bool debugEnabled = false;
 
 ## Security Notes
 
-- The `debugEnabled` flag uses `assert()` statements that are stripped in release builds
-- Debug login button only appears when `DebugConfig.isActive` is true
-- In release builds, the app falls back to normal NFC/PIN login flow
+- Debug features are gated by `DebugConfig.isActive`, which uses `kDebugMode`
+- The debug login button only appears when `DebugConfig.isActive` is true
+- In release builds, `DebugConfig.isActive` is false, so the app falls back to the normal NFC/PIN login flow

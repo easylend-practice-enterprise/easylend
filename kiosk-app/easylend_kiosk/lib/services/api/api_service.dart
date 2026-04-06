@@ -10,6 +10,10 @@ import '../local/secure_storage_service.dart';
 // Base URL - in production this would come from environment config
 const _baseUrl = 'http://10.0.2.2:8000'; // Android emulator localhost
 
+// Single-flight lock: ensures only one token refresh runs at a time
+// so concurrent 401s all wait for the same refresh rather than racing.
+Future<bool>? _refreshInFlight;
+
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(
     baseUrl: _baseUrl,
@@ -66,8 +70,31 @@ class AuthInterceptor extends Interceptor {
     }
 
     if (err.response?.statusCode == 401) {
-      // Try to refresh the token
-      final refreshed = await _ref.read(authServiceProvider).refreshToken();
+      // Single-flight: if a refresh is already in flight, await it instead of racing
+      if (_refreshInFlight != null) {
+        final refreshed = await _refreshInFlight!;
+        if (refreshed) {
+          final opts = err.requestOptions;
+          final storage = _ref.read(secureStorageProvider);
+          final token = await storage.getAccessToken();
+          opts.headers['Authorization'] = 'Bearer $token';
+          final dio = _ref.read(dioProvider);
+          try {
+            return handler.resolve(await dio.fetch(opts));
+          } catch (e) {
+            return handler.next(err);
+          }
+        }
+        return handler.next(err);
+      }
+
+      // No refresh in flight — start one and hold onto it for concurrent 401s
+      final refreshFuture = _ref.read(authServiceProvider).refreshToken();
+      _refreshInFlight = refreshFuture;
+
+      final refreshed = await refreshFuture;
+      _refreshInFlight = null;
+
       if (refreshed) {
         // Retry the original request
         final opts = err.requestOptions;
@@ -77,8 +104,7 @@ class AuthInterceptor extends Interceptor {
 
         final dio = _ref.read(dioProvider);
         try {
-          final response = await dio.fetch(opts);
-          return handler.resolve(response);
+          return handler.resolve(await dio.fetch(opts));
         } catch (e) {
           return handler.next(err);
         }

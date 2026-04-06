@@ -19,14 +19,14 @@
 | ReturnStatusScreen | ✅ Partial | UI only, hardcoded 65% progress |
 | LendingCompleteScreen | ✅ Partial | UI only, no API integration |
 | InactivityModal | ✅ Partial | UI only, no countdown logic |
-| app.dart | ❌ Empty | Needs implementation |
-| app_router.dart | ❌ Empty | Needs go_router setup |
-| All providers | ❌ Empty | api_provider, auth_provider, asset_provider |
-| All models | ❌ Empty | user, auth_response, asset, asset_status, api_response, error_response |
-| All services | ❌ Empty | api_service, websocket_service, auth_service |
-| secure_storage | ❌ Empty | |
-| All utils/constants | ❌ Empty | colors, strings, dimensions, context_extensions, validation_helper, date_helper |
-| All widgets | ❌ Empty | primary_button, secondary_button, asset_card, countdown_timer, nfc_scan_animation |
+| app.dart | ✅ Done | Root app widget implemented and wired into the application flow |
+| app_router.dart | ✅ Done | Router configuration added for the current screen/navigation flow |
+| All providers | ✅ Done | Core providers implemented, including api_provider, auth_provider, and asset_provider |
+| All models | ✅ Done | Core models added, including user, auth_response, asset, asset_status, api_response, and error_response |
+| All services | ✅ Done | Service layer implemented, including api_service, websocket_service, and auth_service |
+| secure_storage | ✅ Done | Secure storage helper added for persisted sensitive/local session data |
+| All utils/constants | ✅ Partial | Utility/constants layer added; review remaining coverage for colors, strings, dimensions, extensions, and helpers |
+| All widgets | ✅ Partial | Shared widgets added, including primary_button, secondary_button, asset_card, countdown_timer, and nfc_scan_animation |
 
 ---
 
@@ -46,7 +46,7 @@ High-Level Goals:
 | State Management | Riverpod | `flutter_riverpod` for global state (auth, assets, loans). |
 | Networking | `dio` + `retrofit` | Type-safe HTTP client with JWT interceptors. |
 | Hardware | `nfc_manager` | NFC badge reading. |
-| Vision/Camera | `mobile_scanner` | Fast Aztec/barcode scanning via ML Kit. |
+| Vision/Camera | `camera` + `google_mlkit_barcode_scanning` | Camera preview with ML Kit Aztec/barcode scanning. |
 | Navigation | `go_router` | Declarative routing with secure Admin guards. |
 | Secure Storage | `flutter_secure_storage` | JWT token storage. |
 
@@ -130,7 +130,7 @@ High-Level Goals:
 
 ### ELP-45 & ELP-46: Aztec integration
 
-- [x] Aztec scanning with `mobile_scanner` ✅ **Done (ML Kit integration working)**
+- [x] Aztec scanning with `camera` + `google_mlkit_barcode_scanning` ✅ **Done (ML Kit integration working)**
 - [ ] On successful scan, call `POST /api/v1/loans/return/initiate`
 
 ---
