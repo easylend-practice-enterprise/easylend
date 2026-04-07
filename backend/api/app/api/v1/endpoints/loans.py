@@ -223,6 +223,7 @@ async def checkout(
 
     Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
+    db_committed = False
     await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
@@ -349,6 +350,7 @@ async def checkout(
         # fails after commit, the DB is consistent and the RESERVED loan will
         # be cleaned up by the timeout worker.
         await db.commit()
+        db_committed = True
         await db.refresh(loan)
 
         # --- 7. Trigger Hardware to open the door ---
@@ -377,6 +379,8 @@ async def checkout(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
@@ -427,6 +431,7 @@ async def return_initiate(
 
     Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
+    db_committed = False
     await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
@@ -568,6 +573,7 @@ async def return_initiate(
         # fails after commit, the DB is consistent and the RETURNING loan will
         # be cleaned up by the timeout worker.
         await db.commit()
+        db_committed = True
         await db.refresh(loan)
 
         # --- 5. Trigger Hardware to open the door ---
@@ -595,6 +601,8 @@ async def return_initiate(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:

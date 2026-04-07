@@ -27,6 +27,7 @@ def upgrade() -> None:
         sa.Column(
             "status",
             sa.Enum("ACTIVE", "INACTIVE", "BANNED", "ANONYMIZED", name="userstatus"),
+            server_default=sa.text("'ACTIVE'"),
             nullable=False,
         ),
     )

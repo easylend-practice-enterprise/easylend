@@ -256,7 +256,7 @@ class ConnectionManager:
             return True
 
         try:
-            return await redis_client.exists(self._presence_key(kiosk_id)) > 0
+            return (await redis_client.exists(self._presence_key(kiosk_id))) > 0
         except RedisError:
             logger.warning(
                 "Redis unavailable while checking kiosk presence for kiosk_id=%s",
