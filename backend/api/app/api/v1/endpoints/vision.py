@@ -423,6 +423,21 @@ async def analyze_image(
             )
             asset.locker_id = locker.locker_id
 
+            await log_audit_event(
+                db,
+                action_type="VISION_EVALUATION_FAILED",
+                payload={
+                    "evaluation_type": evaluation_type.value,
+                    "loan_id": str(loan.loan_id),
+                    "asset_id": str(asset.asset_id),
+                    "locker_id": str(locker.locker_id),
+                    "error_summary": failure_error_summary,
+                },
+            )
+            await db.commit()
+
+            # Hardware command fires AFTER DB commit so that the forensic
+            # trail is durable before any side effects are triggered.
             command_ok = await manager.send_command(
                 str(locker.kiosk_id),
                 {
@@ -438,19 +453,6 @@ async def analyze_image(
                     "Failed to set LED color to orange for locker_id=%s",
                     locker_id_for_eval,
                 )
-
-            await log_audit_event(
-                db,
-                action_type="VISION_EVALUATION_FAILED",
-                payload={
-                    "evaluation_type": evaluation_type.value,
-                    "loan_id": str(loan.loan_id),
-                    "asset_id": str(asset.asset_id),
-                    "locker_id": str(locker.locker_id),
-                    "error_summary": failure_error_summary,
-                },
-            )
-            await db.commit()
         except InvalidLoanTransitionError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

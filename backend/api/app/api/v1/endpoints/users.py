@@ -367,26 +367,30 @@ async def anonymize_user(
 
     Requires Admin role.
     """
-    user = await _get_user_with_role_or_404(db, user_id)
+    try:
+        result = await db.execute(
+            select(User).where(User.user_id == user_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        await db.rollback()
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is currently being modified. Please retry.",
+            )
+        raise
+
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+        )
 
     if user.status == UserStatus.ANONYMIZED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is already anonymized.",
         )
-
-    # Lock user row to prevent TOCTOU race: between this lock and the loan check,
-    # no concurrent transaction can create a loan for this user.
-    try:
-        await db.execute(select(User).where(User.user_id == user_id).with_for_update())
-    except OperationalError as e:
-        await db.rollback()  # ALWAYS rollback on db error before raising
-        if is_lock_not_available_error(e):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="User is currently being modified. Please retry.",
-            )
-        raise
 
     # Block anonymization if user has active/reserved/overdue loans
     active_loans_count_result = await db.execute(
