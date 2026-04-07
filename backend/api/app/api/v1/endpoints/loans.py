@@ -377,7 +377,6 @@ async def checkout(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
@@ -596,7 +595,6 @@ async def return_initiate(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:

@@ -564,7 +564,6 @@ async def force_open_locker(
 
         return {"detail": "Locker opened successfully."}
     except HTTPException:
-        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
@@ -882,7 +881,7 @@ async def update_asset(
         )
 
     old_asset_status = asset.asset_status
-    update_data = payload.model_dump(exclude_unset=True)
+    update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if "category_id" in update_data and update_data["category_id"] is not None:
         cat_exists = await db.execute(

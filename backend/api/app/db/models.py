@@ -315,13 +315,9 @@ class AuditLog(Base):
         ForeignKey("users.user_id"), nullable=True
     )
 
-    # Valid action_type values (used as string literals throughout the codebase):
-    # LOGIN_SUCCESS, LOGIN_FAILED, USER_ANONYMIZED, USER_STATUS_CHANGED,
-    # EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED,
-    # VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED,
-    # LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, ASSET_CREATED, ASSET_STATUS_CHANGED,
-    # USER_PIN_CHANGED, USER_NFC_ASSIGNED, LOCKER_STATUS_CHANGED,
-    # KIOSK_STATUS_CHANGED
+    # Audit event type written by callers throughout the application.
+    # This column intentionally stores string literals (typically UPPER_SNAKE_CASE)
+    # and is not documented here as an exhaustive list to avoid comment drift.
     action_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
