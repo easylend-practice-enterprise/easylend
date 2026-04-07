@@ -1,14 +1,14 @@
 import asyncio
 import importlib
 import os
-from collections.abc import Awaitable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Iterator
 from pathlib import Path
 from typing import cast
 
+import httpx
 import pytest
 from alembic.config import Config
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -193,6 +193,14 @@ def integration_session_maker(
     )
 
 
+@pytest.fixture()
+async def integration_db_session(
+    integration_session_maker: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    async with integration_session_maker() as session:
+        yield session
+
+
 @pytest.fixture(scope="session")
 def integration_redis_client(
     integration_redis_url: str,
@@ -281,6 +289,10 @@ def app_with_overrides(
 
 
 @pytest.fixture()
-def client(app_with_overrides: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app_with_overrides) as test_client:
+async def async_client(app_with_overrides: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    transport = httpx.ASGITransport(app=app_with_overrides)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as test_client:
         yield test_client
