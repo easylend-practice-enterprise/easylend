@@ -33,6 +33,10 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.*",
+]
+
 
 [tool.ruff.lint]
 extend-select = [
