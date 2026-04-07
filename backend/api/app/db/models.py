@@ -67,7 +67,10 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
     status: Mapped[UserStatus] = mapped_column(
-        Enum(UserStatus), default=UserStatus.ACTIVE, nullable=False
+        Enum(UserStatus),
+        default=UserStatus.ACTIVE,
+        server_default=text("'ACTIVE'"),
+        nullable=False,
     )
     ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     accepted_privacy_policy: Mapped[bool] = mapped_column(
