@@ -551,6 +551,7 @@ async def export_user_data(
         )
         .where(Loan.user_id == user_id)
         .order_by(Loan.reserved_at.desc())
+        .limit(1000)
     )
     all_loans = []
     for loan in loans_result.scalars().all():
@@ -604,6 +605,7 @@ async def export_user_data(
             )
         )
         .order_by(AuditLog.created_at)
+        .limit(1000)
     )
     audit_history = [
         {
