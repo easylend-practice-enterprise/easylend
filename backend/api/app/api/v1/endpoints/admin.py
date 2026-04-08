@@ -317,18 +317,17 @@ async def judge_evaluation(
         audit_action = "EVALUATION_REJECTED"
 
     try:
-        transition = LoanStateMachine.transition(loan.loan_status, target_status)
+        transition = LoanStateMachine.apply_transition(
+            loan,
+            asset,
+            locker,
+            target_status,
+        )
     except InvalidLoanTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-
-    loan.loan_status = transition.loan_status
-    if transition.asset_status is not None:
-        asset.asset_status = transition.asset_status
-    if locker is not None and transition.locker_status is not None:
-        locker.locker_status = transition.locker_status
 
     if transition.loan_status == LoanStatus.COMPLETED:
         loan.returned_at = datetime.now(UTC)

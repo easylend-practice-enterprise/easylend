@@ -8,12 +8,12 @@ Business rules (Step 10a, hardware-free path):
   - Admins see all loans.
   - Checkout uses SELECT … FOR UPDATE NOWAIT to prevent concurrent
     double-assignment of the same asset (409 on lock contention).
-  - Return/initiate uses SELECT … FOR UPDATE SKIP LOCKED to find the
-    first available locker at the user's kiosk without blocking peers.
+    - Return/initiate uses SELECT … FOR UPDATE NOWAIT to fail fast when
+        a candidate locker is currently being processed by another request.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -308,28 +308,29 @@ async def checkout(
                 detail="The Vision Box for this locker is currently offline. Cannot checkout.",
             )
 
-        # --- 4. Apply state mutations ---
+        # --- 5. Create loan record ---
+        loan = Loan(
+            user_id=current_user.user_id,
+            asset_id=asset.asset_id,
+            checkout_locker_id=checkout_locker_id,
+            reserved_at=datetime.now(UTC),
+        )
+
         # Asset becomes BORROWED immediately; physical locker release is deferred
         # until Vision confirms the checkout outcome.
-        asset.asset_status = AssetStatus.BORROWED
-
-        # Validate initial state selection through the centralized state machine.
         try:
-            LoanStateMachine.assert_initial_status(LoanStatus.RESERVED)
+            LoanStateMachine.apply_transition(
+                loan,
+                asset,
+                locker,
+                LoanStatus.RESERVED,
+            )
         except InvalidLoanTransitionError as exc:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Invalid initial loan state configuration.",
             ) from exc
 
-        # --- 5. Create loan record ---
-        loan = Loan(
-            user_id=current_user.user_id,
-            asset_id=asset.asset_id,
-            checkout_locker_id=checkout_locker_id,
-            loan_status=LoanStatus.RESERVED,
-            reserved_at=datetime.now(UTC),
-        )
         db.add(loan)
         await db.flush()
 
@@ -392,6 +393,294 @@ async def checkout(
 
 
 # ---------------------------------------------------------------------------
+# POST /loans/{loan_id}/report-damage: Grace-period user damage report
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{loan_id}/report-damage",
+    response_model=LoanPublicResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {"description": "Invalid state or grace period elapsed"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Forbidden: not the loan owner"},
+        404: {"description": "Loan, asset, locker, or user not found"},
+        409: {"description": "Conflict: lock contention or duplicate request"},
+    },
+)
+async def report_damage(
+    request: Request,
+    loan_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+) -> LoanPublicResponse:
+    """Report damage during the immediate post-checkout grace period."""
+    db_committed = False
+    locker: Locker | None = None
+
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
+        )
+
+    # Step 1 — idempotency guard must run before any mutation.
+    await _guard_idempotency(idempotency_key)
+    await check_token_rate_limit(request, str(current_user.user_id))
+
+    try:
+        # Step 2 — lock loan.
+        try:
+            loan_result = await db.execute(
+                select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Loan is currently being processed. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
+        loan = loan_result.scalar_one_or_none()
+        if loan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Loan not found.",
+            )
+
+        if loan.user_id != current_user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to report damage for this loan.",
+            )
+
+        if loan.loan_status not in (LoanStatus.ACTIVE, LoanStatus.FRAUD_SUSPECTED):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Loan must be ACTIVE or FRAUD_SUSPECTED to report damage.",
+            )
+
+        # Step 3 — lock asset.
+        try:
+            asset_result = await db.execute(
+                select(Asset)
+                .where(Asset.asset_id == loan.asset_id)
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Asset is currently being processed. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
+        asset = asset_result.scalar_one_or_none()
+        if asset is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found.",
+            )
+
+        # Step 4 — lock locker.
+        if loan.checkout_locker_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Loan checkout locker is missing.",
+            )
+
+        try:
+            locker_result = await db.execute(
+                select(Locker)
+                .where(Locker.locker_id == loan.checkout_locker_id)
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Locker is currently being processed. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
+        locker = locker_result.scalar_one_or_none()
+        if locker is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Locker not found.",
+            )
+
+        # Step 5 — validate grace period from borrowed_at or created_at fallback.
+        checkout_time = (
+            loan.borrowed_at or getattr(loan, "created_at", None) or loan.reserved_at
+        )
+        if checkout_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Loan has no checkout timestamp.",
+            )
+
+        now = datetime.now(UTC)
+        if now - checkout_time > timedelta(minutes=5):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Grace period has expired for damage reporting.",
+            )
+
+        # Step 6 — apply state transition.
+        try:
+            outcome = LoanStateMachine.apply_transition(
+                loan,
+                asset,
+                locker,
+                LoanStatus.DISPUTED,
+            )
+        except InvalidLoanTransitionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+
+        # Step 7 — suspend users if transition requires it.
+        previous_loan_id: UUID | None = None
+        if outcome.suspend_users:
+            suspension_until = now + timedelta(days=7)
+
+            try:
+                current_user_result = await db.execute(
+                    select(User)
+                    .where(User.user_id == current_user.user_id)
+                    .with_for_update(nowait=True)
+                )
+            except OperationalError as exc:
+                if is_lock_not_available_error(exc):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="User is currently being processed. Please try again.",
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="A database error occurred.",
+                ) from exc
+
+            current_user_row = current_user_result.scalar_one_or_none()
+            if current_user_row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found.",
+                )
+            current_user_row.locked_until = suspension_until
+
+            previous_loan_result = await db.execute(
+                select(Loan)
+                .where(
+                    Loan.asset_id == loan.asset_id,
+                    Loan.loan_id != loan.loan_id,
+                    Loan.loan_status == LoanStatus.COMPLETED,
+                )
+                .order_by(Loan.returned_at.desc().nulls_last())
+                .limit(1)
+            )
+            previous_loan = previous_loan_result.scalar_one_or_none()
+            previous_loan_id = (
+                previous_loan.loan_id if previous_loan is not None else None
+            )
+
+            if previous_loan is not None:
+                try:
+                    previous_user_result = await db.execute(
+                        select(User)
+                        .where(User.user_id == previous_loan.user_id)
+                        .with_for_update(nowait=True)
+                    )
+                except OperationalError as exc:
+                    if is_lock_not_available_error(exc):
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail="User is currently being processed. Please try again.",
+                        )
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="A database error occurred.",
+                    ) from exc
+
+                previous_user = previous_user_result.scalar_one_or_none()
+                if previous_user is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Previous borrower not found.",
+                    )
+                previous_user.locked_until = suspension_until
+
+        # Step 8 — write audit event.
+        await log_audit_event(
+            db,
+            action_type="GRACE_PERIOD_DAMAGE_REPORTED",
+            payload={
+                "loan_id": str(loan.loan_id),
+                "asset_id": str(asset.asset_id),
+                "previous_loan_id": (
+                    str(previous_loan_id) if previous_loan_id is not None else None
+                ),
+            },
+            user_id=current_user.user_id,
+        )
+
+        # Step 9 — commit before hardware side effects.
+        await db.commit()
+        db_committed = True
+        await db.refresh(loan)
+    except HTTPException:
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
+        raise
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB during error handling.")
+        await release_idempotency_key(idempotency_key)
+        raise
+
+    # Step 10 — hardware sync after commit; failures are logged but do not rollback.
+    if locker is not None:
+        try:
+            command_ok = await manager.send_command(
+                str(locker.kiosk_id),
+                {
+                    "action": "set_led",
+                    "color": "orange",
+                    "locker_id": str(locker.locker_id),
+                },
+            )
+            if not command_ok:
+                logger.error(
+                    "Failed to synchronize locker LED after grace-period damage report loan=%s locker=%s.",
+                    loan.loan_id,
+                    locker.locker_id,
+                )
+        except Exception:
+            logger.exception(
+                "Hardware synchronization failed after grace-period damage report commit for loan=%s.",
+                loan.loan_id,
+            )
+
+    return LoanPublicResponse.model_validate(loan)
+
+
+# ---------------------------------------------------------------------------
 # POST /loans/return/initiate: Begin the return flow
 # ---------------------------------------------------------------------------
 
@@ -419,10 +708,9 @@ async def return_initiate(
     """
     Initiate the return process for an active loan.
 
-    Finds the first available locker at the kiosk where the user is
-    standing (`payload.kiosk_id`) using `SELECT … FOR UPDATE SKIP LOCKED`
-    so that concurrent return requests from different users never grab the
-    same slot.
+    Finds and locks the first available locker at the kiosk where the
+    user is standing (`payload.kiosk_id`) using `SELECT … FOR UPDATE NOWAIT`
+    to fail fast if the slot is currently in use by another transaction.
 
     **State transitions:**
     - `Locker.locker_status`: `AVAILABLE` → `OCCUPIED` (reserved for this return)
@@ -506,10 +794,7 @@ async def return_initiate(
             )
         loan = locked_loan
 
-        # --- 2. Find and lock a free locker at this kiosk (SKIP LOCKED + FOR UPDATE) ---
-        # SKIP LOCKED prevents blocking on other return requests.
-        # FOR UPDATE ensures the selected row is locked: no two concurrent
-        # requests can both select the same locker even with SKIP LOCKED.
+        # --- 2. Find and lock a free locker at this kiosk (NOWAIT) ---
         try:
             locker_result = await db.execute(
                 select(Locker)
@@ -519,13 +804,13 @@ async def return_initiate(
                 )
                 .order_by(Locker.logical_number)
                 .limit(1)
-                .with_for_update(skip_locked=True)
+                .with_for_update(nowait=True)
             )
         except OperationalError as exc:
             if is_lock_not_available_error(exc):
                 raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="No available lockers at this kiosk. Please try again shortly.",
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Locker is currently being processed. Please try again shortly.",
                 )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -541,8 +826,10 @@ async def return_initiate(
 
         # --- 3. Reserve the locker and update the loan ---
         try:
-            transition = LoanStateMachine.transition(
-                loan.loan_status,
+            LoanStateMachine.apply_transition(
+                loan,
+                None,
+                locker,
                 LoanStatus.RETURNING,
             )
         except InvalidLoanTransitionError as exc:
@@ -551,10 +838,7 @@ async def return_initiate(
                 detail=str(exc),
             ) from exc
 
-        if transition.locker_status is not None:
-            locker.locker_status = transition.locker_status
         loan.return_locker_id = locker.locker_id
-        loan.loan_status = transition.loan_status
 
         await log_audit_event(
             db,

@@ -29,6 +29,7 @@ from app.api.deps import get_current_admin, get_current_user
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
 from app.core.idempotency import _guard_idempotency, release_idempotency_key
+from app.core.state_machine import LoanStateMachine
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -610,10 +611,19 @@ async def update_locker_status(
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     old_locker_status = locker.locker_status
+    new_locker_status = update_data.pop("locker_status", None)
+
     for field, value in update_data.items():
         setattr(locker, field, value)
 
-    new_locker_status = update_data.get("locker_status")
+    if new_locker_status is not None:
+        target_locker_status = (
+            LockerStatus(new_locker_status)
+            if isinstance(new_locker_status, str)
+            else new_locker_status
+        )
+        LoanStateMachine.apply_locker_status(locker, target_locker_status)
+
     if new_locker_status is not None and new_locker_status != getattr(
         old_locker_status, "value", old_locker_status
     ):
@@ -909,10 +919,19 @@ async def update_asset(
                 detail="Invalid locker_id: locker does not exist.",
             )
 
+    new_asset_status = update_data.pop("asset_status", None)
+
     for field, value in update_data.items():
         setattr(asset, field, value)
 
-    new_asset_status = update_data.get("asset_status")
+    if new_asset_status is not None:
+        target_asset_status = (
+            AssetStatus(new_asset_status)
+            if isinstance(new_asset_status, str)
+            else new_asset_status
+        )
+        LoanStateMachine.apply_asset_status(asset, target_asset_status)
+
     if new_asset_status is not None and new_asset_status != getattr(
         old_asset_status, "value", old_asset_status
     ):
@@ -1005,12 +1024,26 @@ async def soft_delete_asset(
 
     # Clear locker assignment and return the locker to AVAILABLE
     if asset.locker_id is not None:
-        locker_result = await db.execute(
-            select(Locker).where(Locker.locker_id == asset.locker_id)
-        )
+        try:
+            locker_result = await db.execute(
+                select(Locker)
+                .where(Locker.locker_id == asset.locker_id)
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Locker is currently being modified. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
         locker = locker_result.scalar_one_or_none()
         if locker is not None:
-            locker.locker_status = LockerStatus.AVAILABLE
+            LoanStateMachine.apply_locker_status(locker, LockerStatus.AVAILABLE)
         asset.locker_id = None
 
     asset.is_deleted = True

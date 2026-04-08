@@ -125,14 +125,7 @@ def _apply_loan_transition(
     locker: Locker,
     target_status: LoanStatus,
 ) -> None:
-    transition = LoanStateMachine.transition(loan.loan_status, target_status)
-    loan.loan_status = transition.loan_status
-
-    if transition.asset_status is not None:
-        asset.asset_status = transition.asset_status
-
-    if transition.locker_status is not None:
-        locker.locker_status = transition.locker_status
+    LoanStateMachine.apply_transition(loan, asset, locker, target_status)
 
 
 @router.post("/analyze", response_model=VisionAnalyzeResponse)
