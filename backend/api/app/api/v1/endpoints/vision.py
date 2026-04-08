@@ -581,8 +581,8 @@ async def analyze_image(
             },
         )
         if not command_ok:
-            logger.warning(
-                "Failed to set LED color to %s for locker_id=%s",
+            logger.error(
+                "Failed to set LED color to %s for locker_id=%s — DB committed but LED incorrect.",
                 led_color,
                 locker_id_for_eval,
             )
@@ -632,6 +632,19 @@ async def analyze_image(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to finalize vision evaluation.",
         ) from exc
+
+    # Check hardware sync after DB commit succeeds. Raising here is safe —
+    # the except block above did not catch HTTPException (it re-raises a 500).
+    if not command_ok:
+        logger.error(
+            "set_led failed for loan_id=%s, locker_id=%s — DB committed but LED incorrect.",
+            loan.loan_id,
+            locker.locker_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Evaluation recorded but locker LED update failed. Please contact support.",
+        )
 
     return validated_data
 

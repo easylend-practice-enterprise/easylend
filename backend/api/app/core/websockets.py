@@ -174,7 +174,20 @@ class ConnectionManager:
             await websocket.close(code=1013, reason="Connection limit reached")
             return False
 
-        await websocket.accept()
+        # Subscribe to the Redis pubsub channel BEFORE accepting the WebSocket.
+        # If this succeeds but websocket.accept() fails below, the pubsub is
+        # registered in self._pubsubs and will be cleaned up by _close_pubsub.
+        try:
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(self._command_channel(kiosk_id))
+            self._pubsubs[kiosk_id] = pubsub
+        except RedisError:
+            logger.exception(
+                "Connection rejected: unable to subscribe Redis command channel for kiosk_id=%s",
+                kiosk_id,
+            )
+            await websocket.close(code=1011, reason="Command channel unavailable")
+            return False
 
         # If a connection for this kiosk_id already exists, close it before replacing.
         existing_websocket = self.active_connections.get(kiosk_id)
@@ -196,16 +209,11 @@ class ConnectionManager:
                 )
 
         try:
-            pubsub = redis_client.pubsub()
-            await pubsub.subscribe(self._command_channel(kiosk_id))
-            self._pubsubs[kiosk_id] = pubsub
-        except RedisError:
-            logger.exception(
-                "Connection rejected: unable to subscribe Redis command channel for kiosk_id=%s",
-                kiosk_id,
-            )
-            await websocket.close(code=1011, reason="Command channel unavailable")
-            return False
+            await websocket.accept()
+        except Exception:
+            # accept failed — clean up the pubsub that was registered above.
+            await self._close_pubsub(kiosk_id)
+            raise
 
         self.active_connections[kiosk_id] = websocket
         await self._set_presence(kiosk_id)
