@@ -486,17 +486,14 @@ def test_anonymize_user_success(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order (log_audit_event is NOT patched so its internals DO pop):
-    # [1] get_current_user                        → admin
-    # [2] _get_user_with_role_or_404              → target_user (mutated in-place)
-    # [3] FOR UPDATE on user row                  → target_user (same row, already in session)
-    # [4] active loans check                      → None (no active loans)
-    # [5] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
+    # [1] get_current_user                         → admin
+    # [2] FOR UPDATE on user row                   → target_user (mutated in-place)
+    # [3] active loans count                       → 0 (no active loans)
+    # [4] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
     #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log)
-    # [6] _get_user_with_role_or_404 after commit  → anonymized_user
+    # [5] _get_user_with_role_or_404 after commit  → anonymized_user
     fake_audit_chain = SimpleNamespace(current_hash="0" * 64)
-    fake_db = _QueuedSession(
-        admin, target_user, target_user, None, fake_audit_chain, anonymized_user
-    )
+    fake_db = _QueuedSession(admin, target_user, 0, fake_audit_chain, anonymized_user)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             f"/api/v1/users/{target_user.user_id}/anonymize",
@@ -610,7 +607,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
 
-    # Patch _get_user_with_role_or_404 to return the right user at each call.
+    # Patch _get_user_with_role_or_404 which is called ONLY at the end after commit.
     _get_user_call = [0]
 
     async def _fake_get_user(db, uid):
@@ -622,11 +619,17 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     # Patch log_audit_event so its internal selects don't consume the queue.
     fake_audit_log = AsyncMock()
 
-    # Use a minimal queue that covers get_current_user + FOR UPDATE + active_loans calls.
-    # First attempt: get_current_user, FOR UPDATE, active_loans(1)
-    # Second attempt: FOR UPDATE, active_loans(2)
-    # log_audit_event is patched so its internals don't pop.
-    # Queue slots: get_current_user, FOR UPDATE(1), active_loans(1), FOR UPDATE(2), active_loans(2)
+    # The retry loop re-executes from the FOR UPDATE select (line 371),
+    # NOT from the start of the function. The endpoint structure is:
+    #   1. get_current_admin → db.execute (queue[0] = admin)
+    #   2. FOR UPDATE select → db.execute (queue[1] = target_user)
+    #   3. active loans count → db.execute (queue[2] = 0)
+    #   4. Retry loop attempt 1: log_audit_event (patched) + commit → IntegrityError + rollback
+    #   5. Retry loop attempt 2: same mutations + log_audit_event (patched) + commit → success
+    #   6. _get_user_with_role_or_404 after commit → patched to return anon_user
+    #
+    # The retry loop only retries the mutation block (lines 413-443),
+    # it does NOT re-execute the FOR UPDATE or active_loans queries.
     class _RetryCommitSession(_QueuedSession):
         def __init__(self, *items):
             super().__init__(*items)
@@ -636,7 +639,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
             if self.commit_calls == 1:
                 raise IntegrityError("stmt", "params", Exception("orig"))
 
-    fake_db = _RetryCommitSession(admin, None, None, None, None)
+    fake_db = _RetryCommitSession(admin, target_user, 0)
 
     with patch("app.api.v1.endpoints.users._get_user_with_role_or_404", _fake_get_user):
         with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
@@ -650,7 +653,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     assert response.json()["status"] == UserStatus.ANONYMIZED
     # log_audit_event called in both loop iterations (inside try block, before commit)
     assert fake_audit_log.call_count == 2
-    # 2 commits: first fails (IntegrityError → rollback), second succeeds (user mutations + audit log atomically)
+    # 2 commits: first fails (IntegrityError → rollback), second succeeds
     assert fake_db.commit_calls == 2
 
 

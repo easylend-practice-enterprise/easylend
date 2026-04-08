@@ -16,15 +16,22 @@ from app.db.redis import redis_client
 logger = logging.getLogger(__name__)
 
 _IDEMPOTENCY_TTL_SECONDS = 86400  # 24 hours
+_MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 
 async def _guard_idempotency(idempotency_key: str) -> None:
     """
     Atomically claim an idempotency key in Redis.
 
+    Raises HTTPException 400 if the key exceeds the length limit.
     Raises HTTPException 409 if the key already exists (duplicate request).
     The key expires after _IDEMPOTENCY_TTL_SECONDS to prevent unbounded growth.
     """
+    if len(idempotency_key) > _MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Idempotency-Key must not exceed {_MAX_IDEMPOTENCY_KEY_LENGTH} characters.",
+        )
     redis_key = f"idempotency:{idempotency_key}"
     try:
         was_set = await redis_client.set(

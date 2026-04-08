@@ -235,6 +235,9 @@ class _QueuedSession:
     by each endpoint without caring about the query contents.
 
     Also tracks add() and commit() calls for assertion in tests.
+
+    Supports both dependency-injection (``yield fake_db``) and direct
+    context-manager usage (``async with AsyncSessionLocal() as db:``).
     """
 
     def __init__(self, *results):
@@ -242,6 +245,12 @@ class _QueuedSession:
         self.added: list = []
         self.commit_calls: int = 0
         self.rollback_calls: int = 0
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
 
     async def execute(self, _query):  # noqa: ARG002
         value = self._queue.pop(0) if self._queue else None

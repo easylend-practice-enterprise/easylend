@@ -400,3 +400,18 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 [12] Rate limiting (requires Redis: step 6) ✅ DONE
 [13] Hash-chaining audit logs (requires step 10a) ✅ DONE
 ```
+
+## Step 15: SRE & Zero-Trust Hardening (✅ Done)
+
+Architectural rules established during the final Zero-Trust security audit:
+
+1. **Connection Pool Integrity:** Slow external I/O (e.g. Vision AI HTTP calls with 30s timeouts) must NEVER hold a database session. The `POST /api/v1/vision/analyze` endpoint uses 3-phase session management:
+   - **Phase 1:** Short-lived session for pre-flight validation → connection returned to pool.
+   - **AI Call:** HTTP requests run with ZERO database connections held.
+   - **Phase 2:** Fresh session for row locks (`FOR UPDATE NOWAIT`) + mutations + `db.commit()`.
+
+2. **Redis DoS Protection:** Unbounded user inputs that become Redis keys (like `Idempotency-Key` headers) must be hard-capped at the application layer. The idempotency guard rejects keys exceeding 256 characters with `400 Bad Request`. Redis should also be configured with `maxmemory` + `maxmemory-policy volatile-ttl` at the infrastructure level.
+
+3. **Hardware Split-Brain Prevention:** Hardware commands (WSS `open_slot`, `set_led`) must ONLY fire AFTER `await db.commit()`. If the hardware command fails post-commit, the endpoint raises `503 Service Unavailable` — the database state is durable and the audit trail is intact. The system never rolls back committed state due to hardware failure.
+
+4. **WebSocket Zombie Protection:** PubSub subscriptions must be registered BEFORE `websocket.accept()`. The `ConnectionManager.connect()` enforces a global connection cap (100) and cleans up PubSub on connection failure to prevent file descriptor exhaustion.
