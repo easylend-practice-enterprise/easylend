@@ -440,31 +440,16 @@ async def analyze_image(
                         "error_summary": failure_error_summary,
                     },
                 )
-                await db.commit()
 
-                # Hardware command fires AFTER DB commit so that the forensic
-                # trail is durable before any side effects are triggered.
-                command_ok = await manager.send_command(
-                    str(locker.kiosk_id),
-                    {
-                        "action": "set_led",
-                        "locker_id": str(
-                            getattr(locker, "logical_number", locker.locker_id)
-                        ),
-                        "color": "orange",
-                    },
-                )
-                if not command_ok:
-                    logger.warning(
-                        "Failed to set LED color to orange for locker_id=%s",
-                        locker_id_for_eval,
-                    )
+                # COMMIT FIRST — forensic trail must be durable before side effects
+                await db.commit()
             except InvalidLoanTransitionError as exc:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=str(exc),
                 ) from exc
             except Exception as exc:
+                # DB is uncommitted; rollback is safe and the photo is still on disk.
                 try:
                     await db.rollback()
                 except Exception:
@@ -476,6 +461,25 @@ async def analyze_image(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to finalize vision evaluation.",
                 ) from exc
+
+            # Hardware command fires AFTER DB commit — outside the try block so
+            # RedisError or command_ok=False cannot mask the 500 from a failed commit.
+            # If this fails the DB is already safe; an SRE must investigate the LED.
+            command_ok = await manager.send_command(
+                str(locker.kiosk_id),
+                {
+                    "action": "set_led",
+                    "locker_id": str(
+                        getattr(locker, "logical_number", locker.locker_id)
+                    ),
+                    "color": "orange",
+                },
+            )
+            if not command_ok:
+                logger.warning(
+                    "Failed to set LED color to orange for locker_id=%s — DB committed but LED incorrect.",
+                    locker_id_for_eval,
+                )
 
             if mapped_failure_http_exception is None:
                 mapped_failure_http_exception = HTTPException(
@@ -577,24 +581,10 @@ async def analyze_image(
                 detail="Storage service is temporarily unavailable.",
             ) from exc
 
+        # Phase A: Database transaction — point of no return for the commit.
+        # If this succeeds, the DB is durable and the photo URL is valid.
+        # If this fails, rollback is safe and we may delete the photo.
         try:
-            command_ok = await manager.send_command(
-                str(locker.kiosk_id),
-                {
-                    "action": "set_led",
-                    "locker_id": str(
-                        getattr(locker, "logical_number", locker.locker_id)
-                    ),
-                    "color": led_color,
-                },
-            )
-            if not command_ok:
-                logger.error(
-                    "Failed to set LED color to %s for locker_id=%s — DB committed but LED incorrect.",
-                    led_color,
-                    locker_id_for_eval,
-                )
-
             await log_audit_event(
                 db,
                 action_type="VISION_EVALUATION_PROCESSED",
@@ -628,8 +618,11 @@ async def analyze_image(
                     },
                 )
             )
+
             await db.commit()
         except Exception as exc:
+            # DB is uncommitted; rollback is safe and the photo is still on disk.
+            # Delete the orphaned photo so it does not survive without a DB record.
             try:
                 await db.rollback()
             except Exception:
@@ -643,8 +636,17 @@ async def analyze_image(
                 detail="Failed to finalize vision evaluation.",
             ) from exc
 
-        # Check hardware sync after DB commit succeeds. Raising here is safe —
-        # the except block above did not catch HTTPException (it re-raises a 500).
+        # Phase B: Hardware command fires AFTER successful commit.
+        # This block is OUTSIDE the try above — a RedisError or command_ok=False
+        # must NOT rollback a committed DB or delete a committed photo.
+        command_ok = await manager.send_command(
+            str(locker.kiosk_id),
+            {
+                "action": "set_led",
+                "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+                "color": led_color,
+            },
+        )
         if not command_ok:
             logger.error(
                 "set_led failed for loan_id=%s, locker_id=%s — DB committed but LED incorrect.",
