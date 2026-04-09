@@ -193,3 +193,12 @@ async def stop_overdue_worker(
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def process_overdue() -> int:
+    """Run a single overdue-processing cycle."""
+    return await process_overdue_loans()
+
+
+if __name__ == "__main__":
+    asyncio.run(process_overdue())

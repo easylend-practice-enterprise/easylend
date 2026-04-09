@@ -331,6 +331,9 @@ async def judge_evaluation(
 
     if transition.loan_status == LoanStatus.COMPLETED:
         loan.returned_at = datetime.now(UTC)
+    elif transition.loan_status == LoanStatus.ACTIVE:
+        loan.borrowed_at = datetime.now(UTC)
+        asset.locker_id = None
 
     # Write admin judgment to audit chain before committing
     await audit_core.log_audit_event(

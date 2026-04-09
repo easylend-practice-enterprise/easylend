@@ -224,13 +224,13 @@ async def checkout(
     Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
     db_committed = False
-    await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Idempotency-Key header is required",
         )
 
+    await check_token_rate_limit(request, str(current_user.user_id))
     await _guard_idempotency(idempotency_key)
 
     try:
@@ -426,9 +426,9 @@ async def report_damage(
             detail="Idempotency-Key header is required",
         )
 
-    # Step 1 — idempotency guard must run before any mutation.
-    await _guard_idempotency(idempotency_key)
+    # Step 1 — rate limit before idempotency guard to avoid stale key locks.
     await check_token_rate_limit(request, str(current_user.user_id))
+    await _guard_idempotency(idempotency_key)
 
     try:
         # Step 2 — lock loan.
@@ -662,7 +662,7 @@ async def report_damage(
                 {
                     "action": "set_led",
                     "color": "orange",
-                    "locker_id": str(locker.locker_id),
+                    "locker_id": locker.logical_number,
                 },
             )
             if not command_ok:
@@ -720,13 +720,13 @@ async def return_initiate(
     Rate-limited: 60 req/min per authenticated user (Layer 3).
     """
     db_committed = False
-    await check_token_rate_limit(request, str(current_user.user_id))
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Idempotency-Key header is required",
         )
 
+    await check_token_rate_limit(request, str(current_user.user_id))
     await _guard_idempotency(idempotency_key)
 
     try:
