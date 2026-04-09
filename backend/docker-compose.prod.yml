@@ -1,5 +1,17 @@
 name: easylend-production
 
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  ENVIRONMENT: prod
+  VISION_SERVICE_URL: ${VISION_SERVICE_URL}
+  VISION_API_KEY: ${VISION_API_KEY}
+  VISION_BOX_API_KEY: ${VISION_BOX_API_KEY}
+  SIMULATION_API_KEY: ${SIMULATION_API_KEY}
+  DOCS_USERNAME: ${DOCS_USERNAME}
+  DOCS_PASSWORD: ${DOCS_PASSWORD}
+
 services:
   api:
     image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
@@ -15,17 +27,46 @@ services:
     volumes:
       - ./uploads:/app/uploads
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=prod
-      - VISION_SERVICE_URL=${VISION_SERVICE_URL}
-      - VISION_API_KEY=${VISION_API_KEY}
-      - VISION_BOX_API_KEY=${VISION_BOX_API_KEY}
-      - SIMULATION_API_KEY=${SIMULATION_API_KEY}
-      - DOCS_USERNAME=${DOCS_USERNAME}
-      - DOCS_PASSWORD=${DOCS_PASSWORD}
+      <<: *backend-env
     mem_limit: 4g
+    networks:
+      - backend-net
+    labels:
+      - "com.centurylinklabs.watchtower.scope=easylend"
+
+  timeout_worker:
+    image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
+    container_name: easylend_timeout_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *backend-env
+    command: >
+      sh -c "while true; do python -m app.workers.loan_timeout_worker; sleep 60; done"
+    mem_limit: 512m
+    networks:
+      - backend-net
+    labels:
+      - "com.centurylinklabs.watchtower.scope=easylend"
+
+  overdue_worker:
+    image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
+    container_name: easylend_overdue_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      <<: *backend-env
+    command: >
+      sh -c "while true; do python -m app.workers.overdue_worker; sleep 3600; done"
+    mem_limit: 512m
     networks:
       - backend-net
     labels:
@@ -78,10 +119,8 @@ services:
       - WATCHTOWER_SCOPE=easylend
       - TZ=Europe/Brussels
       - WATCHTOWER_NOTIFICATIONS_HOSTNAME=EasyLend-Proxmox
-      # Authentication (optional for public images, but is a good practice)
       - REPO_USER=${GHCR_USERNAME}
       - REPO_PASS=${GHCR_PAT}
-      # Notifications delivered securely via the .env file
       - WATCHTOWER_NOTIFICATIONS=shoutrrr
       - WATCHTOWER_NOTIFICATION_URL=${NTFY_WEBHOOK_URL}
 
