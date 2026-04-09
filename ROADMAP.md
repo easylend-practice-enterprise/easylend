@@ -1,5 +1,13 @@
 # EasyLend Roadmap
 
+## Phase 2: Event-Driven Hardware Integration
+
+Transition the MVP from HTTP-first orchestration toward a fully event-driven hardware control plane.
+
+- Implement bi-directional WebSocket communication with kiosk hardware.
+- Support solenoid push-to-open locker micro-switch event streams, including `door_forced_alert` and `door_left_open`.
+- Evolve transaction orchestration from HTTP-only triggers to event-driven state synchronization between backend and hardware.
+
 ## V2 Architecture
 
 ### Fleet-Shared Hardware Auth Boundary (Technical Debt)

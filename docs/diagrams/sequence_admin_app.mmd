@@ -2,6 +2,7 @@ sequenceDiagram
     actor Admin as Administrator
     participant App as Kiosk App (Virtual or Physical)
     participant API as FastAPI Backend
+    participant LoanStateMachine
     participant DB as PostgreSQL
     participant VB as Vision Box (Kiosk A)
 
@@ -35,7 +36,9 @@ sequenceDiagram
         opt Mark as Defective / Maintenance
             Admin->>App: Taps Locker 1 -> Mark MAINTENANCE
             App->>API: PATCH /api/v1/lockers/{locker_id}/status {locker_status: 'MAINTENANCE'} [JWT Admin]
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+            API->>LoanStateMachine: apply_locker_status(locker, MAINTENANCE)
+            LoanStateMachine-->>API: locker MAINTENANCE
+            API->>DB: COMMIT locker status update + audit log
             API-->>App: 200 OK (Locker marked)
         end
 
@@ -71,7 +74,8 @@ sequenceDiagram
                 API-->>App: 409 Conflict {"Cannot delete an asset that has active or reserved loans."}
             else No active loans
                 Note over API,DB: Locker returned to AVAILABLE if asset was assigned
-                API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = <asset.locker_id>
+                API->>LoanStateMachine: apply_locker_status(locker, AVAILABLE)
+                LoanStateMachine-->>API: locker AVAILABLE
                 API->>DB: UPDATE assets SET is_deleted = TRUE, locker_id = NULL WHERE asset_id = ?
                 API->>DB: INSERT INTO audit_logs {action_type: 'ASSET_SOFT_DELETED', payload: {asset_id, asset_name}}
                 API-->>App: 204 No Content

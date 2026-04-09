@@ -12,6 +12,7 @@ The seven core flows are:
 5. Catalog & Authorisation Flow (RBAC)
 6. Kiosk Boot & Admin Remote Control
 7. Admin Dashboard (Management)
+8. Grace Period Damage Report
 
 ---
 
@@ -72,3 +73,11 @@ When a Kiosk starts up, it fetches its own hardware status via an M2M token. An 
 Admin users manage assets, quarantine cases, and kiosk lockers via the Admin Dashboard.
 
 [View the sequence diagram: Admin App Flow](./diagrams/sequence_admin_app.mmd)
+
+---
+
+## 8. Grace Period Damage Report
+
+Immediately after checkout, a user can submit a grace-period damage report. The endpoint enforces idempotency, deterministic lock order, centralized state transitions to `DISPUTED`, conditional user suspension, audit logging, and post-commit hardware LED synchronization.
+
+[View the sequence diagram: Grace Period Damage Report](./diagrams/sequence_report_damage.mmd)

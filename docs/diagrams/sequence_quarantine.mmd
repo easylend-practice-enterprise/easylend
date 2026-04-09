@@ -1,6 +1,6 @@
 sequenceDiagram
     participant API as FastAPI Backend
-    participant FSM as LoanStateMachine
+    participant LoanStateMachine
     participant DB as PostgreSQL
     participant Admin as Administrator
 
@@ -22,13 +22,11 @@ sequenceDiagram
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: true, rejection_reason?}
         Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
         API->>DB: UPDATE ai_evaluations SET is_approved = true, rejection_reason = ? WHERE evaluation_id = ?
-        API->>FSM: transition(PENDING_INSPECTION -> DISPUTED)
+        API->>LoanStateMachine: apply_transition(loan, asset, locker, DISPUTED)
         alt Transition invalid
             API-->>Admin: 409 Conflict {"Illegal loan transition"}
         else Transition valid
-            API->>DB: UPDATE loans SET loan_status = 'DISPUTED' WHERE loan_id = ?
-            API->>DB: UPDATE assets SET asset_status = 'MAINTENANCE' WHERE asset_id = ?
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+            LoanStateMachine-->>API: loan DISPUTED, asset MAINTENANCE, locker MAINTENANCE
             API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_APPROVED', payload: {evaluation_id, loan_id, is_approved}}
             API->>DB: COMMIT
             API-->>Admin: 204 No Content
@@ -39,22 +37,19 @@ sequenceDiagram
         API->>DB: UPDATE ai_evaluations SET is_approved = false, rejection_reason = ? WHERE evaluation_id = ?
 
         alt Evaluation was CHECKOUT type
-            API->>FSM: transition(PENDING_INSPECTION -> ACTIVE)
+            API->>LoanStateMachine: apply_transition(loan, asset, locker, ACTIVE)
             alt Transition invalid
                 API-->>Admin: 409 Conflict {"Illegal loan transition"}
             else Transition valid
-                API->>DB: UPDATE loans SET loan_status = 'ACTIVE' WHERE loan_id = ?
-                API->>DB: UPDATE assets SET asset_status = 'BORROWED' WHERE asset_id = ?
-                API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+                LoanStateMachine-->>API: loan ACTIVE, asset BORROWED, locker AVAILABLE
             end
         else Evaluation was RETURN type
-            API->>FSM: transition(PENDING_INSPECTION -> COMPLETED)
+            API->>LoanStateMachine: apply_transition(loan, asset, locker, COMPLETED)
             alt Transition invalid
                 API-->>Admin: 409 Conflict {"Illegal loan transition"}
             else Transition valid
-                API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
-                API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
-                API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+                LoanStateMachine-->>API: loan COMPLETED, asset AVAILABLE, locker OCCUPIED
+                API->>DB: UPDATE loans SET returned_at = NOW() WHERE loan_id = ?
             end
         end
 

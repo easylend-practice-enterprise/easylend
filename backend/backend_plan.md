@@ -2,6 +2,12 @@
 
 > Order based on technical dependencies. Auth must be fully complete before CRUD, CRUD before business logic.
 
+## Current Sprint Completion
+
+- [x] ✅ MVP Backend Refactor
+- [x] ✅ Zero-Trust State Machine
+- [x] ✅ Grace Period Report Endpoint
+
 ## Step 1: Password Hashing (complete)
 
 **Ticket:** ELP-23 · **Status:** ✅ Done

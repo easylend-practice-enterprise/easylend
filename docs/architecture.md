@@ -117,10 +117,10 @@ flowchart TD
 
 * **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **rate-limited to 500 req/min per IP (Layer 2)**. `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`. The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
 * **Role Management:** Admins can enumerate available system roles via `GET /api/v1/roles` (Bearer JWT required).
-* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `USER_STATUS_CHANGED`, `USER_PIN_CHANGED`, `USER_NFC_ASSIGNED`, `USER_ANONYMIZED`, `KIOSK_STATUS_CHANGED`, `LOCKER_STATUS_CHANGED`, `ASSET_CREATED`, `ASSET_STATUS_CHANGED`, `ASSET_SOFT_DELETED`, `LOAN_CHECKOUT_INITIATED`, `LOAN_RETURN_INITIATED`, `LOAN_CHECKOUT_CONFIRMED`, `LOAN_CHECKOUT_FRAUD`, `LOAN_RETURN_CONFIRMED`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `ADMIN_FORCED_OPEN`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `LOAN_RESERVED_TIMEOUT`, `LOAN_OVERDUE`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
+* **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `USER_STATUS_CHANGED`, `USER_PIN_CHANGED`, `USER_NFC_ASSIGNED`, `USER_ANONYMIZED`, `KIOSK_STATUS_CHANGED`, `LOCKER_STATUS_CHANGED`, `ASSET_CREATED`, `ASSET_STATUS_CHANGED`, `ASSET_SOFT_DELETED`, `LOAN_CHECKOUT_INITIATED`, `LOAN_RETURN_INITIATED`, `LOAN_CHECKOUT_CONFIRMED`, `LOAN_CHECKOUT_FRAUD`, `LOAN_RETURN_CONFIRMED`, `GRACE_PERIOD_DAMAGE_REPORTED`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `ADMIN_FORCED_OPEN`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `LOAN_RESERVED_TIMEOUT`, `LOAN_OVERDUE`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
 * **Rate Limiting (Step 12):** Three-layer hybrid approach using Redis:
   * **Layer 2 – Public endpoints:** `POST /api/v1/auth/nfc` and `POST /api/v1/auth/pin` are rate-limited to **500 req/min per IP** to mitigate DDoS and horizontal brute-force while remaining tolerant of campus NAT.
-  * **Layer 3 – Authenticated endpoints:** `POST /api/v1/loans/checkout` and `POST /api/v1/loans/return/initiate` are rate-limited to **60 req/min per user/kiosk ID** to prevent a compromised account or glitchy app from overloading the server without penalising other users on the same network.
+    * **Layer 3 – Authenticated endpoints:** `POST /api/v1/loans/checkout`, `POST /api/v1/loans/return/initiate`, and `POST /api/v1/loans/{loan_id}/report-damage` are rate-limited to **60 req/min per user ID** to prevent a compromised account or glitchy app from overloading the server without penalising other users on the same network.
   * **Layer 1 (existing):** The database-level brute-force lockout (`failed_login_attempts >= 5`) continues to protect individual accounts independently.
   * Rate limiting is fail-open: if Redis is unavailable the request is allowed so that a Redis outage does not block the entire API.
 * **Centralized Transition Authority:** `LoanStateMachine` is the single source of truth for legal loan lifecycle transitions and coupled status outcomes on `LOANS`, `ASSETS`, and `LOCKERS`. Checkout/return vision callbacks, quarantine admin judgments, and background workers all resolve transitions through this shared domain module before mutating rows.
@@ -128,6 +128,36 @@ flowchart TD
 * **No Hardcoding:** Hardcoded IP addresses or secrets are prohibited. Everything is configured via a `.env` file, strictly validated by FastAPI `pydantic-settings`.
 * **Database Isolation:** The database is not exposed to the internet (`0.0.0.0` is prohibited) and is accessed by developers via an SSH Tunnel to `127.0.0.1`.
 * **PXE Live Boot Service:** This component is visible in the logical topology but falls **outside the scope of the current implementation (V1/MVP)**. PXE is planned for V2 (Post-MVP). References to `PXE_CHECK` audit actions and PXE-boot hardware tests are reserved for that release.
+
+### State Management
+
+EasyLend uses a Redux-style centralized transition model in `LoanStateMachine`.
+
+* Controllers are orchestration-only: they validate input, coordinate idempotency, acquire locks, call the state machine, write audits, commit, and then trigger side effects.
+* Controllers do not directly author business state transitions for `loan_status`, `asset_status`, or `locker_status` in loan lifecycle flows.
+* All legal transition outcomes are encoded in `LoanStateMachine._TRANSITIONS` and returned as `LoanTransitionOutcome`.
+* `LoanTransitionOutcome` carries the canonical state tuple plus `suspend_users`. When `suspend_users` is true (for damage dispute transitions), orchestration locks user rows and sets `User.locked_until`.
+* `LoanStateMachine.apply_transition(...)` is the canonical mutation entrypoint for synchronized `Loan`/`Asset`/`Locker` status updates.
+
+### Zero-Trust Concurrency & Locking
+
+The deterministic lock policy for damage/report and similar multi-entity flows is:
+
+* `Loan → Asset → Locker → Users`
+
+All row locks are non-blocking and fail-fast:
+
+* `SELECT ... FOR UPDATE NOWAIT`
+
+If any lock cannot be acquired, the endpoint returns a conflict response immediately. This avoids lock convoying and reduces deadlock risk in concurrent kiosk traffic.
+
+### Hardware Synchronization
+
+Hardware operations are post-transaction side effects.
+
+* Rule: hardware commands execute only after `await db.commit()`.
+* This prevents hardware/database split-brain where a locker is physically actuated while the database state remains uncommitted or rolled back.
+* On post-commit hardware failures, the database remains the source of truth; the system logs the failure and handles recovery operationally.
 
 ## 3. Database Architecture & Data Model (ERD)
 
@@ -141,7 +171,7 @@ The data model (PostgreSQL) is strictly normalised (3NF) and specifically design
    * `AI_EVALUATIONS.detected_objects` stores the raw bounding-box data.
    * `AUDIT_LOGS.payload` captures everything from hardware events to self-declarations (`{"has_damage": false}`). PXE-boot hardware tests (`{"ram_ok": true}`) are reserved for V2 (Post-MVP).
 
-4. **Soft Delete:** Assets are never physically deleted from the database. Setting `is_deleted = true` on an asset is gated by an active-loan guard: the operation returns `409 Conflict` if the asset has any `ACTIVE` or `RESERVED` loans. On successful soft-delete, `asset.locker_id` is set to `NULL` and the associated `Locker.locker_status` transitions to `AVAILABLE`. An `ASSET_SOFT_DELETED` audit event is written to the audit trail.
+4. **Soft Delete:** Assets are never physically deleted from the database. Setting `is_deleted = true` on an asset is gated by an active-loan guard: the operation returns `409 Conflict` if the asset has any `ACTIVE` or `RESERVED` loans. On successful soft-delete, `asset.locker_id` is set to `NULL` and the associated `Locker.locker_status` transitions to `AVAILABLE` through the centralized state-machine helper. An `ASSET_SOFT_DELETED` audit event is written to the audit trail.
 
 ### Entity Relationship Diagram
 
