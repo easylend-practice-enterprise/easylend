@@ -61,3 +61,17 @@ Phase 4: Decommission legacy
 
 - Remove fleet-shared `VISION_BOX_API_KEY` from runtime authentication.
 - Rotate and retire all old credentials and update operational runbooks.
+
+Phase 5: Least Used algorithm
+
+- Implement a least-used algorithm for locker assignment to optimize hardware utilization and reduce wear on specific lockers.
+
+### Future Phases
+
+- Advanced Event Processing and Analytics
+  - Implement real-time event processing pipelines for hardware telemetry.
+  - Develop dashboards and alerting for operational insights and anomaly detection.
+  - Integrate machine learning models for predictive maintenance and usage pattern analysis.
+  - Expand event schema to support richer context and metadata for hardware events.
+- Hardware Abstraction and Multi-Vendor Support
+  - Design a hardware abstraction layer to support multiple kiosk vendors and device types.
