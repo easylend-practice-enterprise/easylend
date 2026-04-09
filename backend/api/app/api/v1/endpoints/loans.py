@@ -359,7 +359,7 @@ async def checkout(
             kiosk_id_str,
             {
                 "action": "open_slot",
-                "locker_id": str(locker.logical_number),
+                "locker_id": locker.logical_number,
                 "loan_id": str(loan.loan_id),
                 "evaluation_type": "CHECKOUT",
             },
@@ -865,7 +865,7 @@ async def return_initiate(
             kiosk_id_str,
             {
                 "action": "open_slot",
-                "locker_id": str(locker.logical_number),
+                "locker_id": locker.logical_number,
                 "loan_id": str(loan.loan_id),
                 "evaluation_type": "RETURN",
             },
