@@ -49,9 +49,9 @@ sequenceDiagram
                         alt No available locker
                             API-->>App: 503 Service Unavailable {"No available lockers at this kiosk"}
                         else Locker found
-                            API->>FSM: transition(ACTIVE -> RETURNING)
-                            API->>DB: UPDATE loans SET return_locker_id = locker_id, loan_status = 'RETURNING' WHERE loan_id = ?
-                            API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+                            API->>FSM: apply_transition(loan, none, locker, RETURNING)
+                            FSM-->>API: loan_status='RETURNING', locker_status='OCCUPIED'
+                            API->>DB: UPDATE loans SET return_locker_id = locker_id WHERE loan_id = ?
                             API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_INITIATED', payload: {loan_id, asset_id, return_locker_id}}
 
                             %% Hardware command sent AFTER DB commit
@@ -95,28 +95,26 @@ sequenceDiagram
     Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
     alt Locker empty OR Damage detected
-        API->>FSM: transition(RETURNING -> PENDING_INSPECTION)
-        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <return_locker_id> WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+        API->>FSM: apply_transition(loan, asset, locker, PENDING_INSPECTION)
+        FSM-->>API: loan_status='PENDING_INSPECTION', asset_status='PENDING_INSPECTION', locker_status='MAINTENANCE'
+        API->>DB: UPDATE assets SET locker_id = <return_locker_id> WHERE asset_id = ?
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
     else AI service error / model crash
         Note over API,DB: Failure fallback transition is applied only after Loan/Asset/Locker locks are held
-        API->>FSM: transition(RETURNING -> PENDING_INSPECTION)
-        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <return_locker_id> WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+        API->>FSM: apply_transition(loan, asset, locker, PENDING_INSPECTION)
+        FSM-->>API: loan_status='PENDING_INSPECTION', asset_status='PENDING_INSPECTION', locker_status='MAINTENANCE'
+        API->>DB: UPDATE assets SET locker_id = <return_locker_id> WHERE asset_id = ?
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
         Note over API,VB: locker_id in WSS = logical number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
         Note over API,DB: Loan stays PENDING_INSPECTION until admin review and timeout worker monitors RESERVED loans separately
     else Item present AND No damage (success)
-        API->>FSM: transition(RETURNING -> COMPLETED)
-        API->>DB: UPDATE loans SET loan_status = 'COMPLETED', returned_at = NOW() WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = <return_locker_id> WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+        API->>FSM: apply_transition(loan, asset, locker, COMPLETED)
+        FSM-->>API: loan_status='COMPLETED', asset_status='AVAILABLE', locker_status='OCCUPIED'
+        API->>DB: UPDATE loans SET returned_at = NOW() WHERE loan_id = ?
+        API->>DB: UPDATE assets SET locker_id = <return_locker_id> WHERE asset_id = ?
         API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_CONFIRMED', payload: {loan_id, asset_id, locker_id}}
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
