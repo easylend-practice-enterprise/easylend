@@ -16,6 +16,7 @@ slot from the queue in FIFO order. Each test documents the exact slots used.
 
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -337,6 +338,27 @@ def test_update_kiosk_status_returns_200_and_mutates_status(
     assert fake_db.commit_calls == 1
 
 
+def test_update_kiosk_status_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    kiosk = _make_kiosk(kiosk_status="ONLINE")
+
+    fake_db = _QueuedSession(admin, kiosk)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/kiosks/{kiosk.kiosk_id}/status",
+            json={"kiosk_status": "ONLINE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Lockers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -629,6 +651,27 @@ def test_update_asset_returns_200_and_mutates_status(
     assert fake_db.commit_calls == 1
 
 
+def test_update_asset_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    asset = _make_asset(asset_status="AVAILABLE")
+
+    fake_db = _QueuedSession(admin, asset)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/assets/{asset.asset_id}",
+            json={"asset_status": "AVAILABLE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
+
+
 def test_soft_delete_asset_returns_204_for_admin(client_with_overrides):
     """DELETE /assets/{id} (admin) soft-deletes the asset and returns 204 No Content.
 
@@ -735,6 +778,31 @@ def test_update_locker_status_returns_200_and_mutates(
         )
     assert response.status_code == 200
     assert response.json()["locker_status"] == "MAINTENANCE"
+
+
+def test_update_locker_status_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    locker = SimpleNamespace(
+        locker_id=uuid.uuid4(),
+        kiosk_id=uuid.uuid4(),
+        logical_number=1,
+        locker_status="AVAILABLE",
+    )
+    fake_db = _QueuedSession(admin, locker)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/lockers/{locker.locker_id}/status",
+            json={"locker_status": "AVAILABLE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
 
 
 def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):

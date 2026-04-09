@@ -243,3 +243,12 @@ async def stop_reserved_loan_timeout_worker(
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def process_timeouts() -> int:
+    """Run a single timeout-processing cycle."""
+    return await process_reserved_loan_timeouts()
+
+
+if __name__ == "__main__":
+    asyncio.run(process_timeouts())

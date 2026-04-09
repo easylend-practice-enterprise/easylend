@@ -18,9 +18,11 @@ slot from the queue in FIFO order. Each test documents the exact slots used.
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 
 import app.api.v1.endpoints.loans as loans_endpoints
@@ -972,6 +974,15 @@ def test_report_damage_returns_200_and_suspends_current_and_previous_users(
     assert current_user_row.locked_until is not None
     assert previous_user_row.locked_until is not None
     assert fake_db.commit_calls == 1
+    send_command_mock = cast(AsyncMock, manager.send_command)
+    send_command_mock.assert_awaited_once()
+    assert send_command_mock.await_args is not None
+    sent_kiosk_id, sent_payload = send_command_mock.await_args.args
+    assert sent_kiosk_id == str(locker.kiosk_id)
+    assert sent_payload["action"] == "set_led"
+    assert sent_payload["color"] == "orange"
+    assert sent_payload["locker_id"] == locker.logical_number
+    assert isinstance(sent_payload["locker_id"], int)
 
 
 def test_report_damage_returns_400_when_grace_period_expired(client_with_overrides):
@@ -1055,3 +1066,63 @@ def test_report_damage_returns_200_when_hardware_sync_fails(
     assert response.status_code == 200
     assert response.json()["loan_status"] == "DISPUTED"
     assert fake_db.commit_calls == 1
+
+
+def test_report_damage_rate_limit_before_idempotency_does_not_lock_key(
+    monkeypatch,
+    client_with_overrides,
+):
+    student = _make_student()
+
+    monkeypatch.setattr(
+        loans_endpoints,
+        "check_token_rate_limit",
+        AsyncMock(
+            side_effect=HTTPException(status_code=429, detail="Too many requests")
+        ),
+    )
+
+    with client_with_overrides(_QueuedSession(student)) as client:
+        first = client.post(
+            f"/api/v1/loans/{uuid.uuid4()}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-rate-limit"),
+        )
+
+    assert first.status_code == 429
+
+    monkeypatch.setattr(
+        loans_endpoints,
+        "check_token_rate_limit",
+        AsyncMock(return_value=None),
+    )
+
+    locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    loan = _make_loan(
+        user_id=student.user_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="ACTIVE",
+        borrowed_at=datetime.now(UTC) - timedelta(minutes=2),
+    )
+    asset = _make_asset(asset_id=asset_id, locker_id=locker_id, asset_status="BORROWED")
+    locker = _make_locker(locker_id=locker_id, locker_status="AVAILABLE")
+    current_user_row = _make_student(user_id=student.user_id)
+
+    fake_db = _QueuedSession(
+        student,
+        loan,
+        asset,
+        locker,
+        current_user_row,
+        None,
+    )
+
+    with client_with_overrides(fake_db) as client:
+        second = client.post(
+            f"/api/v1/loans/{loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-rate-limit"),
+        )
+
+    assert second.status_code == 200
+    assert second.json()["loan_status"] == "DISPUTED"

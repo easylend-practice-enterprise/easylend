@@ -17,6 +17,7 @@ Auth rules:
 """
 
 import logging
+from enum import Enum
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -354,18 +355,27 @@ async def update_kiosk_status(
         setattr(kiosk, field, value)
 
     new_kiosk_status = update_data.get("kiosk_status")
-    if new_kiosk_status is not None and new_kiosk_status != getattr(
-        old_kiosk_status, "value", old_kiosk_status
+    old_kiosk_status_value = (
+        old_kiosk_status.value
+        if isinstance(old_kiosk_status, Enum)
+        else old_kiosk_status
+    )
+    new_kiosk_status_value = (
+        new_kiosk_status.value
+        if isinstance(new_kiosk_status, Enum)
+        else new_kiosk_status
+    )
+    if (
+        new_kiosk_status_value is not None
+        and new_kiosk_status_value != old_kiosk_status_value
     ):
         await log_audit_event(
             db,
             action_type="KIOSK_STATUS_CHANGED",
             payload={
                 "kiosk_id": str(kiosk_id),
-                "old_kiosk_status": getattr(
-                    old_kiosk_status, "value", old_kiosk_status
-                ),
-                "new_kiosk_status": new_kiosk_status,
+                "old_kiosk_status": old_kiosk_status_value,
+                "new_kiosk_status": new_kiosk_status_value,
             },
             user_id=current_admin.user_id,
         )
@@ -624,18 +634,27 @@ async def update_locker_status(
         )
         LoanStateMachine.apply_locker_status(locker, target_locker_status)
 
-    if new_locker_status is not None and new_locker_status != getattr(
-        old_locker_status, "value", old_locker_status
+    old_locker_status_value = (
+        old_locker_status.value
+        if isinstance(old_locker_status, Enum)
+        else old_locker_status
+    )
+    new_locker_status_value = (
+        new_locker_status.value
+        if isinstance(new_locker_status, Enum)
+        else new_locker_status
+    )
+    if (
+        new_locker_status_value is not None
+        and new_locker_status_value != old_locker_status_value
     ):
         await log_audit_event(
             db,
             action_type="LOCKER_STATUS_CHANGED",
             payload={
                 "locker_id": str(locker_id),
-                "old_locker_status": getattr(
-                    old_locker_status, "value", old_locker_status
-                ),
-                "new_locker_status": new_locker_status,
+                "old_locker_status": old_locker_status_value,
+                "new_locker_status": new_locker_status_value,
             },
             user_id=current_admin.user_id,
         )
@@ -932,18 +951,27 @@ async def update_asset(
         )
         LoanStateMachine.apply_asset_status(asset, target_asset_status)
 
-    if new_asset_status is not None and new_asset_status != getattr(
-        old_asset_status, "value", old_asset_status
+    old_asset_status_value = (
+        old_asset_status.value
+        if isinstance(old_asset_status, Enum)
+        else old_asset_status
+    )
+    new_asset_status_value = (
+        new_asset_status.value
+        if isinstance(new_asset_status, Enum)
+        else new_asset_status
+    )
+    if (
+        new_asset_status_value is not None
+        and new_asset_status_value != old_asset_status_value
     ):
         await log_audit_event(
             db,
             action_type="ASSET_STATUS_CHANGED",
             payload={
                 "asset_id": str(asset_id),
-                "old_asset_status": getattr(
-                    old_asset_status, "value", old_asset_status
-                ),
-                "new_asset_status": new_asset_status,
+                "old_asset_status": old_asset_status_value,
+                "new_asset_status": new_asset_status_value,
             },
             user_id=current_admin.user_id,
         )
