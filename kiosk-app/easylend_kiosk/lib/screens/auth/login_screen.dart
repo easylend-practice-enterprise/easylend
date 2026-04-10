@@ -1,10 +1,7 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../providers/providers.dart';
 import '../../theme.dart';
 import '../../config/debug_credentials.dart';
 
@@ -21,7 +18,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   late Animation<double> _pulseAnimation;
   bool _isNfcScanning = false;
   String? _error;
-  Timer? _nfcDetectionTimer;
 
   @override
   void initState() {
@@ -41,7 +37,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   void dispose() {
-    _nfcDetectionTimer?.cancel();
     _pulseController.dispose();
     _isNfcScanning = false;
     super.dispose();
@@ -56,41 +51,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       _isNfcScanning = true;
       _error = null;
     });
-
-    _nfcDetectionTimer?.cancel();
-
-    // NFC integration pending - using simulated detection for now
-    // Only run in debug mode; release builds and widget tests require real NFC hardware
-    if (kDebugMode && !const bool.fromEnvironment('FLUTTER_TEST', defaultValue: false)) {
-      _nfcDetectionTimer = Timer(const Duration(seconds: 2), () {
-        if (!mounted || !_isNfcScanning) {
-          return;
-        }
-
-        // Simulate detecting an NFC tag
-        _onNfcDetected('NFC-TAG-12345');
-      });
-    }
-  }
-
-  void _stopNfcListening() {
-    _nfcDetectionTimer?.cancel();
-
-    if (!mounted) {
-      _isNfcScanning = false;
-      return;
-    }
-
-    setState(() => _isNfcScanning = false);
-    // NFC cleanup handled by framework when widget unmounts
   }
 
   void _onNfcDetected(String nfcTagId) {
     if (!mounted) {
       return;
     }
-
-    _nfcDetectionTimer?.cancel();
 
     setState(() {
       _isNfcScanning = false;
@@ -101,115 +67,135 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
 
     // Navigate to PIN entry screen
-    context.go('/pin/$nfcTagId');
+    context.go('/pin/${Uri.encodeComponent(nfcTagId)}');
+  }
+
+  void _submitManualNfcTag() {
+    _showDebugLoginDialog();
+  }
+
+  Future<void> _navigateToPinSafely(String rawTag) async {
+    final tag = rawTag.trim();
+    if (tag.isEmpty || !mounted) {
+      return;
+    }
+
+    try {
+      setState(() {
+        _error = null;
+        _isNfcScanning = false;
+      });
+      context.go('/pin/${Uri.encodeComponent(tag)}');
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = 'Unable to continue to PIN. Please try again.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Navigation failed. Please retry debug login.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showDebugLoginDialog() async {
+    if (!mounted) {
+      return;
+    }
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    String enteredTag = '';
+
+    try {
+      final tag = await showDialog<String>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Row(
+            children: [
+              Icon(Icons.bug_report, color: Colors.orange[700]),
+              const SizedBox(width: 8),
+              const Text('Debug Login'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter an NFC tag to test backend PIN login.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Enter NFC Tag ID',
+                  border: OutlineInputBorder(),
+                ),
+                textInputAction: TextInputAction.done,
+                onChanged: (value) {
+                  enteredTag = value;
+                },
+                onSubmitted: (value) {
+                  final submittedTag = value.trim();
+                  if (submittedTag.isEmpty) {
+                    return;
+                  }
+                  if (navigator.canPop()) {
+                    navigator.pop(submittedTag);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (navigator.canPop()) {
+                  navigator.pop();
+                }
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final submittedTag = enteredTag.trim();
+                if (submittedTag.isEmpty) {
+                  return;
+                }
+                if (navigator.canPop()) {
+                  navigator.pop(submittedTag);
+                }
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      );
+
+      if (tag == null || tag.trim().isEmpty) {
+        return;
+      }
+
+      await _navigateToPinSafely(tag);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = 'Debug login failed. Please try again.';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debug login encountered an error.')),
+      );
+    }
   }
 
   void _onManualLogin() {
-    // For demo/testing: manually enter NFC tag
-    _showManualNfcDialog();
-  }
-
-  void _showDebugLoginDialog() {
-    final usernameController = TextEditingController();
-    final passwordController = TextEditingController();
-    // Capture the parent's context before showing dialog
-    final parentRouter = GoRouter.of(context);
-    final parentNavigator = Navigator.of(context);
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Row(
-          children: [
-            Icon(Icons.bug_report, color: Colors.orange[700]),
-            const SizedBox(width: 8),
-            const Text('Debug Login'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: usernameController,
-              decoration: const InputDecoration(
-                hintText: 'Username',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                hintText: 'Password',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.orange.withAlpha(25),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.orange.withAlpha(76)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.warning, color: Colors.orange, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Debug mode only - credentials logged for testing',
-                      style: TextStyle(color: Colors.orange, fontSize: 11),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final username = usernameController.text;
-              final password = passwordController.text;
-
-              if (DebugConfig.isValidCredentials(username, password)) {
-                parentNavigator.pop();
-                final success = await ref
-                    .read(authProvider.notifier)
-                    .debugLogin(username, password);
-
-                if (!mounted) {
-                  return;
-                }
-
-                if (success) {
-                  parentRouter.go('/catalog');
-                }
-              } else {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('Invalid credentials'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-            child: const Text('Login'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showManualNfcDialog() {
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -230,16 +216,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
           ElevatedButton(
             onPressed: () {
-              if (controller.text.isNotEmpty) {
-                Navigator.pop(context);
-                _onNfcDetected(controller.text);
+              final tag = controller.text.trim();
+              if (tag.isEmpty) {
+                return;
               }
+              Navigator.pop(context);
+              _onNfcDetected(tag);
             },
             child: const Text('Submit'),
           ),
         ],
       ),
-    );
+    ).then((_) => controller.dispose());
   }
 
   @override
@@ -247,59 +235,78 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
+        top: false,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            const SizedBox(height: 24),
-            const Center(
-              child: Text(
-                'Asset Manager',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+            // Title at top
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 32.0),
+                child: const Text(
+                  'Asset Manager',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            Expanded(
-              child: Center(
+            // Logo badge
+            Center(
+              child: AnimatedBuilder(
+                animation: _pulseAnimation,
+                builder: (context, child) {
+                  final glowOpacity = _isNfcScanning
+                      ? (38 * _pulseAnimation.value).toInt()
+                      : 0;
+                  final glowBlur = _isNfcScanning
+                      ? 40 * _pulseAnimation.value
+                      : 0.0;
+                  final glowSpread = _isNfcScanning
+                      ? 10 * _pulseAnimation.value
+                      : 0.0;
+
+                  return Container(
+                    width: 240,
+                    height: 240,
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.cyan.withAlpha(glowOpacity),
+                          blurRadius: glowBlur,
+                          spreadRadius: glowSpread,
+                        ),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.contactless,
+                        size: 120,
+                        color: Colors.cyan,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Prompt and cancel button below logo
+            Align(
+              alignment: const Alignment(0, 0.4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    AnimatedBuilder(
-                      animation: _pulseAnimation,
-                      builder: (context, child) {
-                        return Container(
-                          width: 240,
-                          height: 240,
-                          decoration: BoxDecoration(
-                            color: AppColors.background,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.cyan.withAlpha(
-                                  (38 * _pulseAnimation.value).toInt(),
-                                ),
-                                blurRadius: 40 * _pulseAnimation.value,
-                                spreadRadius: 10 * _pulseAnimation.value,
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.contactless,
-                              size: 120,
-                              color: Colors.cyan,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 24),
                     Text(
                       _isNfcScanning
                           ? 'Waiting for Badge...'
-                          : 'Scan your Badge',
+                          : 'Badge Scanning Paused',
+                      textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -307,25 +314,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                      child: Text(
-                        _isNfcScanning
-                            ? 'Hold your NFC badge near the back of your device.'
-                            : 'Tap NFC badge or use credentials below.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
+                    Text(
+                      DebugConfig.isActive
+                          ? 'Hold your NFC badge near the back of your device.'
+                          : _isNfcScanning
+                          ? 'Hold your NFC badge near the back of your device.'
+                          : 'Tap NFC badge to continue.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.grey),
                     ),
-                    if (_isNfcScanning) ...[
-                      const SizedBox(height: 16),
-                      const CircularProgressIndicator(color: Colors.cyan),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: _stopNfcListening,
-                        child: const Text('Cancel'),
-                      ),
-                    ],
                     if (_error != null) ...[
                       const SizedBox(height: 16),
                       Text(
@@ -338,23 +335,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextButton(
-                onPressed: DebugConfig.isActive
-                    ? _showDebugLoginDialog
-                    : _onManualLogin,
-                style: TextButton.styleFrom(
-                  backgroundColor: DebugConfig.isActive
-                      ? Colors.orange
-                      : Colors.white,
-                  foregroundColor: Colors.black,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                child: Text(
-                  DebugConfig.isActive
-                      ? 'Debug Login'
-                      : 'Login with Credentials',
+            // Login button at bottom
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextButton(
+                  onPressed: DebugConfig.isActive
+                      ? _submitManualNfcTag
+                      : _onManualLogin,
+                  style: TextButton.styleFrom(
+                    backgroundColor: DebugConfig.isActive
+                        ? Colors.orange
+                        : Colors.white,
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  child: Text(
+                    DebugConfig.isActive
+                        ? 'Debug Login'
+                        : 'Login with Credentials',
+                  ),
                 ),
               ),
             ),
