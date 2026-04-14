@@ -534,7 +534,6 @@ async def force_open_locker(
     Returns 503 if the Vision Box for the associated kiosk is offline.
     Idempotency: requires Idempotency-Key header. Duplicate keys return 409.
     """
-    db_committed = False
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -555,7 +554,6 @@ async def force_open_locker(
             payload={"locker_id": str(locker_id)},
         )
         await db.commit()
-        db_committed = True
 
         kiosk_id_str = str(locker.kiosk_id)
         command_ok = await manager.send_command(
@@ -577,8 +575,7 @@ async def force_open_locker(
 
         return {"detail": "Locker opened successfully."}
     except HTTPException:
-        if not db_committed:
-            await release_idempotency_key(idempotency_key)
+        await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:

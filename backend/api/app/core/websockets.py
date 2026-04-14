@@ -275,6 +275,21 @@ class ConnectionManager:
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
         channel = self._command_channel(kiosk_id)
 
+        websocket = self.active_connections.get(kiosk_id)
+        if websocket:
+            try:
+                await asyncio.wait_for(
+                    websocket.send_json(command),
+                    timeout=COMMAND_SEND_TIMEOUT_SECONDS,
+                )
+                return True
+            except Exception:
+                logger.debug(
+                    "Local websocket send failed; falling back to Redis for kiosk_id=%s",
+                    kiosk_id,
+                    exc_info=True,
+                )
+
         try:
             payload = json.dumps(command, separators=(",", ":"), default=str)
         except (TypeError, ValueError):

@@ -636,7 +636,7 @@ async def analyze_image(
             str(locker.kiosk_id),
             {
                 "action": "set_led",
-                "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+                "locker_id": getattr(locker, "logical_number", locker.locker_id),
                 "color": led_color,
             },
         )

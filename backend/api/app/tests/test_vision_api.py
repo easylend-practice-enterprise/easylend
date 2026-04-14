@@ -345,7 +345,7 @@ def test_checkout_success_branch_sets_active_and_green_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "7", "color": "green"},
+        {"action": "set_led", "locker_id": 7, "color": "green"},
     )
     # There are now two audit calls: LOAN_CHECKOUT_CONFIRMED + VISION_EVALUATION_PROCESSED.
     audit_mock.assert_awaited()
@@ -490,7 +490,7 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "8", "color": "red"},
+        {"action": "set_led", "locker_id": 8, "color": "red"},
     )
     # There are now two audit calls: LOAN_CHECKOUT_FRAUD + VISION_EVALUATION_PROCESSED.
     audit_mock.assert_awaited()
@@ -563,7 +563,7 @@ def test_return_success_branch_sets_completed_and_green_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "9", "color": "green"},
+        {"action": "set_led", "locker_id": 9, "color": "green"},
     )
     # There are now two audit calls: LOAN_RETURN_CONFIRMED + VISION_EVALUATION_PROCESSED.
     audit_mock.assert_awaited()
@@ -635,7 +635,7 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "10", "color": "orange"},
+        {"action": "set_led", "locker_id": 10, "color": "orange"},
     )
     audit_mock.assert_awaited_once()
     audit_call = audit_mock.await_args
