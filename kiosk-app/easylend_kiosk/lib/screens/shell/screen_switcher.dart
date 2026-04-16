@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../config/debug_credentials.dart';
 import '../scan_aztec_screen.dart';
 import '../modals/inactivity_modal.dart';
 
@@ -86,7 +86,7 @@ class _ScreenSwitcherState extends ConsumerState<ScreenSwitcher> {
                   side: const BorderSide(color: Colors.orange),
                 ),
               ),
-              if (!DebugConfig.isActive) ...[
+              if (!kDebugMode) ...[
                 const SizedBox(height: 8),
                 Text(
                   'Debug mode is disabled. Set DebugConfig.debugEnabled = true to activate.',

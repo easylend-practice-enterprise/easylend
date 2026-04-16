@@ -2,31 +2,31 @@
 
 ## Current Implementation State
 
-**Last Updated:** 2026-04-02
+**Last Updated:** 2026-04-10
 
 ### What's Built
 
 | Item | Status | Notes |
 | :--- | :--- | :--- |
 | Project structure | ✅ Done | Basic Flutter project with screens/, providers/, models/, services/, utils/, widgets/ directories |
-| pubspec.yaml | ✅ Done | camera, google_mlkit_barcode_scanning, cupertino_icons |
+| pubspec.yaml | ✅ Done | Includes dio/retrofit/riverpod/go_router/flutter_secure_storage/camera/mlkit/uuid/kiosk_mode |
 | theme.dart | ✅ Done | AppColors, AppTheme with dark mode |
-| main.dart | ✅ Done | Debug/Prod split using kDebugMode |
+| main.dart | ✅ Done | App entrypoint with ProviderScope + App() |
 | ScreenSwitcher | ✅ Done | Debug navigation tool for testing screens |
-| LoginScreen | ✅ Partial | UI only - NFC animation, no NFC/API integration |
-| AssetCatalogScreen | ✅ Partial | Mock data display, no API integration |
+| LoginScreen | ✅ Partial | UI only - NFC animation/manual debug input; no real NFC hardware integration |
+| AssetCatalogScreen | ✅ Partial | UI and local state wiring; backend/API contract validation still pending |
 | ScanAztecScreen | ✅ Done | Working camera + ML Kit Aztec scanning |
-| ReturnStatusScreen | ✅ Partial | UI only, hardcoded 65% progress |
-| LendingCompleteScreen | ✅ Partial | UI only, no API integration |
-| InactivityModal | ✅ Partial | UI only, no countdown logic |
+| ReturnStatusScreen | ✅ Partial | UI with polling structure; backend-dependent behavior still pending validation |
+| LendingCompleteScreen | ✅ Partial | Implemented screen + live countdown timer; business integration still partial |
+| InactivityModal | ✅ Done | Includes live countdown timer and stay/logout actions |
 | app.dart | ✅ Done | Root app widget implemented and wired into the application flow |
 | app_router.dart | ✅ Done | Router configuration added for the current screen/navigation flow |
-| All providers | ✅ Done | Core providers implemented, including api_provider, auth_provider, and asset_provider |
-| All models | ✅ Done | Core models added, including user, auth_response, asset, asset_status, api_response, and error_response |
-| All services | ✅ Done | Service layer implemented, including api_service, websocket_service, and auth_service |
+| All providers | ✅ Partial | Runtime providers are centralized in providers/providers.dart; legacy provider stub files remain empty |
+| All models | ✅ Partial | Model scaffolding is present; several legacy placeholder model files remain empty |
+| All services | ✅ Partial | Service scaffolding is present; websocket/auth_service placeholder files remain empty |
 | secure_storage | ✅ Done | Secure storage helper added for persisted sensitive/local session data |
-| All utils/constants | ✅ Partial | Utility/constants layer added; review remaining coverage for colors, strings, dimensions, extensions, and helpers |
-| All widgets | ✅ Partial | Shared widgets added, including primary_button, secondary_button, asset_card, countdown_timer, and nfc_scan_animation |
+| All utils/constants | ✅ Partial | Legacy utils/constants placeholder files remain empty and are not currently the active source of truth |
+| All widgets | ✅ Partial | Several reusable widget placeholder files remain empty; screens currently use inline/local UI components |
 
 ---
 
@@ -60,13 +60,13 @@ High-Level Goals:
 
 - [x] Initialize project with flavors (dev/prod)
 - [x] Install `camera` and `google_mlkit_barcode_scanning` ✅ **Done**
-- [ ] Install `dio`, `retrofit`, `flutter_riverpod`
-- [ ] Install `nfc_manager` and `flutter_secure_storage`
-- [ ] Add `go_router` for navigation
+- [x] Install `dio`, `retrofit`, `flutter_riverpod` ✅ **Done**
+- [ ] Install `nfc_manager` and `flutter_secure_storage` (`flutter_secure_storage` done, `nfc_manager` still pending)
+- [x] Add `go_router` for navigation ✅ **Done**
 
 ### ELP-37: Kiosk mode implementation
 
-- [ ] Implement `startLockTask()` and hide system UI to prevent users from exiting the app.
+- [x] Implement lock task allowlisting and kiosk activation wrapper ✅ **Done (current approach)**
 
 ### ELP-47: Auth & retry via interceptor
 
@@ -89,10 +89,10 @@ High-Level Goals:
 
 ### ELP-40: Login screen & Admin 2FA
 
-- [x] Login screen UI with NFC badge animation ✅ **Done (UI only)**
-- [ ] Standard user: NFC badge + 4-digit PIN (API integration)
+- [x] Login screen UI with NFC badge animation ✅ **Done**
+  - [ ] Standard user: NFC badge + 6-digit PIN (API integration)
 - [ ] Admin entry: Dedicated Admin NFC badge (unique UID) plus Admin PIN
-- [ ] PIN entry screen (PIN_ENTRY not yet implemented)
+- [x] PIN entry screen ✅ **Done (UI implemented)**
 - [ ] Audit logging: Every successful Admin login must trigger a log entry
 - [ ] Inactivity: A 60-second timer triggers `POST /api/v1/auth/logout` and clears sensitive data from memory
 
@@ -131,7 +131,7 @@ High-Level Goals:
 ### ELP-45 & ELP-46: Aztec integration
 
 - [x] Aztec scanning with `camera` + `google_mlkit_barcode_scanning` ✅ **Done (ML Kit integration working)**
-- [ ] On successful scan, call `POST /api/v1/loans/return/initiate`
+- [ ] On successful scan, call `POST /api/v1/loans/return/initiate` (current scan flow calls checkout)
 
 ---
 
@@ -142,15 +142,15 @@ High-Level Goals:
 ### ELP-43: UX (dialogs and errors)
 
 - [ ] Create dialogs for "Locker Jammed," "Item Not Found," and "Unauthorized Return."
-- [ ] Inactivity timeout modal with live countdown (currently static UI)
+- [x] Inactivity timeout modal with live countdown ✅ **Done**
 
 ### ELP-44: UI polish
 
 - [ ] Add animations, theming, and accessibility checks
 - [ ] Ensure clear success/error states and concise copy
-- [ ] Implement countdown timer logic in InactivityModal
-- [ ] Implement countdown timer in LendingCompleteScreen
-- [ ] All widget buttons and cards need implementation (currently empty files)
+- [x] Implement countdown timer logic in InactivityModal ✅ **Done**
+- [x] Implement countdown timer in LendingCompleteScreen ✅ **Done**
+- [ ] Fill remaining reusable widget placeholder files (several still empty)
 
 ---
 
@@ -178,95 +178,25 @@ High-Level Goals:
 
 ## Files Overview
 
-```txt
-lib/
-├── main.dart                     ✅ Debug/prod entry split
-├── theme.dart                    ✅ AppColors + AppTheme
-├── app.dart                      ❌ Empty - needs app configuration
-├── app_router.dart               ❌ Empty - needs go_router setup
-├── screens/
-│   ├── auth/
-│   │   ├── login_screen.dart     ✅ Partial - UI only
-│   │   └── pin_entry_screen.dart ❌ Empty
-│   ├── dashboard/
-│   │   ├── dashboard_screen.dart  ❌ Empty
-│   │   ├── asset_catalog_screen.dart ✅ Partial - mock data
-│   │   └── return_status_screen.dart ✅ Partial - hardcoded UI
-│   ├── scan_aztec_screen.dart    ✅ Done - working camera + ML Kit
-│   ├── lending_complete_screen.dart ✅ Partial - UI only
-│   ├── shell/
-│   │   └── screen_switcher.dart  ✅ Done - debug navigation
-│   └── modals/
-│       ├── inactivity_modal.dart          ✅ Partial - UI only
-│       ├── inactivity_timeout_modal.dart   ❌ Empty
-│       └── return_status_modal.dart        ❌ Empty
-├── providers/
-│   ├── api_provider.dart   ❌ Empty
-│   ├── auth_provider.dart ❌ Empty
-│   └── asset_provider.dart ❌ Empty
-├── models/
-│   ├── auth/
-│   │   ├── user.dart          ❌ Empty
-│   │   └── auth_response.dart ❌ Empty
-│   ├── assets/
-│   │   ├── asset.dart         ❌ Empty
-│   │   └── asset_status.dart  ❌ Empty
-│   └── api/
-│       ├── api_response.dart  ❌ Empty
-│       └── error_response.dart ❌ Empty
-├── services/
-│   ├── api/
-│   │   ├── api_service.dart        ❌ Empty
-│   │   └── websocket_service.dart ❌ Empty
-│   ├── auth/
-│   │   └── auth_service.dart      ❌ Empty
-│   └── local/
-│       └── secure_storage.dart    ❌ Empty
-├── utils/
-│   ├── constants/
-│   │   ├── colors.dart         ❌ Empty
-│   │   ├── strings.dart        ❌ Empty
-│   │   └── dimensions.dart     ❌ Empty
-│   ├── extensions/
-│   │   └── context_extensions.dart ❌ Empty
-│   └── helpers/
-│       ├── validation_helper.dart ❌ Empty
-│       └── date_helper.dart      ❌ Empty
-└── widgets/
-    ├── buttons/
-    │   ├── primary_button.dart   ❌ Empty
-    │   └── secondary_button.dart ❌ Empty
-    ├── cards/
-    │   └── asset_card.dart      ❌ Empty
-    └── shared/
-        ├── countdown_timer.dart      ❌ Empty
-        └── nfc_scan_animation.dart   ❌ Empty
-```
+Current snapshot highlights:
+
+- Active app bootstrap and routing are implemented in `lib/main.dart`, `lib/app.dart`, and `lib/app_router.dart`.
+- Core runtime providers are implemented in `lib/providers/providers.dart`.
+- API/auth/storage client scaffolding is present in `lib/services/api/api_service.dart`, `lib/services/api/api_client.dart`, and `lib/services/local/secure_storage_service.dart`.
+- Kiosk wrapper/services are implemented in `lib/services/kiosk/`.
+- Several legacy placeholder files still exist and are currently empty (not used by active runtime path), including:
+  - `lib/providers/api_provider.dart`, `lib/providers/auth_provider.dart`, `lib/providers/asset_provider.dart`
+  - `lib/screens/dashboard/dashboard_screen.dart`, `lib/screens/modals/inactivity_timeout_modal.dart`, `lib/screens/modals/return_status_modal.dart`
+  - `lib/widgets/buttons/primary_button.dart`, `lib/widgets/buttons/secondary_button.dart`, `lib/widgets/cards/asset_card.dart`, `lib/widgets/shared/countdown_timer.dart`, `lib/widgets/shared/nfc_scan_animation.dart`
+  - `lib/services/api/websocket_service.dart`, `lib/services/auth/auth_service.dart`, `lib/services/local/secure_storage.dart`
+  - `lib/utils/constants/*.dart`, `lib/utils/extensions/context_extensions.dart`, `lib/utils/helpers/*.dart`
+  - `lib/models/auth/auth_response.dart`, `lib/models/assets/asset.dart`, `lib/models/assets/asset_status.dart`, `lib/models/api/api_response.dart`
 
 ---
 
-## Missing Dependencies (pubspec.yaml)
+## Dependency Gaps (pubspec.yaml)
 
-Add the following to `pubspec.yaml`:
+Current dependency status:
 
-```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  cupertino_icons: ^1.0.8
-  camera: ^0.10.0
-  google_mlkit_barcode_scanning: ^0.5.0
-  flutter_riverpod: ^2.4.0    # State management
-  dio: ^5.4.0                # HTTP client
-  flutter_secure_storage: ^9.0.0  # Secure token storage
-  nfc_manager: ^3.0.0        # NFC badge reading
-  go_router: ^13.0.0         # Declarative routing
-  json_annotation: ^4.8.0    # JSON serialization
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
-  build_runner: ^2.4.0
-  json_serializable: ^6.7.0
-```
+- Already present: `dio`, `retrofit`, `flutter_riverpod`, `go_router`, `flutter_secure_storage`, `camera`, `google_mlkit_barcode_scanning`, `json_annotation`, `uuid`, `kiosk_mode`
+- Still missing for planned hardware NFC implementation: `nfc_manager`

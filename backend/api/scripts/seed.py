@@ -2,31 +2,27 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 
-# Ensure Python can locate the 'app' module when running from the scripts directory
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_SCRIPT_DIR = Path(__file__).resolve().parent.parent
 
-from sqlalchemy import or_, select
 
-from app.core.security import get_pin_hash
-from app.db.database import AsyncSessionLocal
-from app.db.models import (
-    Asset,
-    AssetStatus,
-    Category,
-    Kiosk,
-    KioskStatus,
-    Locker,
-    LockerStatus,
-    Role,
-    User,
-)
+def _prepare_runtime() -> None:
+    """Make backend/api importable and resolve local environment files."""
+    os.chdir(_SCRIPT_DIR)
+
+    script_dir = str(_SCRIPT_DIR)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+
 
 logger = logging.getLogger(__name__)
 
 
 async def get_or_create(session, model, defaults=None, update_existing=False, **kwargs):
     """Retrieves an existing record or creates a new one. Updates the existing record if required."""
+    from sqlalchemy import select
+
     result = await session.execute(select(model).filter_by(**kwargs))
     instances = result.scalars().all()
 
@@ -54,6 +50,24 @@ async def get_or_create(session, model, defaults=None, update_existing=False, **
 
 
 async def seed_database():
+    _prepare_runtime()
+
+    from sqlalchemy import or_, select
+
+    from app.core.security import get_pin_hash
+    from app.db.database import AsyncSessionLocal
+    from app.db.models import (
+        Asset,
+        AssetStatus,
+        Category,
+        Kiosk,
+        KioskStatus,
+        Locker,
+        LockerStatus,
+        Role,
+        User,
+    )
+
     logger.info("Starting database seeding.")
 
     async with AsyncSessionLocal() as session:

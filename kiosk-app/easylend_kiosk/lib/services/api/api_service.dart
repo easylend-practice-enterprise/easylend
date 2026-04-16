@@ -15,25 +15,25 @@ const _baseUrl = 'http://10.0.2.2:8000'; // Android emulator localhost
 Future<bool>? _refreshInFlight;
 
 final dioProvider = Provider<Dio>((ref) {
-  final dio = Dio(BaseOptions(
-    baseUrl: _baseUrl,
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 30),
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-  ));
+  final dio = Dio(
+    BaseOptions(
+      baseUrl: _baseUrl,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    ),
+  );
 
   // Auth interceptor for attaching tokens
   dio.interceptors.add(AuthInterceptor(ref));
   // Log interceptor for debugging - only in debug mode to avoid leaking sensitive data
   if (kDebugMode) {
-    dio.interceptors.add(LogInterceptor(
-      requestBody: true,
-      responseBody: true,
-      error: true,
-    ));
+    dio.interceptors.add(
+      LogInterceptor(requestBody: true, responseBody: true, error: true),
+    );
   }
 
   return dio;
@@ -50,7 +50,10 @@ class AuthInterceptor extends Interceptor {
   AuthInterceptor(this._ref);
 
   @override
-  void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  void onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     final storage = _ref.read(secureStorageProvider);
     final token = await storage.getAccessToken();
 
@@ -63,9 +66,10 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Skip refresh loop for refresh/logout endpoints
+    // Never try token refresh for auth endpoints. Wrong PINs should surface
+    // directly to the caller instead of entering the refresh flow.
     final path = err.requestOptions.path;
-    if (path.contains('/auth/refresh') || path.contains('/auth/logout')) {
+    if (path.contains('/auth/')) {
       return handler.next(err);
     }
 

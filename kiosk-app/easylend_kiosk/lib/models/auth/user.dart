@@ -31,8 +31,11 @@ class User {
   @JsonKey(name: 'locked_until')
   final DateTime? lockedUntil;
 
-  @JsonKey(name: 'status')
-  final String status;
+  @JsonKey(name: 'is_active')
+  final bool isActive;
+
+  @JsonKey(name: 'is_anonymized')
+  final bool isAnonymized;
 
   @JsonKey(name: 'ban_reason')
   final String? banReason;
@@ -50,7 +53,8 @@ class User {
     this.nfcTagId,
     required this.failedLoginAttempts,
     this.lockedUntil,
-    required this.status,
+    required this.isActive,
+    required this.isAnonymized,
     this.banReason,
     required this.acceptedPrivacyPolicy,
   });

@@ -38,7 +38,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  Future<void> nfcLogin(String nfcTagId) async {
+  Future<bool> nfcLogin(String nfcTagId) async {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
@@ -47,13 +47,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
       // The actual auth happens with PIN
       await client.nfcLogin(NfcLoginRequest(nfcTagId: nfcTagId));
       state = state.copyWith(isLoading: false);
+      return true;
     } on DioException catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: _formatError(e),
-      );
+      state = state.copyWith(isLoading: false, error: _formatError(e));
+      return false;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
+      return false;
     }
   }
 
@@ -80,10 +80,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(user: user, isAuthenticated: true);
       return true;
     } on DioException catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: _formatError(e),
-      );
+      state = state.copyWith(isLoading: false, error: _formatError(e));
       return false;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -124,12 +121,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
         lastName: 'Debug',
         email: '$username@example.com',
         failedLoginAttempts: 0,
-        status: 'active',
+        isActive: true,
+        isAnonymized: false,
         acceptedPrivacyPolicy: true,
       );
 
-      await _ref.read(secureStorageProvider).saveUser(jsonEncode(user.toJson()));
-      await _ref.read(secureStorageProvider).saveTokens(
+      await _ref
+          .read(secureStorageProvider)
+          .saveUser(jsonEncode(user.toJson()));
+      await _ref
+          .read(secureStorageProvider)
+          .saveTokens(
             accessToken: 'debug_access_token_$username',
             refreshToken: 'debug_refresh_token_$username',
           );
@@ -239,7 +241,7 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
   DateTime? _startTime;
 
   LoanPollingNotifier(this._ref, String loanId)
-      : super(LoanPollingState(loanId: loanId));
+    : super(LoanPollingState(loanId: loanId));
 
   Future<void> startPolling() async {
     _startTime = DateTime.now();
@@ -290,9 +292,10 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
   }
 }
 
-final loanPollingProvider = StateNotifierProvider.family<LoanPollingNotifier, LoanPollingState, String>(
-  (ref, loanId) => LoanPollingNotifier(ref, loanId),
-);
+final loanPollingProvider =
+    StateNotifierProvider.family<LoanPollingNotifier, LoanPollingState, String>(
+      (ref, loanId) => LoanPollingNotifier(ref, loanId),
+    );
 
 // ============================================================================
 // Checkout & Return

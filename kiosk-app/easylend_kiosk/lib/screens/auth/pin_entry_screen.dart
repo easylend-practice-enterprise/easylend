@@ -20,7 +20,7 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
   String? _error;
 
   void _onDigitPressed(String digit) {
-    if (_pin.length < 4) {
+    if (_pin.length < 6) {
       setState(() {
         _pin += digit;
         _error = null;
@@ -45,8 +45,8 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
   }
 
   Future<void> _onSubmit() async {
-    if (_pin.length != 4) {
-      setState(() => _error = 'Please enter a 4-digit PIN');
+    if (_pin.length != 6) {
+      setState(() => _error = 'Please enter a 6-digit PIN');
       return;
     }
 
@@ -55,10 +55,9 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
       _error = null;
     });
 
-    final success = await ref.read(authProvider.notifier).pinLogin(
-          widget.nfcTagId,
-          _pin,
-        );
+    final success = await ref
+        .read(authProvider.notifier)
+        .pinLogin(widget.nfcTagId, _pin);
 
     if (!mounted) return;
 
@@ -95,7 +94,7 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
               // PIN display
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(4, (index) {
+                children: List.generate(6, (index) {
                   final filled = index < _pin.length;
                   return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -149,7 +148,7 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _isLoading || _pin.length != 4 ? null : _onSubmit,
+                  onPressed: _isLoading || _pin.length != 6 ? null : _onSubmit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
