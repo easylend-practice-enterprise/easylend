@@ -57,7 +57,7 @@ for mapping in "${MAPPINGS[@]}"; do
   echo "Syncing keys for $name..."
 
   # Read existing target keys into associative array
-  declare -A EXISTING_KEYS
+  declare -A EXISTING_KEYS=()
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
     EXISTING_KEYS["$key"]="$value"
@@ -78,7 +78,7 @@ for mapping in "${MAPPINGS[@]}"; do
   fi
 
   # Validation: ensure required keys are present in the target
-  declare -A FINAL_KEYS
+  declare -A FINAL_KEYS=()
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
     FINAL_KEYS["$key"]="$value"
