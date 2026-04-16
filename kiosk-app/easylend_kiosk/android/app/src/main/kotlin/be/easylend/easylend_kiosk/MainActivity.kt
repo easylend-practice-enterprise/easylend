@@ -3,6 +3,7 @@ package be.easylend.easylend_kiosk
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 
@@ -28,7 +29,11 @@ class MainActivity : FlutterActivity() {
 
 		try {
 			dpm.setLockTaskPackages(admin, arrayOf(packageName))
-			dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+				dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+			} else {
+				Log.i("EasyLendKiosk", "Skipping lock task feature configuration on API < 28.")
+			}
 		} catch (se: SecurityException) {
 			Log.e("EasyLendKiosk", "Unable to configure lock task policies", se)
 		}

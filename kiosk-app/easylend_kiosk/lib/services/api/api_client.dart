@@ -24,12 +24,18 @@ class ApiClient {
   }
 
   Future<TokenResponse> pinLogin(PinLoginRequest request) async {
-    final response = await _dio.post('/api/v1/auth/pin', data: request.toJson());
+    final response = await _dio.post(
+      '/api/v1/auth/pin',
+      data: request.toJson(),
+    );
     return TokenResponse.fromJson(response.data);
   }
 
   Future<TokenResponse> refreshToken(RefreshTokenRequest request) async {
-    final response = await _dio.post('/api/v1/auth/refresh', data: request.toJson());
+    final response = await _dio.post(
+      '/api/v1/auth/refresh',
+      data: request.toJson(),
+    );
     return TokenResponse.fromJson(response.data);
   }
 
@@ -46,22 +52,30 @@ class ApiClient {
 
   // Catalog endpoints
 
-  Future<List<CatalogUserView>> getCatalog({int skip = 0, int limit = 100}) async {
-    final response = await _dio.get('/api/v1/catalog', queryParameters: {
-      'skip': skip,
-      'limit': limit,
-    });
+  Future<List<CatalogUserView>> getCatalog({
+    int skip = 0,
+    int limit = 100,
+  }) async {
+    final response = await _dio.get(
+      '/api/v1/catalog',
+      queryParameters: {'skip': skip, 'limit': limit},
+    );
     final List<dynamic> data = response.data as List<dynamic>;
-    return data.map((e) => CatalogUserView.fromJson(e as Map<String, dynamic>)).toList();
+    return data
+        .map((e) => CatalogUserView.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   // Loan endpoints
 
-  Future<PaginatedLoansResponse> getLoans({int skip = 0, int limit = 100}) async {
-    final response = await _dio.get('/api/v1/loans', queryParameters: {
-      'skip': skip,
-      'limit': limit,
-    });
+  Future<PaginatedLoansResponse> getLoans({
+    int skip = 0,
+    int limit = 100,
+  }) async {
+    final response = await _dio.get(
+      '/api/v1/loans',
+      queryParameters: {'skip': skip, 'limit': limit},
+    );
     return PaginatedLoansResponse.fromJson(response.data);
   }
 
@@ -70,26 +84,43 @@ class ApiClient {
     return LoanStatusResponse.fromJson(response.data);
   }
 
-  Future<LoanPublicResponse> checkout(CheckoutRequest request, String? idempotencyKey) async {
+  Future<LoanPublicResponse> checkout(
+    CheckoutRequest request,
+    String? idempotencyKey,
+  ) async {
     final options = idempotencyKey != null
         ? Options(headers: {'Idempotency-Key': idempotencyKey})
         : null;
-    final response = await _dio.post('/api/v1/loans/checkout', data: request.toJson(), options: options);
+    final response = await _dio.post(
+      '/api/v1/loans/checkout',
+      data: request.toJson(),
+      options: options,
+    );
     return LoanPublicResponse.fromJson(response.data);
   }
 
-  Future<LoanPublicResponse> returnInitiate(ReturnInitiateRequest request, String? idempotencyKey) async {
+  Future<LoanPublicResponse> returnInitiate(
+    ReturnInitiateRequest request,
+    String? idempotencyKey,
+  ) async {
     final options = idempotencyKey != null
         ? Options(headers: {'Idempotency-Key': idempotencyKey})
         : null;
-    final response = await _dio.post('/api/v1/loans/return/initiate', data: request.toJson(), options: options);
+    final response = await _dio.post(
+      '/api/v1/loans/return/initiate',
+      data: request.toJson(),
+      options: options,
+    );
     return LoanPublicResponse.fromJson(response.data);
   }
 
   /// Checks backend connectivity. Returns duration on success, throws on failure.
   /// Only available in debug builds.
   Future<Duration> ping() async {
-    assert(kDebugMode, 'ping() should only be called in debug mode');
+    if (!kDebugMode) {
+      throw UnsupportedError('ping() is only available in debug builds.');
+    }
+
     final stopwatch = Stopwatch()..start();
     await _dio.get('/api/v1/health');
     stopwatch.stop();
@@ -105,7 +136,9 @@ class PaginatedLoansResponse {
 
   factory PaginatedLoansResponse.fromJson(Map<String, dynamic> json) {
     return PaginatedLoansResponse(
-      items: (json['items'] as List).map((e) => LoanPublicResponse.fromJson(e)).toList(),
+      items: (json['items'] as List)
+          .map((e) => LoanPublicResponse.fromJson(e))
+          .toList(),
       total: json['total'] as int,
     );
   }

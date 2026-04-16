@@ -12,6 +12,13 @@ class KioskService {
   bool get isKioskActive => _isKioskActive;
   bool get isManagedKiosk => _isManagedKiosk;
 
+  Future<void> _restoreSystemUi() async {
+    await SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
+  }
+
   /// Request kiosk mode and hide the system UI.
   ///
   /// On a managed Android device, this can become a proper lock-task kiosk.
@@ -20,27 +27,36 @@ class KioskService {
     if (_isKioskActive && _isManagedKiosk) return;
 
     try {
+      // Start lock-task / screen-pinning kiosk mode
+      final didStartKioskMode = await km.startKioskMode();
+      if (!didStartKioskMode) {
+        await _restoreSystemUi();
+        _isKioskActive = false;
+        _isManagedKiosk = false;
+        debugPrint('Failed to start kiosk mode.');
+        return;
+      }
+
       // Hide system UI bars (status bar, navigation bar)
       await SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.immersiveSticky,
         overlays: [],
       );
 
-      // Start lock-task / screen-pinning kiosk mode
-      final didStartKioskMode = await km.startKioskMode();
-      final isManagedKiosk = await km.isManagedKiosk();
+      _isKioskActive = true;
 
-      _isKioskActive = didStartKioskMode;
+      final isManagedKiosk = await km.isManagedKiosk();
       _isManagedKiosk = isManagedKiosk;
 
-      if (!didStartKioskMode) {
-        debugPrint('Failed to start kiosk mode.');
-      } else if (!isManagedKiosk) {
+      if (!isManagedKiosk) {
         debugPrint(
           'Kiosk mode is active but unmanaged. Device owner provisioning is incomplete.',
         );
       }
     } catch (e) {
+      await _restoreSystemUi();
+      _isKioskActive = false;
+      _isManagedKiosk = false;
       debugPrint('Failed to start kiosk mode: $e');
     }
   }
@@ -53,18 +69,7 @@ class KioskService {
       final didStopKioskMode = await km.stopKioskMode();
 
       // Restore system UI
-      await SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.manual,
-        overlays: SystemUiOverlay.values,
-      );
-
-      // Restore orientation
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-        DeviceOrientation.portraitDown,
-      ]);
+      await _restoreSystemUi();
 
       _isKioskActive = false;
       _isManagedKiosk = false;
@@ -73,6 +78,7 @@ class KioskService {
         debugPrint('Failed to stop kiosk mode.');
       }
     } catch (e) {
+      await _restoreSystemUi();
       debugPrint('Failed to stop kiosk mode: $e');
     }
   }

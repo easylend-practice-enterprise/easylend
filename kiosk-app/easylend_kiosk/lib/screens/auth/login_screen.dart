@@ -228,7 +228,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Manual NFC Entry'),
+        title: const Text('Manual Badge Entry'),
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
@@ -403,7 +403,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     minimumSize: const Size.fromHeight(48),
                   ),
                   child: Text(
-                    kDebugMode ? 'Debug Login' : 'Login with Credentials',
+                    kDebugMode ? 'Debug Login' : 'Manual Badge Entry',
                   ),
                 ),
               ),
