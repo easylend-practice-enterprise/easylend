@@ -15,6 +15,7 @@ def _prepare_runtime() -> None:
     if script_dir not in sys.path:
         sys.path.insert(0, script_dir)
 
+
 logger = logging.getLogger(__name__)
 
 
