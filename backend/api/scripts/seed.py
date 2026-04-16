@@ -1,48 +1,27 @@
 import asyncio
 import logging
 import os
-import subprocess
 import sys
+from pathlib import Path
 
-# Ensure Python can locate the 'app' module when running from the scripts directory
-_SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_VENV_BIN = os.path.join(_SCRIPT_DIR, ".venv", "bin")
+_SCRIPT_DIR = Path(__file__).resolve().parent.parent
 
-# Change working directory to backend/api so pydantic finds .env relative to that location
-os.chdir(_SCRIPT_DIR)
 
-# Ensure the backend/api package root is importable when the script is run directly.
-sys.path.insert(0, _SCRIPT_DIR)
+def _prepare_runtime() -> None:
+    """Make backend/api importable and resolve local environment files."""
+    os.chdir(_SCRIPT_DIR)
 
-# If we don't have the right venv python, re-launch with uv from the backend/api directory
-if not sys.executable.startswith(_VENV_BIN):
-    result = subprocess.run(
-        ["uv", "run", "python", __file__],
-        cwd=_SCRIPT_DIR,
-    )
-    sys.exit(result.returncode)
-
-from sqlalchemy import or_, select
-
-from app.core.security import get_pin_hash
-from app.db.database import AsyncSessionLocal
-from app.db.models import (
-    Asset,
-    AssetStatus,
-    Category,
-    Kiosk,
-    KioskStatus,
-    Locker,
-    LockerStatus,
-    Role,
-    User,
-)
+    script_dir = str(_SCRIPT_DIR)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
 
 logger = logging.getLogger(__name__)
 
 
 async def get_or_create(session, model, defaults=None, update_existing=False, **kwargs):
     """Retrieves an existing record or creates a new one. Updates the existing record if required."""
+    from sqlalchemy import select
+
     result = await session.execute(select(model).filter_by(**kwargs))
     instances = result.scalars().all()
 
@@ -70,6 +49,24 @@ async def get_or_create(session, model, defaults=None, update_existing=False, **
 
 
 async def seed_database():
+    _prepare_runtime()
+
+    from sqlalchemy import or_, select
+
+    from app.core.security import get_pin_hash
+    from app.db.database import AsyncSessionLocal
+    from app.db.models import (
+        Asset,
+        AssetStatus,
+        Category,
+        Kiosk,
+        KioskStatus,
+        Locker,
+        LockerStatus,
+        Role,
+        User,
+    )
+
     logger.info("Starting database seeding.")
 
     async with AsyncSessionLocal() as session:
