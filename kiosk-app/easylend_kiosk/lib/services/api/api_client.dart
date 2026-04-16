@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../models/auth/nfc_login_request.dart';
 import '../../models/auth/pin_login_request.dart';
@@ -83,6 +84,16 @@ class ApiClient {
         : null;
     final response = await _dio.post('/api/v1/loans/return/initiate', data: request.toJson(), options: options);
     return LoanPublicResponse.fromJson(response.data);
+  }
+
+  /// Checks backend connectivity. Returns duration on success, throws on failure.
+  /// Only available in debug builds.
+  Future<Duration> ping() async {
+    assert(kDebugMode, 'ping() should only be called in debug mode');
+    final stopwatch = Stopwatch()..start();
+    await _dio.get('/api/v1/health');
+    stopwatch.stop();
+    return stopwatch.elapsed;
   }
 }
 

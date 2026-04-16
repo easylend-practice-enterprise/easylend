@@ -1,8 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../config/debug_credentials.dart';
 import '../../models/catalog/catalog_item.dart';
 import '../../providers/providers.dart';
 import '../../theme.dart';
@@ -144,7 +144,7 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              if (!DebugConfig.isActive) ...[
+              if (!kDebugMode) ...[
                 _NavItem(icon: Icons.grid_view, label: 'Catalog', selected: true),
                 _NavItem(icon: Icons.sync_alt, label: 'Transfers', selected: false),
               ],
@@ -152,7 +152,7 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
                 onPressed: () => context.go('/scan'),
                 child: const Icon(Icons.qr_code_scanner),
               ),
-              if (!DebugConfig.isActive)
+              if (!kDebugMode)
                 _NavItem(icon: Icons.history, label: 'History', selected: false),
             ],
           ),

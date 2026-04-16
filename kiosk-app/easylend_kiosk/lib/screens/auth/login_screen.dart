@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../providers/providers.dart';
+import '../../services/api/api_service.dart';
 import '../../theme.dart';
-import '../../config/debug_credentials.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -17,7 +19,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
   bool _isNfcScanning = false;
+  bool _isValidatingNfc = false;
   String? _error;
+  bool _isCheckingConnection = false;
 
   @override
   void initState() {
@@ -53,52 +57,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     });
   }
 
-  void _onNfcDetected(String nfcTagId) {
-    if (!mounted) {
+  Future<void> _onNfcDetected(String nfcTagId) async {
+    final tag = nfcTagId.trim();
+    if (tag.isEmpty || !mounted || _isValidatingNfc) {
       return;
     }
 
     setState(() {
       _isNfcScanning = false;
+      _isValidatingNfc = true;
+      _error = null;
     });
+
+    final isValid = await ref.read(authProvider.notifier).nfcLogin(tag);
 
     if (!mounted) {
       return;
     }
 
-    // Navigate to PIN entry screen
-    context.go('/pin/${Uri.encodeComponent(nfcTagId)}');
-  }
+    setState(() {
+      _isValidatingNfc = false;
+    });
 
-  void _submitManualNfcTag() {
-    _showDebugLoginDialog();
-  }
-
-  Future<void> _navigateToPinSafely(String rawTag) async {
-    final tag = rawTag.trim();
-    if (tag.isEmpty || !mounted) {
-      return;
-    }
-
-    try {
-      setState(() {
-        _error = null;
-        _isNfcScanning = false;
-      });
-      context.go('/pin/${Uri.encodeComponent(tag)}');
-    } catch (_) {
+    if (!isValid) {
+      final authState = ref.read(authProvider);
       if (!mounted) {
         return;
       }
       setState(() {
-        _error = 'Unable to continue to PIN. Please try again.';
+        _error = authState.error ?? 'Invalid NFC badge. Please try again.';
+        _isNfcScanning = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Navigation failed. Please retry debug login.'),
-        ),
-      );
+      return;
     }
+
+    // Navigate to PIN entry screen only after the backend validates the badge.
+    context.go('/pin/${Uri.encodeComponent(tag)}');
+  }
+
+  void _submitManualNfcTag() {
+    _showDebugLoginDialog();
   }
 
   Future<void> _showDebugLoginDialog() async {
@@ -126,7 +124,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Enter an NFC tag to test backend PIN login.',
+                'Enter an NFC tag to validate before PIN login.',
                 style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -181,7 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         return;
       }
 
-      await _navigateToPinSafely(tag);
+      await _onNfcDetected(tag);
     } catch (_) {
       if (!mounted) {
         return;
@@ -192,6 +190,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Debug login encountered an error.')),
       );
+    }
+  }
+
+  Future<void> _checkBackendConnection() async {
+    if (_isCheckingConnection) return;
+    _isCheckingConnection = true;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final client = ref.read(apiClientProvider);
+      final elapsed = await client.ping();
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Backend connected (${elapsed.inMilliseconds}ms)'),
+          backgroundColor: Colors.green[700],
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Backend unreachable: $e'),
+          backgroundColor: Colors.red[700],
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } finally {
+      _isCheckingConnection = false;
     }
   }
 
@@ -215,13 +242,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               final tag = controller.text.trim();
               if (tag.isEmpty) {
                 return;
               }
               Navigator.pop(context);
-              _onNfcDetected(tag);
+              await _onNfcDetected(tag);
             },
             child: const Text('Submit'),
           ),
@@ -232,6 +259,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    final titleText = _isValidatingNfc
+        ? 'Validating Badge...'
+        : _isNfcScanning
+        ? 'Waiting for Badge...'
+        : 'Badge Scanning Paused';
+    final subtitleText = _isValidatingNfc
+        ? 'Checking the NFC badge with the backend...'
+        : kDebugMode
+        ? 'Hold your NFC badge near the back of your device.'
+        : _isNfcScanning
+        ? 'Hold your NFC badge near the back of your device.'
+        : 'Tap NFC badge to continue.';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -244,13 +284,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               alignment: Alignment.topCenter,
               child: Padding(
                 padding: const EdgeInsets.only(top: 32.0),
-                child: const Text(
-                  'Asset Manager',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Asset Manager',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(width: 12),
+                      Tooltip(
+                        message: 'Check backend connection',
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.wifi_tethering,
+                            color: Colors.green,
+                            size: 20,
+                          ),
+                          onPressed: _checkBackendConnection,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -303,9 +364,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _isNfcScanning
-                          ? 'Waiting for Badge...'
-                          : 'Badge Scanning Paused',
+                      titleText,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white,
@@ -315,11 +374,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      DebugConfig.isActive
-                          ? 'Hold your NFC badge near the back of your device.'
-                          : _isNfcScanning
-                          ? 'Hold your NFC badge near the back of your device.'
-                          : 'Tap NFC badge to continue.',
+                      subtitleText,
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.grey),
                     ),
@@ -341,20 +396,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: TextButton(
-                  onPressed: DebugConfig.isActive
-                      ? _submitManualNfcTag
-                      : _onManualLogin,
+                  onPressed: kDebugMode ? _submitManualNfcTag : _onManualLogin,
                   style: TextButton.styleFrom(
-                    backgroundColor: DebugConfig.isActive
-                        ? Colors.orange
-                        : Colors.white,
+                    backgroundColor: kDebugMode ? Colors.orange : Colors.white,
                     foregroundColor: Colors.black,
                     minimumSize: const Size.fromHeight(48),
                   ),
                   child: Text(
-                    DebugConfig.isActive
-                        ? 'Debug Login'
-                        : 'Login with Credentials',
+                    kDebugMode ? 'Debug Login' : 'Login with Credentials',
                   ),
                 ),
               ),

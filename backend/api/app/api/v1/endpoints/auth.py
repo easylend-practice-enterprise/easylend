@@ -46,7 +46,7 @@ class PinLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=6, max_length=32)
 
 
 class RefreshTokenRequest(BaseModel):

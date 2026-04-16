@@ -90,7 +90,7 @@ High-Level Goals:
 ### ELP-40: Login screen & Admin 2FA
 
 - [x] Login screen UI with NFC badge animation ✅ **Done**
-- [ ] Standard user: NFC badge + 4-digit PIN (API integration)
+  - [ ] Standard user: NFC badge + 6-digit PIN (API integration)
 - [ ] Admin entry: Dedicated Admin NFC badge (unique UID) plus Admin PIN
 - [x] PIN entry screen ✅ **Done (UI implemented)**
 - [ ] Audit logging: Every successful Admin login must trigger a log entry

@@ -18,7 +18,8 @@ User _$UserFromJson(Map<String, dynamic> json) => User(
   lockedUntil: json['locked_until'] == null
       ? null
       : DateTime.parse(json['locked_until'] as String),
-  status: json['status'] as String,
+  isActive: json['is_active'] as bool,
+  isAnonymized: json['is_anonymized'] as bool,
   banReason: json['ban_reason'] as String?,
   acceptedPrivacyPolicy: json['accepted_privacy_policy'] as bool,
 );
@@ -33,7 +34,8 @@ Map<String, dynamic> _$UserToJson(User instance) => <String, dynamic>{
   'nfc_tag_id': instance.nfcTagId,
   'failed_login_attempts': instance.failedLoginAttempts,
   'locked_until': instance.lockedUntil?.toIso8601String(),
-  'status': instance.status,
+  'is_active': instance.isActive,
+  'is_anonymized': instance.isAnonymized,
   'ban_reason': instance.banReason,
   'accepted_privacy_policy': instance.acceptedPrivacyPolicy,
 };

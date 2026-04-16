@@ -15,7 +15,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     role_id: UUID
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=6, max_length=32)
     accepted_privacy_policy: bool = Field(default=False)
 
 

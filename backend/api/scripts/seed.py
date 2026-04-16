@@ -1,10 +1,26 @@
 import asyncio
 import logging
 import os
+import subprocess
 import sys
 
 # Ensure Python can locate the 'app' module when running from the scripts directory
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_VENV_BIN = os.path.join(_SCRIPT_DIR, ".venv", "bin")
+
+# Change working directory to backend/api so pydantic finds .env relative to that location
+os.chdir(_SCRIPT_DIR)
+
+# Ensure the backend/api package root is importable when the script is run directly.
+sys.path.insert(0, _SCRIPT_DIR)
+
+# If we don't have the right venv python, re-launch with uv from the backend/api directory
+if not sys.executable.startswith(_VENV_BIN):
+    result = subprocess.run(
+        ["uv", "run", "python", __file__],
+        cwd=_SCRIPT_DIR,
+    )
+    sys.exit(result.returncode)
 
 from sqlalchemy import or_, select
 
