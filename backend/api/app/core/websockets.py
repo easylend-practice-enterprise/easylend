@@ -289,6 +289,7 @@ class ConnectionManager:
                     kiosk_id,
                     exc_info=True,
                 )
+                await self.disconnect(kiosk_id, websocket, close_websocket=True)
 
         try:
             payload = json.dumps(command, separators=(",", ":"), default=str)

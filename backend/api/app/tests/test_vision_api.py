@@ -1135,7 +1135,7 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "4", "color": "orange"},
+        {"action": "set_led", "locker_id": 4, "color": "orange"},
     )
 
 
@@ -1189,7 +1189,7 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "5", "color": "orange"},
+        {"action": "set_led", "locker_id": 5, "color": "orange"},
     )
 
 
@@ -1272,5 +1272,5 @@ def test_checkout_ai_timeout_mutates_only_locked_phase_entities(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "7", "color": "orange"},
+        {"action": "set_led", "locker_id": 7, "color": "orange"},
     )

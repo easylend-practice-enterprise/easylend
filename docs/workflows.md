@@ -3,7 +3,7 @@
 > This document describes the definitive system workflows through sequence diagrams.
 > Architecture: The Kiosk App communicates via REST (with Polling for asynchronous hardware actions). The Vision Box listens to commands via WebSockets (WSS).
 
-The seven core flows are:
+The core flows are:
 
 1. Login
 2. Checkout (Lending)

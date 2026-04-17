@@ -25,7 +25,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
-from app.core.idempotency import _guard_idempotency, release_idempotency_key
+from app.core.idempotency import guard_idempotency, release_idempotency_key
 from app.core.rate_limit import check_token_rate_limit
 from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.core.websockets import manager
@@ -229,8 +229,10 @@ async def checkout(
             detail="Idempotency-Key header is required",
         )
 
+    db_committed = False
+
     await check_token_rate_limit(request, str(current_user.user_id))
-    await _guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key)
 
     try:
         # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
@@ -350,6 +352,7 @@ async def checkout(
         # fails after commit, the DB is consistent and the RESERVED loan will
         # be cleaned up by the timeout worker.
         await db.commit()
+        db_committed = True
         await db.refresh(loan)
 
         # --- 7. Trigger Hardware to open the door ---
@@ -378,7 +381,8 @@ async def checkout(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await release_idempotency_key(idempotency_key)
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:
@@ -425,7 +429,7 @@ async def report_damage(
 
     # Step 1 — rate limit before idempotency guard to avoid stale key locks.
     await check_token_rate_limit(request, str(current_user.user_id))
-    await _guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key)
 
     try:
         # Step 2 — lock loan.
@@ -722,8 +726,10 @@ async def return_initiate(
             detail="Idempotency-Key header is required",
         )
 
+    db_committed = False
+
     await check_token_rate_limit(request, str(current_user.user_id))
-    await _guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key)
 
     try:
         # --- 0. Validate that the kiosk exists (BEFORE hardware check) ---
@@ -853,6 +859,7 @@ async def return_initiate(
         # fails after commit, the DB is consistent and the RETURNING loan will
         # be cleaned up by the timeout worker.
         await db.commit()
+        db_committed = True
         await db.refresh(loan)
 
         # --- 5. Trigger Hardware to open the door ---
@@ -880,7 +887,8 @@ async def return_initiate(
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
-        await release_idempotency_key(idempotency_key)
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:

@@ -29,7 +29,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_admin, get_current_user
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
-from app.core.idempotency import _guard_idempotency, release_idempotency_key
+from app.core.idempotency import guard_idempotency, release_idempotency_key
 from app.core.state_machine import LoanStateMachine
 from app.core.websockets import manager
 from app.db.database import get_db
@@ -539,7 +539,9 @@ async def force_open_locker(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Idempotency-Key header is required",
         )
-    await _guard_idempotency(idempotency_key)
+    db_committed = False
+
+    await guard_idempotency(idempotency_key)
 
     try:
         locker = await _get_locker_or_404(db, locker_id)
@@ -554,6 +556,7 @@ async def force_open_locker(
             payload={"locker_id": str(locker_id)},
         )
         await db.commit()
+        db_committed = True
 
         kiosk_id_str = str(locker.kiosk_id)
         command_ok = await manager.send_command(
@@ -575,7 +578,8 @@ async def force_open_locker(
 
         return {"detail": "Locker opened successfully."}
     except HTTPException:
-        await release_idempotency_key(idempotency_key)
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
         raise
     except Exception:
         try:

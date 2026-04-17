@@ -19,7 +19,7 @@ _IDEMPOTENCY_TTL_SECONDS = 86400  # 24 hours
 _MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 
-async def _guard_idempotency(idempotency_key: str) -> None:
+async def guard_idempotency(idempotency_key: str) -> None:
     """
     Atomically claim an idempotency key in Redis.
 
