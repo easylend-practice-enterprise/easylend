@@ -17,16 +17,20 @@ Auth rules:
 """
 
 import logging
+from enum import Enum
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_current_user
 from app.core.audit import log_audit_event
+from app.core.db_utils import is_lock_not_available_error
+from app.core.idempotency import guard_idempotency, release_idempotency_key
+from app.core.state_machine import LoanStateMachine
 from app.core.websockets import manager
 from app.db.database import get_db
 from app.db.models import (
@@ -335,7 +339,7 @@ async def update_kiosk_status(
     kiosk_id: UUID,
     payload: KioskStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> KioskResponse:
     """
     Update a kiosk's operational status.
@@ -345,9 +349,36 @@ async def update_kiosk_status(
     """
     kiosk = await _get_kiosk_or_404(db, kiosk_id)
 
+    old_kiosk_status = kiosk.kiosk_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
     for field, value in update_data.items():
         setattr(kiosk, field, value)
+
+    new_kiosk_status = update_data.get("kiosk_status")
+    old_kiosk_status_value = (
+        old_kiosk_status.value
+        if isinstance(old_kiosk_status, Enum)
+        else old_kiosk_status
+    )
+    new_kiosk_status_value = (
+        new_kiosk_status.value
+        if isinstance(new_kiosk_status, Enum)
+        else new_kiosk_status
+    )
+    if (
+        new_kiosk_status_value is not None
+        and new_kiosk_status_value != old_kiosk_status_value
+    ):
+        await log_audit_event(
+            db,
+            action_type="KIOSK_STATUS_CHANGED",
+            payload={
+                "kiosk_id": str(kiosk_id),
+                "old_kiosk_status": old_kiosk_status_value,
+                "new_kiosk_status": new_kiosk_status_value,
+            },
+            user_id=current_admin.user_id,
+        )
 
     await db.commit()
     await db.refresh(kiosk)
@@ -493,6 +524,7 @@ async def force_open_locker(
     locker_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_admin),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> dict:
     """
     Force-open a locker door via the Vision Box WebSocket.
@@ -500,39 +532,64 @@ async def force_open_locker(
     Requires Admin role. Sends an `open_slot` WSS command to the kiosk that
     owns the locker and writes an `ADMIN_FORCED_OPEN` audit log entry.
     Returns 503 if the Vision Box for the associated kiosk is offline.
+    Idempotency: requires Idempotency-Key header. Duplicate keys return 409.
     """
-    locker = await _get_locker_or_404(db, locker_id)
-
-    # Write audit record and commit BEFORE sending hardware command.
-    # This ensures the audit trail is durable even if the hardware fails.
-    # The locker will be opened physically after the DB commit succeeds.
-    await log_audit_event(
-        db,
-        user_id=current_user.user_id,
-        action_type="ADMIN_FORCED_OPEN",
-        payload={"locker_id": str(locker_id)},
-    )
-    await db.commit()
-
-    kiosk_id_str = str(locker.kiosk_id)
-    command_ok = await manager.send_command(
-        kiosk_id_str,
-        {
-            "action": "open_slot",
-            "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
-        },
-    )
-    if not command_ok:
-        logger.warning(
-            "Hardware command failed after DB commit for admin forced open locker=%s.",
-            locker_id,
-        )
+    if not idempotency_key:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Idempotency-Key header is required",
         )
+    db_committed = False
 
-    return {"detail": "Locker opened successfully."}
+    await guard_idempotency(idempotency_key)
+
+    try:
+        locker = await _get_locker_or_404(db, locker_id)
+
+        # Write audit record and commit BEFORE sending hardware command.
+        # This ensures the audit trail is durable even if the hardware fails.
+        # The locker will be opened physically after the DB commit succeeds.
+        await log_audit_event(
+            db,
+            user_id=current_user.user_id,
+            action_type="ADMIN_FORCED_OPEN",
+            payload={"locker_id": str(locker_id)},
+        )
+        await db.commit()
+        db_committed = True
+
+        kiosk_id_str = str(locker.kiosk_id)
+        command_ok = await manager.send_command(
+            kiosk_id_str,
+            {
+                "action": "open_slot",
+                "locker_id": str(getattr(locker, "logical_number", locker.locker_id)),
+            },
+        )
+        if not command_ok:
+            logger.warning(
+                "Hardware command failed after DB commit for admin forced open locker=%s.",
+                locker_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
+            )
+
+        return {"detail": "Locker opened successfully."}
+    except HTTPException:
+        if not db_committed:
+            await release_idempotency_key(idempotency_key)
+        raise
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            logger.exception(
+                "Failed to rollback DB during error handling in force_open_locker."
+            )
+        await release_idempotency_key(idempotency_key)
+        raise
 
 
 @lockers_router.patch(
@@ -549,7 +606,7 @@ async def update_locker_status(
     locker_id: UUID,
     payload: LockerStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> LockerResponse:
     """
     Update a locker's operational status.
@@ -564,8 +621,44 @@ async def update_locker_status(
 
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
+    old_locker_status = locker.locker_status
+    new_locker_status = update_data.pop("locker_status", None)
+
     for field, value in update_data.items():
         setattr(locker, field, value)
+
+    if new_locker_status is not None:
+        target_locker_status = (
+            LockerStatus(new_locker_status)
+            if isinstance(new_locker_status, str)
+            else new_locker_status
+        )
+        LoanStateMachine.apply_locker_status(locker, target_locker_status)
+
+    old_locker_status_value = (
+        old_locker_status.value
+        if isinstance(old_locker_status, Enum)
+        else old_locker_status
+    )
+    new_locker_status_value = (
+        new_locker_status.value
+        if isinstance(new_locker_status, Enum)
+        else new_locker_status
+    )
+    if (
+        new_locker_status_value is not None
+        and new_locker_status_value != old_locker_status_value
+    ):
+        await log_audit_event(
+            db,
+            action_type="LOCKER_STATUS_CHANGED",
+            payload={
+                "locker_id": str(locker_id),
+                "old_locker_status": old_locker_status_value,
+                "new_locker_status": new_locker_status_value,
+            },
+            user_id=current_admin.user_id,
+        )
 
     await db.commit()
     await db.refresh(locker)
@@ -575,115 +668,6 @@ async def update_locker_status(
 # ---------------------------------------------------------------------------
 # ASSETS
 # ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# CATALOG
-# ---------------------------------------------------------------------------
-
-catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
-
-
-CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
-
-
-@catalog_router.get(
-    "",
-    response_model=CatalogResponse,
-    status_code=status.HTTP_200_OK,
-    responses={
-        401: {"description": "Not authenticated"},
-    },
-)
-@catalog_router.get(
-    "/",
-    include_in_schema=False,
-    response_model=CatalogResponse,
-    status_code=status.HTTP_200_OK,
-    responses={
-        401: {"description": "Not authenticated"},
-    },
-)
-async def get_catalog(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> CatalogResponse:
-    """Role-aware catalog view.
-
-    - Admins: return one row per asset including active/reserved loan context.
-    - Non-admins: return grouped counts per category of AVAILABLE assets.
-    """
-    # Admin path: per-asset detail with loan context (if any)
-    if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
-        loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
-        query = (
-            select(Asset, Loan.loan_status, User.first_name, User.last_name)
-            .outerjoin(
-                Loan,
-                (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
-            )
-            .outerjoin(User, User.user_id == Loan.user_id)
-            .where(Asset.is_deleted.is_(False))
-            .order_by(Asset.name)
-            .offset(skip)
-            .limit(limit)
-        )
-        result = await db.execute(query)
-        rows = result.all()
-
-        admin_items: list[CatalogAdminView] = []
-        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
-            admin_items.append(
-                CatalogAdminView.model_validate(
-                    {
-                        "asset_id": asset.asset_id,
-                        "asset_name": asset.name,
-                        "category_id": asset.category_id,
-                        "asset_status": asset.asset_status,
-                        "locker_id": asset.locker_id,
-                        "is_deleted": asset.is_deleted,
-                        "loan_status": loan_status,
-                        "borrower_first_name": borrower_first_name,
-                        "borrower_last_name": borrower_last_name,
-                    }
-                )
-            )
-        return admin_items
-
-    # Non-admin path: categories with available counts.
-    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
-    # in-maintenance) are still returned with available_count=0, rather than
-    # silently disappearing from the user catalog.
-    query = (
-        select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
-        .outerjoin(
-            Asset,
-            (Asset.category_id == Category.category_id)
-            & (Asset.asset_status == AssetStatus.AVAILABLE)
-            & (Asset.is_deleted.is_(False)),
-        )
-        .group_by(Category.category_id, Category.category_name)
-        .order_by(Category.category_name)
-    )
-    result = await db.execute(query)
-    rows = result.all()
-
-    user_items: list[CatalogUserView] = []
-    for category_id, name, available_count in rows:
-        user_items.append(
-            CatalogUserView.model_validate(
-                {
-                    "category_id": category_id,
-                    "category_name": name,
-                    "available_count": int(available_count or 0),
-                }
-            )
-        )
-
-    return user_items
-
 
 assets_router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -809,7 +793,7 @@ async def get_asset_by_id(
 async def create_asset(
     payload: AssetCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> AssetResponse:
     """
     Register a new physical asset in the system.
@@ -849,14 +833,30 @@ async def create_asset(
     )
     db.add(asset)
     try:
-        await db.commit()
-        await db.refresh(asset)
+        await db.flush()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An asset with this aztec_code already exists.",
         )
+    await log_audit_event(
+        db,
+        action_type="ASSET_CREATED",
+        payload={
+            "asset_id": str(asset.asset_id),
+            "name": asset.name,
+            "aztec_code": asset.aztec_code,
+            "asset_status": getattr(asset.asset_status, "value", asset.asset_status),
+        },
+        user_id=current_admin.user_id,
+    )
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    await db.refresh(asset)
     return AssetResponse.model_validate(asset)
 
 
@@ -877,7 +877,7 @@ async def update_asset(
     asset_id: UUID,
     payload: AssetUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> AssetResponse:
     """
     Update an existing asset.
@@ -893,13 +893,28 @@ async def update_asset(
     `is_deleted` is deliberately **not** updatable here: use the
     dedicated `DELETE /{asset_id}` endpoint for soft-deletion.
     """
-    asset = await _get_asset_allowing_deleted(db, asset_id)
+    try:
+        result = await db.execute(
+            select(Asset).where(Asset.asset_id == asset_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset is currently being modified. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
+    asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Asset not found.",
         )
 
+    old_asset_status = asset.asset_status
     update_data = payload.model_dump(exclude_unset=True, exclude_none=True)
 
     if "category_id" in update_data and update_data["category_id"] is not None:
@@ -924,8 +939,43 @@ async def update_asset(
                 detail="Invalid locker_id: locker does not exist.",
             )
 
+    new_asset_status = update_data.pop("asset_status", None)
+
     for field, value in update_data.items():
         setattr(asset, field, value)
+
+    if new_asset_status is not None:
+        target_asset_status = (
+            AssetStatus(new_asset_status)
+            if isinstance(new_asset_status, str)
+            else new_asset_status
+        )
+        LoanStateMachine.apply_asset_status(asset, target_asset_status)
+
+    old_asset_status_value = (
+        old_asset_status.value
+        if isinstance(old_asset_status, Enum)
+        else old_asset_status
+    )
+    new_asset_status_value = (
+        new_asset_status.value
+        if isinstance(new_asset_status, Enum)
+        else new_asset_status
+    )
+    if (
+        new_asset_status_value is not None
+        and new_asset_status_value != old_asset_status_value
+    ):
+        await log_audit_event(
+            db,
+            action_type="ASSET_STATUS_CHANGED",
+            payload={
+                "asset_id": str(asset_id),
+                "old_asset_status": old_asset_status_value,
+                "new_asset_status": new_asset_status_value,
+            },
+            user_id=current_admin.user_id,
+        )
 
     try:
         await db.commit()
@@ -967,7 +1017,21 @@ async def soft_delete_asset(
 
     Returns 409 Conflict if the asset has an ACTIVE or RESERVED loan.
     """
-    asset = await _get_asset_allowing_deleted(db, asset_id)
+    try:
+        result = await db.execute(
+            select(Asset).where(Asset.asset_id == asset_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        if is_lock_not_available_error(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Asset is currently being modified. Please try again.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred.",
+        ) from exc
+    asset = result.scalar_one_or_none()
     if asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -989,12 +1053,26 @@ async def soft_delete_asset(
 
     # Clear locker assignment and return the locker to AVAILABLE
     if asset.locker_id is not None:
-        locker_result = await db.execute(
-            select(Locker).where(Locker.locker_id == asset.locker_id)
-        )
+        try:
+            locker_result = await db.execute(
+                select(Locker)
+                .where(Locker.locker_id == asset.locker_id)
+                .with_for_update(nowait=True)
+            )
+        except OperationalError as exc:
+            if is_lock_not_available_error(exc):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Locker is currently being modified. Please try again.",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="A database error occurred.",
+            ) from exc
+
         locker = locker_result.scalar_one_or_none()
         if locker is not None:
-            locker.locker_status = LockerStatus.AVAILABLE
+            LoanStateMachine.apply_locker_status(locker, LockerStatus.AVAILABLE)
         asset.locker_id = None
 
     asset.is_deleted = True
@@ -1006,3 +1084,111 @@ async def soft_delete_asset(
         user_id=current_user.user_id,
     )
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# CATALOG
+# ---------------------------------------------------------------------------
+
+catalog_router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+CatalogResponse = list[CatalogAdminView] | list[CatalogUserView]
+
+
+@catalog_router.get(
+    "",
+    response_model=CatalogResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@catalog_router.get(
+    "/",
+    include_in_schema=False,
+    response_model=CatalogResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def get_catalog(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CatalogResponse:
+    """Role-aware catalog view.
+
+    - Admins: return one row per asset including active/reserved loan context.
+    - Non-admins: return grouped counts per category of AVAILABLE assets.
+    """
+    # Admin path: per-asset detail with loan context (if any)
+    if current_user.role is not None and current_user.role.role_name.upper() == "ADMIN":
+        loan_states = [LoanStatus.ACTIVE, LoanStatus.RESERVED]
+        query = (
+            select(Asset, Loan.loan_status, User.first_name, User.last_name)
+            .outerjoin(
+                Loan,
+                (Loan.asset_id == Asset.asset_id) & Loan.loan_status.in_(loan_states),
+            )
+            .outerjoin(User, User.user_id == Loan.user_id)
+            .where(Asset.is_deleted.is_(False))
+            .order_by(Asset.name)
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await db.execute(query)
+        rows = result.all()
+
+        admin_items: list[CatalogAdminView] = []
+        for asset, loan_status, borrower_first_name, borrower_last_name in rows:
+            admin_items.append(
+                CatalogAdminView.model_validate(
+                    {
+                        "asset_id": asset.asset_id,
+                        "asset_name": asset.name,
+                        "category_id": asset.category_id,
+                        "asset_status": asset.asset_status,
+                        "locker_id": asset.locker_id,
+                        "is_deleted": asset.is_deleted,
+                        "loan_status": loan_status,
+                        "borrower_first_name": borrower_first_name,
+                        "borrower_last_name": borrower_last_name,
+                    }
+                )
+            )
+        return admin_items
+
+    # Non-admin path: categories with available counts.
+    # LEFT OUTER JOIN ensures categories with 0 available assets (all borrowed /
+    # in-maintenance) are still returned with available_count=0, rather than
+    # silently disappearing from the user catalog.
+    query = (
+        select(Category.category_id, Category.category_name, func.count(Asset.asset_id))
+        .outerjoin(
+            Asset,
+            (Asset.category_id == Category.category_id)
+            & (Asset.asset_status == AssetStatus.AVAILABLE)
+            & (Asset.is_deleted.is_(False)),
+        )
+        .group_by(Category.category_id, Category.category_name)
+        .order_by(Category.category_name)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    user_items: list[CatalogUserView] = []
+    for category_id, name, available_count in rows:
+        user_items.append(
+            CatalogUserView.model_validate(
+                {
+                    "category_id": category_id,
+                    "category_name": name,
+                    "available_count": int(available_count or 0),
+                }
+            )
+        )
+
+    return user_items

@@ -2,6 +2,7 @@ sequenceDiagram
     actor Admin as Administrator
     participant App as Kiosk App (Virtual or Physical)
     participant API as FastAPI Backend
+    participant LoanStateMachine
     participant DB as PostgreSQL
     participant VB as Vision Box (Kiosk A)
 
@@ -21,10 +22,10 @@ sequenceDiagram
             Admin->>App: Taps Locker 1 -> Force Open
             App->>API: POST /api/v1/lockers/{locker_id}/open [JWT Admin]
             Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
-            API->>VB: WSS: open_slot {locker_id: logical_number}
-            Note over API,VB: Fire-and-forget: audit log written before send, no slot_opened event processed
             API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN', payload: {locker_id}}
             API->>DB: COMMIT
+            Note over API,VB: Fire-and-forget: audit committed before send, no slot_opened event processed
+            API->>VB: WSS: open_slot {locker_id: logical_number}
             alt Vision Box offline
                 API-->>App: 503 Service Unavailable
             else Vision Box online
@@ -35,7 +36,9 @@ sequenceDiagram
         opt Mark as Defective / Maintenance
             Admin->>App: Taps Locker 1 -> Mark MAINTENANCE
             App->>API: PATCH /api/v1/lockers/{locker_id}/status {locker_status: 'MAINTENANCE'} [JWT Admin]
-            API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+            API->>LoanStateMachine: apply_locker_status(locker, MAINTENANCE)
+            LoanStateMachine-->>API: locker MAINTENANCE
+            API->>DB: COMMIT locker status update + audit log
             API-->>App: 200 OK (Locker marked)
         end
 
@@ -46,6 +49,7 @@ sequenceDiagram
         API-->>App: List[QuarantineLoanView] {loan_id, asset_name, user_name, kiosk_name, loan_status, ...}
         App->>API: GET /api/v1/admin/evaluations/{loan_id}
         API-->>App: EvaluationDetailView {evaluation_id, evaluation_type, photo_url, ai_confidence, ...}
+        Note over API,DB: /admin/evaluations/{evaluation_id}/judge uses LoanStateMachine under FOR UPDATE NOWAIT locks
         Note right of App: See sequence_quarantine.mmd for full handling flow
 
     else 3. Asset Catalog
@@ -70,7 +74,8 @@ sequenceDiagram
                 API-->>App: 409 Conflict {"Cannot delete an asset that has active or reserved loans."}
             else No active loans
                 Note over API,DB: Locker returned to AVAILABLE if asset was assigned
-                API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = <asset.locker_id>
+                API->>LoanStateMachine: apply_locker_status(locker, AVAILABLE)
+                LoanStateMachine-->>API: locker AVAILABLE
                 API->>DB: UPDATE assets SET is_deleted = TRUE, locker_id = NULL WHERE asset_id = ?
                 API->>DB: INSERT INTO audit_logs {action_type: 'ASSET_SOFT_DELETED', payload: {asset_id, asset_name}}
                 API-->>App: 204 No Content

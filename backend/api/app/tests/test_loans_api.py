@@ -16,14 +16,18 @@ slot from the queue in FIFO order. Each test documents the exact slots used.
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 
 import app.api.v1.endpoints.loans as loans_endpoints
 from app.core.websockets import manager
+from app.db.models import UserStatus
 from app.tests.conftest import (
     _bearer,
     _make_admin,
@@ -44,6 +48,12 @@ def mock_hardware_manager(monkeypatch):
 
     monkeypatch.setattr(manager, "active_connections", AlwaysConnectedDict())
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def mock_audit_logger(monkeypatch):
+    """Mock log_audit_event so audit DB calls don't hit the fake session queue."""
+    monkeypatch.setattr(loans_endpoints, "log_audit_event", AsyncMock())
 
 
 @pytest.fixture(autouse=True)
@@ -97,9 +107,8 @@ def _make_student(**kwargs) -> SimpleNamespace:
         pin_hash="hashed",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         role=SimpleNamespace(role_name="Student"),
     )
 
@@ -129,13 +138,13 @@ def _make_loan(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
         user_id=kwargs.get("user_id", uuid.uuid4()),
-        asset_id=uuid.uuid4(),
-        checkout_locker_id=uuid.uuid4(),
+        asset_id=kwargs.get("asset_id", uuid.uuid4()),
+        checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
         return_locker_id=kwargs.get("return_locker_id", None),
-        reserved_at=None,
+        reserved_at=kwargs.get("reserved_at", None),
         borrowed_at=kwargs.get("borrowed_at", None),
-        due_date=None,
-        returned_at=None,
+        due_date=kwargs.get("due_date", None),
+        returned_at=kwargs.get("returned_at", None),
         loan_status=kwargs.get("loan_status", "ACTIVE"),
         evaluations=[],  # eager-loaded by export; empty list for test fixtures
     )
@@ -887,3 +896,233 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
             == "Duplicate request with this idempotency key is already being processed or has completed."
         )
     assert fake_db.commit_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# 6. POST /loans/{loan_id}/report-damage
+# ---------------------------------------------------------------------------
+
+
+def test_report_damage_returns_400_when_idempotency_header_missing(
+    client_with_overrides,
+):
+    student = _make_student()
+    with client_with_overrides(_QueuedSession(student)) as client:
+        response = client.post(
+            f"/api/v1/loans/{uuid.uuid4()}/report-damage",
+            headers=_bearer(student),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Idempotency-Key header is required"
+
+
+def test_report_damage_returns_200_and_suspends_current_and_previous_users(
+    client_with_overrides,
+):
+    student = _make_student()
+    current_user_row = _make_student(user_id=student.user_id)
+
+    locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    loan = _make_loan(
+        user_id=student.user_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="ACTIVE",
+        borrowed_at=datetime.now(UTC) - timedelta(minutes=2),
+    )
+    asset = _make_asset(
+        asset_id=asset_id,
+        locker_id=locker_id,
+        asset_status="BORROWED",
+    )
+    locker = _make_locker(
+        locker_id=locker_id,
+        locker_status="AVAILABLE",
+    )
+
+    previous_user_row = _make_student()
+    previous_loan = _make_loan(
+        user_id=previous_user_row.user_id,
+        asset_id=asset_id,
+        loan_status="COMPLETED",
+        returned_at=datetime.now(UTC) - timedelta(days=1),
+    )
+
+    fake_db = _QueuedSession(
+        student,
+        loan,
+        asset,
+        locker,
+        current_user_row,
+        previous_loan,
+        previous_user_row,
+    )
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            f"/api/v1/loans/{loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-happy"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["loan_status"] == "DISPUTED"
+    assert loan.loan_status == "DISPUTED"
+    assert asset.asset_status == "MAINTENANCE"
+    assert locker.locker_status == "MAINTENANCE"
+    assert current_user_row.locked_until is not None
+    assert previous_user_row.locked_until is not None
+    assert fake_db.commit_calls == 1
+    send_command_mock = cast(AsyncMock, manager.send_command)
+    send_command_mock.assert_awaited_once()
+    assert send_command_mock.await_args is not None
+    sent_kiosk_id, sent_payload = send_command_mock.await_args.args
+    assert sent_kiosk_id == str(locker.kiosk_id)
+    assert sent_payload["action"] == "set_led"
+    assert sent_payload["color"] == "orange"
+    assert sent_payload["locker_id"] == locker.logical_number
+    assert isinstance(sent_payload["locker_id"], int)
+
+
+def test_report_damage_returns_400_when_grace_period_expired(client_with_overrides):
+    student = _make_student()
+
+    locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    expired_loan = _make_loan(
+        user_id=student.user_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="ACTIVE",
+        borrowed_at=datetime.now(UTC) - timedelta(minutes=6),
+    )
+    asset = _make_asset(asset_id=asset_id, locker_id=locker_id, asset_status="BORROWED")
+    locker = _make_locker(locker_id=locker_id, locker_status="AVAILABLE")
+
+    fake_db = _QueuedSession(student, expired_loan, asset, locker)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            f"/api/v1/loans/{expired_loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-expired"),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Grace period has expired for damage reporting."
+    assert fake_db.commit_calls == 0
+
+
+def test_report_damage_returns_403_for_non_owner(client_with_overrides):
+    student = _make_student()
+    foreign_loan = _make_loan(user_id=uuid.uuid4(), loan_status="ACTIVE")
+
+    fake_db = _QueuedSession(student, foreign_loan)
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            f"/api/v1/loans/{foreign_loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-forbidden"),
+        )
+
+    assert response.status_code == 403
+
+
+def test_report_damage_returns_200_when_hardware_sync_fails(
+    monkeypatch,
+    client_with_overrides,
+):
+    student = _make_student()
+    current_user_row = _make_student(user_id=student.user_id)
+
+    locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    loan = _make_loan(
+        user_id=student.user_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="FRAUD_SUSPECTED",
+        borrowed_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    asset = _make_asset(asset_id=asset_id, locker_id=locker_id, asset_status="BORROWED")
+    locker = _make_locker(locker_id=locker_id, locker_status="AVAILABLE")
+
+    fake_db = _QueuedSession(
+        student,
+        loan,
+        asset,
+        locker,
+        current_user_row,
+        None,
+    )
+    monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            f"/api/v1/loans/{loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-hw-fail"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["loan_status"] == "DISPUTED"
+    assert fake_db.commit_calls == 1
+
+
+def test_report_damage_rate_limit_before_idempotency_does_not_lock_key(
+    monkeypatch,
+    client_with_overrides,
+):
+    student = _make_student()
+
+    monkeypatch.setattr(
+        loans_endpoints,
+        "check_token_rate_limit",
+        AsyncMock(
+            side_effect=HTTPException(status_code=429, detail="Too many requests")
+        ),
+    )
+
+    with client_with_overrides(_QueuedSession(student)) as client:
+        first = client.post(
+            f"/api/v1/loans/{uuid.uuid4()}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-rate-limit"),
+        )
+
+    assert first.status_code == 429
+
+    monkeypatch.setattr(
+        loans_endpoints,
+        "check_token_rate_limit",
+        AsyncMock(return_value=None),
+    )
+
+    locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    loan = _make_loan(
+        user_id=student.user_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="ACTIVE",
+        borrowed_at=datetime.now(UTC) - timedelta(minutes=2),
+    )
+    asset = _make_asset(asset_id=asset_id, locker_id=locker_id, asset_status="BORROWED")
+    locker = _make_locker(locker_id=locker_id, locker_status="AVAILABLE")
+    current_user_row = _make_student(user_id=student.user_id)
+
+    fake_db = _QueuedSession(
+        student,
+        loan,
+        asset,
+        locker,
+        current_user_row,
+        None,
+    )
+
+    with client_with_overrides(fake_db) as client:
+        second = client.post(
+            f"/api/v1/loans/{loan.loan_id}/report-damage",
+            headers=_with_idempotency(_bearer(student), "report-damage-rate-limit"),
+        )
+
+    assert second.status_code == 200
+    assert second.json()["loan_status"] == "DISPUTED"

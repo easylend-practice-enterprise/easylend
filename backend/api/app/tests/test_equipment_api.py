@@ -16,6 +16,7 @@ slot from the queue in FIFO order. Each test documents the exact slots used.
 
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -307,13 +308,19 @@ def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides
     assert response.json()["detail"] == "Kiosk not found."
 
 
-def test_update_kiosk_status_returns_200_and_mutates_status(client_with_overrides):
+def test_update_kiosk_status_returns_200_and_mutates_status(
+    client_with_overrides, monkeypatch
+):
     """PATCH /kiosks/{id}/status (admin) transitions kiosk to MAINTENANCE.
 
     DB execute order:
     [1] get_current_user  → admin
     [2] _get_kiosk_or_404 → kiosk
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     kiosk = _make_kiosk(kiosk_status="ONLINE")
 
@@ -329,6 +336,27 @@ def test_update_kiosk_status_returns_200_and_mutates_status(client_with_override
     assert response.json()["kiosk_status"] == "MAINTENANCE"
     assert kiosk.kiosk_status == "MAINTENANCE"  # mutated in-place
     assert fake_db.commit_calls == 1
+
+
+def test_update_kiosk_status_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    kiosk = _make_kiosk(kiosk_status="ONLINE")
+
+    fake_db = _QueuedSession(admin, kiosk)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/kiosks/{kiosk.kiosk_id}/status",
+            json={"kiosk_status": "ONLINE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -427,7 +455,7 @@ def test_get_locker_by_id_returns_200_for_admin(client_with_overrides):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_create_asset_returns_201_for_admin(client_with_overrides):
+def test_create_asset_returns_201_for_admin(client_with_overrides, monkeypatch):
     """POST /assets (admin) registers a new asset with category + locker.
 
     DB execute order:
@@ -435,6 +463,10 @@ def test_create_asset_returns_201_for_admin(client_with_overrides):
     [2] category_exists check → category_id (exists)
     [3] locker_exists check   → locker_id   (exists)
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     category_id = uuid.uuid4()
     locker_id = uuid.uuid4()
@@ -589,13 +621,19 @@ def test_get_asset_by_id_returns_404_for_unknown_asset(client_with_overrides):
     assert response.json()["detail"] == "Asset not found."
 
 
-def test_update_asset_returns_200_and_mutates_status(client_with_overrides):
+def test_update_asset_returns_200_and_mutates_status(
+    client_with_overrides, monkeypatch
+):
     """PATCH /assets/{id} (admin) changes asset_status to MAINTENANCE in-place.
 
     DB execute order:
     [1] get_current_user  → admin
     [2] _get_asset_or_404 → asset
     """
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     asset = _make_asset(asset_status="AVAILABLE")
 
@@ -611,6 +649,27 @@ def test_update_asset_returns_200_and_mutates_status(client_with_overrides):
     assert response.json()["asset_status"] == "MAINTENANCE"
     assert asset.asset_status == "MAINTENANCE"  # setattr mutated in-place
     assert fake_db.commit_calls == 1
+
+
+def test_update_asset_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    asset = _make_asset(asset_status="AVAILABLE")
+
+    fake_db = _QueuedSession(admin, asset)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/assets/{asset.asset_id}",
+            json={"asset_status": "AVAILABLE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
 
 
 def test_soft_delete_asset_returns_204_for_admin(client_with_overrides):
@@ -695,8 +754,14 @@ def test_list_lockers_returns_403_for_medewerker(client_with_overrides):
     assert response.status_code == 403
 
 
-def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
+def test_update_locker_status_returns_200_and_mutates(
+    client_with_overrides, monkeypatch
+):
     """PATCH /lockers/{id}/status correctly updates the status."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     locker = SimpleNamespace(
         locker_id=uuid.uuid4(),
@@ -713,6 +778,31 @@ def test_update_locker_status_returns_200_and_mutates(client_with_overrides):
         )
     assert response.status_code == 200
     assert response.json()["locker_status"] == "MAINTENANCE"
+
+
+def test_update_locker_status_skips_audit_when_status_is_unchanged(
+    client_with_overrides, monkeypatch
+):
+    audit_mock = AsyncMock()
+    monkeypatch.setattr("app.api.v1.endpoints.equipment.log_audit_event", audit_mock)
+
+    admin = _make_admin()
+    locker = SimpleNamespace(
+        locker_id=uuid.uuid4(),
+        kiosk_id=uuid.uuid4(),
+        logical_number=1,
+        locker_status="AVAILABLE",
+    )
+    fake_db = _QueuedSession(admin, locker)
+    with client_with_overrides(fake_db) as client:
+        response = client.patch(
+            f"/api/v1/lockers/{locker.locker_id}/status",
+            json={"locker_status": "AVAILABLE"},
+            headers=_bearer(admin),
+        )
+
+    assert response.status_code == 200
+    assert audit_mock.await_count == 0
 
 
 def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):

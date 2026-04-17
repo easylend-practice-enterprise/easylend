@@ -1,5 +1,5 @@
 flowchart TD
-    %% STIJLEN
+    %% STYLES
     classDef container fill:#bfdbfe,stroke:#3b82f6,stroke-width:2px,color:#000;
     classDef db fill:#fef08a,stroke:#eab308,stroke-width:2px,color:#000;
     classDef edge fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,color:#000;
@@ -13,7 +13,7 @@ flowchart TD
 
     subgraph Proxmox ["Proxmox VE Server (Hypervisor)"]
         direction TB
-        
+
         subgraph VM1 ["VM 1: Core Backend (Ubuntu)"]
             API["FastAPI REST & WSS<br/>(Docker Container)"]:::container
             DB[("PostgreSQL 17")]:::db
@@ -30,7 +30,7 @@ flowchart TD
     K <-->|"HTTPS / REST (JWT)"| API
     V <-->|"HTTP POST (Image) & WSS"| API
     S <-->|"HTTP / WSS"| API
-    
+
     API <-->|"Read / Write"| DB
     API <-->|"Pub / Sub + Token Whitelist"| REDIS
     API <-->|"POST Image / Get JSON"| YOLO

@@ -11,7 +11,7 @@ flowchart TD
         NFC[NFC Reader]:::hard
         CamTab["Tablet camera"]:::hard
         App["Android App (Flutter)"]:::soft
-        
+
         NFC -->|Badge ID| App
         CamTab -->|Aztec code| App
     end
@@ -21,10 +21,10 @@ flowchart TD
         direction TB
         API["FastAPI & WebSockets"]:::soft
         AIService["YOLO26 AI Service"]:::soft
-        PXE["PXE Live Boot Service"]:::soft
+        PXE["PXE Live Boot Service<br/>(Post-MVP (V2) - Outside current scope)"]:::soft
         DB[(PostgreSQL 17)]:::data
         Redis[(Redis Cache)]:::data
-        
+
         API <-->|"Query / Log"| DB
         API <-->|"Pub/Sub + Token Whitelist"| Redis
         API <-->|"Analyze Image"| AIService
@@ -38,7 +38,7 @@ flowchart TD
         CamBox[Camera]:::hard
         Lock["Electronic lock"]:::hard
         LED["LED Strip"]:::hard
-        
+
         CamBox -->|Photo| RPi
         RPi -->|"Open/Close"| Lock
         RPi -->|"Status signal"| LED
@@ -48,7 +48,7 @@ flowchart TD
     Sim["Digital Twin WebUI"]:::sim
 
     %% MAIN CONNECTIONS
-    
+
     %% Kiosk communicates with API
     App <-->|"HTTPS REST + Polling<br/>(JWT Auth)"| API
 

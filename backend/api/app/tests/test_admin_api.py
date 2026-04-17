@@ -294,7 +294,11 @@ def test_judge_approved_sets_loan_disputed_and_asset_maintenance(
         checkout_locker_id=locker_id,
         loan_status="PENDING_INSPECTION",
     )
-    asset = _make_asset(asset_id=asset_id, asset_status="PENDING_INSPECTION")
+    asset = _make_asset(
+        asset_id=asset_id,
+        asset_status="PENDING_INSPECTION",
+        locker_id=locker_id,
+    )
     locker = _make_locker(locker_id=locker_id, locker_status="MAINTENANCE")
 
     fake_db = _make_judge_session(admin, evaluation, loan, asset, locker)
@@ -353,7 +357,9 @@ def test_judge_rejected_checkout_reverts_to_active_and_borrowed(
     assert evaluation.is_approved is False
     assert evaluation.rejection_reason == "Locker was actually empty"
     assert loan.loan_status == "ACTIVE"
+    assert loan.borrowed_at is not None
     assert asset.asset_status == "BORROWED"
+    assert asset.locker_id is None
     assert locker.locker_status == "AVAILABLE"
     assert fake_db.commit_calls == 1
 

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 from redis.exceptions import RedisError
 
@@ -111,6 +112,7 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
     monkeypatch.setattr(
         auth_endpoints, "revoke_refresh_token", _mock_revoke_refresh_token
     )
+    monkeypatch.setattr(auth_endpoints, "log_audit_event", AsyncMock())
 
     user = build_user(pin="123456")
     fake_db = FakeAsyncSession(user)
@@ -173,6 +175,7 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     monkeypatch.setattr(
         auth_endpoints, "store_refresh_token", _mock_store_refresh_token
     )
+    monkeypatch.setattr(auth_endpoints, "log_audit_event", AsyncMock())
 
     user = build_user(pin="123456")
     fake_db = FakeAsyncSession(user)

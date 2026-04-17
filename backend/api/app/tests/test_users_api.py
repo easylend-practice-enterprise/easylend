@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from app.db.models import UserStatus
 from app.tests.conftest import _bearer, _make_admin, _make_medewerker, _QueuedSession
 
 # ─────────────────────────── 1. Unauthenticated → 401 ────────────────────────
@@ -84,7 +85,7 @@ def test_update_user_forbidden_for_non_admin(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.patch(
             f"/api/v1/users/{uuid.uuid4()}",
-            json={"is_active": False},
+            json={"status": UserStatus.INACTIVE},
             headers=_bearer(medewerker),
         )
     assert response.status_code == 403
@@ -197,9 +198,8 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
         nfc_tag_id=None,
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -278,9 +278,8 @@ def test_update_user_unblocks_locked_account(client_with_overrides):
         nfc_tag_id=None,
         failed_login_attempts=5,
         locked_until=datetime(2026, 1, 1, tzinfo=UTC),
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -311,16 +310,60 @@ def test_update_user_returns_404_for_unknown_user(client_with_overrides):
     with client_with_overrides(fake_db) as client:
         response = client.patch(
             f"/api/v1/users/{uuid.uuid4()}",
-            json={"is_active": False},
+            json={"status": UserStatus.INACTIVE},
             headers=_bearer(admin),
         )
     assert response.status_code == 404
 
 
+def test_update_user_status_change_logs_audit_event(client_with_overrides):
+    from unittest.mock import AsyncMock, patch
+
+    admin = _make_admin()
+    target_user = SimpleNamespace(
+        user_id=uuid.uuid4(),
+        role_id=uuid.uuid4(),
+        first_name="John",
+        last_name="Doe",
+        email="john@easylend.be",
+        nfc_tag_id=None,
+        pin_hash="hashed",
+        failed_login_attempts=0,
+        locked_until=None,
+        status=UserStatus.ACTIVE,
+        ban_reason=None,
+        accepted_privacy_policy=False,
+        role=SimpleNamespace(role_name="Student"),
+    )
+    # Queue order: admin, target_user (before mutations), target_user (after commit refetch)
+    fake_db = _QueuedSession(admin, target_user, target_user)
+    fake_audit_log = AsyncMock()
+    with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
+        with client_with_overrides(fake_db) as client:
+            response = client.patch(
+                f"/api/v1/users/{target_user.user_id}",
+                json={"status": UserStatus.BANNED},
+                headers=_bearer(admin),
+            )
+    assert response.status_code == 200
+    assert response.json()["status"] == UserStatus.BANNED
+    # Verify audit was called with correct arguments
+    assert fake_audit_log.call_count == 1
+    call_kwargs = fake_audit_log.call_args.kwargs
+    assert call_kwargs["action_type"] == "USER_STATUS_CHANGED"
+    assert call_kwargs["payload"]["old_status"] == UserStatus.ACTIVE
+    assert call_kwargs["payload"]["new_status"] == UserStatus.BANNED
+    assert call_kwargs["payload"]["target_user_id"] == str(target_user.user_id)
+
+
 # ─────────────────────────── 8. Admin: PATCH /{user_id}/nfc ──────────────────
 
 
-def test_update_user_nfc_links_new_tag(client_with_overrides):
+def test_update_user_nfc_links_new_tag(client_with_overrides, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.users.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     target_user = SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -331,9 +374,8 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
         nfc_tag_id=None,
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -355,7 +397,13 @@ def test_update_user_nfc_links_new_tag(client_with_overrides):
     assert fake_db.commit_calls == 1
 
 
-def test_update_user_nfc_returns_400_on_duplicate_tag(client_with_overrides):
+def test_update_user_nfc_returns_400_on_duplicate_tag(
+    client_with_overrides, monkeypatch
+):
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr("app.api.v1.endpoints.users.log_audit_event", AsyncMock())
+
     admin = _make_admin()
     target_user = SimpleNamespace(
         user_id=uuid.uuid4(),
@@ -366,9 +414,8 @@ def test_update_user_nfc_returns_400_on_duplicate_tag(client_with_overrides):
         nfc_tag_id=None,
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -403,9 +450,8 @@ def test_anonymize_user_success(client_with_overrides):
         pin_hash="real_hash",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -421,8 +467,7 @@ def test_anonymize_user_success(client_with_overrides):
                 "email",
                 "nfc_tag_id",
                 "pin_hash",
-                "is_active",
-                "is_anonymized",
+                "status",
                 "ban_reason",
                 "failed_login_attempts",
                 "locked_until",
@@ -434,38 +479,34 @@ def test_anonymize_user_success(client_with_overrides):
         email=f"anon_{uuid.uuid4()}@easylend.local",
         nfc_tag_id=None,
         pin_hash="ANONYMIZED",
-        is_active=False,
-        is_anonymized=True,
+        status=UserStatus.ANONYMIZED,
         ban_reason=None,
         failed_login_attempts=0,
         locked_until=None,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order (log_audit_event is NOT patched so its internals DO pop):
-    # [1] get_current_user                        → admin
-    # [2] _get_user_with_role_or_404              → target_user (mutated in-place)
-    # [3] FOR UPDATE on user row                  → target_user (same row, already in session)
-    # [4] active loans check                      → None (no active loans)
-    # [5] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
+    # [1] get_current_user                         → admin
+    # [2] FOR UPDATE on user row                   → target_user (mutated in-place)
+    # [3] active loans count                       → 0 (no active loans)
+    # [4] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
     #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log)
-    # [6] _get_user_with_role_or_404 after commit  → anonymized_user
+    # [5] _get_user_with_role_or_404 after commit  → anonymized_user
     fake_audit_chain = SimpleNamespace(current_hash="0" * 64)
-    fake_db = _QueuedSession(
-        admin, target_user, target_user, None, fake_audit_chain, anonymized_user
-    )
+    fake_db = _QueuedSession(admin, target_user, 0, fake_audit_chain, anonymized_user)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             f"/api/v1/users/{target_user.user_id}/anonymize",
             headers=_bearer(admin),
         )
     assert response.status_code == 200
-    assert response.json()["is_anonymized"] is True
+    assert response.json()["status"] == UserStatus.ANONYMIZED
     assert response.json()["first_name"] == "Anonymized"
     assert response.json()["last_name"] == "User"
     assert response.json()["email"].startswith("anon_")
     assert response.json()["email"].endswith("@easylend.local")
     assert response.json()["nfc_tag_id"] is None
-    assert response.json()["is_active"] is False
+    assert response.json()["status"] == UserStatus.ANONYMIZED
     # 1 commit: user mutations + audit log entry committed atomically together
     assert fake_db.commit_calls == 1
     assert any("AuditLog" in type(o).__name__ for o in fake_db.added)
@@ -483,15 +524,14 @@ def test_anonymize_user_returns_400_when_already_anonymized(client_with_override
         pin_hash="ANONYMIZED",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=False,
+        status=UserStatus.ANONYMIZED,
         ban_reason=None,
-        is_anonymized=True,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
     # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → already_anon (is_anonymized=True → 400)
+    # [2] _get_user_with_role_or_404  → already_anon (status=ANONYMIZED → 400)
     fake_db = _QueuedSession(admin, already_anon)
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -546,9 +586,8 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         pin_hash="real_hash",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=True,
+        status=UserStatus.ACTIVE,
         ban_reason=None,
-        is_anonymized=False,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
@@ -562,14 +601,13 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
         pin_hash="ANONYMIZED",
         failed_login_attempts=0,
         locked_until=None,
-        is_active=False,
+        status=UserStatus.ANONYMIZED,
         ban_reason=None,
-        is_anonymized=True,
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
 
-    # Patch _get_user_with_role_or_404 to return the right user at each call.
+    # Patch _get_user_with_role_or_404 which is called ONLY at the end after commit.
     _get_user_call = [0]
 
     async def _fake_get_user(db, uid):
@@ -581,11 +619,17 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     # Patch log_audit_event so its internal selects don't consume the queue.
     fake_audit_log = AsyncMock()
 
-    # Use a minimal queue that covers get_current_user + FOR UPDATE + active_loans calls.
-    # First attempt: get_current_user, FOR UPDATE, active_loans(1)
-    # Second attempt: FOR UPDATE, active_loans(2)
-    # log_audit_event is patched so its internals don't pop.
-    # Queue slots: get_current_user, FOR UPDATE(1), active_loans(1), FOR UPDATE(2), active_loans(2)
+    # The retry loop re-executes from the FOR UPDATE select (line 371),
+    # NOT from the start of the function. The endpoint structure is:
+    #   1. get_current_admin → db.execute (queue[0] = admin)
+    #   2. FOR UPDATE select → db.execute (queue[1] = target_user)
+    #   3. active loans count → db.execute (queue[2] = 0)
+    #   4. Retry loop attempt 1: log_audit_event (patched) + commit → IntegrityError + rollback
+    #   5. Retry loop attempt 2: same mutations + log_audit_event (patched) + commit → success
+    #   6. _get_user_with_role_or_404 after commit → patched to return anon_user
+    #
+    # The retry loop only retries the mutation block (lines 413-443),
+    # it does NOT re-execute the FOR UPDATE or active_loans queries.
     class _RetryCommitSession(_QueuedSession):
         def __init__(self, *items):
             super().__init__(*items)
@@ -595,7 +639,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
             if self.commit_calls == 1:
                 raise IntegrityError("stmt", "params", Exception("orig"))
 
-    fake_db = _RetryCommitSession(admin, None, None, None, None)
+    fake_db = _RetryCommitSession(admin, target_user, 0)
 
     with patch("app.api.v1.endpoints.users._get_user_with_role_or_404", _fake_get_user):
         with patch("app.api.v1.endpoints.users.log_audit_event", fake_audit_log):
@@ -606,10 +650,10 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
                 )
 
     assert response.status_code == 200, f"got {response.status_code}: {response.json()}"
-    assert response.json()["is_anonymized"] is True
+    assert response.json()["status"] == UserStatus.ANONYMIZED
     # log_audit_event called in both loop iterations (inside try block, before commit)
     assert fake_audit_log.call_count == 2
-    # 2 commits: first fails (IntegrityError → rollback), second succeeds (user mutations + audit log atomically)
+    # 2 commits: first fails (IntegrityError → rollback), second succeeds
     assert fake_db.commit_calls == 2
 
 

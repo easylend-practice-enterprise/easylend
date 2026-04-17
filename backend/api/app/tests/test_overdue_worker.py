@@ -245,6 +245,18 @@ async def test_process_overdue_loans_calls_process_for_each_batch_id():
     assert mock_proc.call_count == 2
 
 
+@pytest.mark.anyio
+async def test_process_overdue_delegates_to_process_overdue_loans():
+    import app.workers.overdue_worker as mod
+
+    mock_proc = AsyncMock(return_value=5)
+    with patch.object(mod, "process_overdue_loans", mock_proc):
+        processed = await mod.process_overdue()
+
+    assert processed == 5
+    mock_proc.assert_awaited_once_with()
+
+
 # ---------------------------------------------------------------------------
 # overdue_worker_loop (distributed lock)
 # ---------------------------------------------------------------------------

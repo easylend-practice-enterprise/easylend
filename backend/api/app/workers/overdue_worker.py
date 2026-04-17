@@ -8,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
 from app.core.redis_utils import acquire_distributed_lock
+from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import AsyncSessionLocal
 from app.db.models import Loan, LoanStatus
 
@@ -51,7 +52,18 @@ async def _process_single_loan(
         if loan.due_date is None or loan.due_date >= reference_now:
             return False
 
-        loan.loan_status = LoanStatus.OVERDUE
+        try:
+            transition = LoanStateMachine.transition(
+                loan.loan_status, LoanStatus.OVERDUE
+            )
+        except InvalidLoanTransitionError:
+            logger.warning(
+                "Skipping overdue transition due to illegal state for loan_id=%s",
+                loan.loan_id,
+            )
+            return False
+
+        loan.loan_status = transition.loan_status
         await log_audit_event(
             db,
             action_type="LOAN_OVERDUE",
@@ -83,14 +95,14 @@ async def process_overdue_loans(
     """
     reference_now = now or datetime.now(UTC)
     total_processed = 0
-    offset = 0
+    failed_ids: set[UUID] = set()
 
     while True:
         # Fetch a batch of overdue loan IDs only (no row lock held on this result).
         # Using yield_per would keep a cursor open — fetching IDs in small batches
         # achieves the same memory safety without cursor complexity.
         async with AsyncSessionLocal() as db:
-            result = await db.execute(
+            query = (
                 select(Loan.loan_id)
                 .where(
                     Loan.loan_status == LoanStatus.ACTIVE,
@@ -99,9 +111,12 @@ async def process_overdue_loans(
                     Loan.asset.has(is_deleted=False),
                 )
                 .order_by(Loan.due_date)
-                .offset(offset)
-                .limit(BATCH_SIZE)
             )
+
+            if failed_ids:
+                query = query.where(Loan.loan_id.not_in(failed_ids))
+
+            result = await db.execute(query.limit(BATCH_SIZE))
             batch_ids = list(result.scalars().all())
 
         if not batch_ids:
@@ -114,9 +129,8 @@ async def process_overdue_loans(
                     total_processed += 1
             except Exception:
                 logger.exception("Failed to process overdue loan_id=%s", loan_id)
+                failed_ids.add(loan_id)
                 # Continue to next loan — one failure must not stop the batch.
-
-        offset += BATCH_SIZE
 
     return total_processed
 
@@ -179,3 +193,12 @@ async def stop_overdue_worker(
         await task
     except asyncio.CancelledError:
         pass
+
+
+async def process_overdue() -> int:
+    """Run a single overdue-processing cycle."""
+    return await process_overdue_loans()
+
+
+if __name__ == "__main__":
+    asyncio.run(process_overdue())

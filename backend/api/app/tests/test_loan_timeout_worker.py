@@ -262,3 +262,15 @@ async def test_process_reserved_loan_timeouts_calls_process_for_each_batch_id():
 
     assert processed == 2
     assert mock_proc.call_count == 2
+
+
+@pytest.mark.anyio
+async def test_process_timeouts_delegates_to_process_reserved_loan_timeouts():
+    import app.workers.loan_timeout_worker as mod
+
+    mock_proc = AsyncMock(return_value=7)
+    with patch.object(mod, "process_reserved_loan_timeouts", mock_proc):
+        processed = await mod.process_timeouts()
+
+    assert processed == 7
+    mock_proc.assert_awaited_once_with()

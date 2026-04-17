@@ -2,6 +2,7 @@ sequenceDiagram
     actor User as User
     participant App as Kiosk App (Flutter)
     participant API as FastAPI Backend
+    participant FSM as LoanStateMachine
     participant DB as PostgreSQL
     participant VB as Vision Box (RPi 4)
     participant AI as Vision AI Service (yolo26-dual-model)
@@ -39,12 +40,16 @@ sequenceDiagram
                         App-->>User: "Locker currently out of service"
                     else Vision Box online
                         %% State mutations applied immediately
-                        Note over API,DB: asset_status → BORROWED (physical release deferred until Vision)
-                        API->>DB: UPDATE assets SET asset_status = 'BORROWED'
-                        API->>DB: INSERT INTO loans {loan_status: 'RESERVED', reserved_at: NOW()}
+                        Note over API,FSM: Centralized transition authority for reservation
+                        API->>FSM: apply_transition(loan, asset, locker, RESERVED)
+                        FSM-->>API: loan_status='RESERVED', asset_status='BORROWED'
+                        API->>DB: INSERT INTO loans {reserved_at: NOW(), checkout_locker_id, status from FSM}
+                        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_INITIATED', payload: {loan_id, asset_id, locker_id}}
 
-                        %% Hardware command sent BEFORE DB commit
-                        Note over API,VB: DB committed AFTER send&#59; hardware failure leaves RESERVED loan for timeout worker
+                        %% Hardware command sent AFTER DB commit
+                        Note over API,VB: DB committed BEFORE send&#59; hardware failure leaves RESERVED loan for timeout worker
+                        API->>DB: COMMIT
+
                         Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                         API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
@@ -52,7 +57,6 @@ sequenceDiagram
                             API-->>App: 503 Service Unavailable
                             Note over API: RESERVED loan left in DB&#59; timeout worker will clean up
                         else Hardware command accepted
-                            API->>DB: COMMIT
                             API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
                             App-->>User: Show loader: "Go to locker #N"
                         end
@@ -82,23 +86,27 @@ sequenceDiagram
     Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
     alt Locker NOT empty (fraud / item not taken)
-        API->>DB: UPDATE loans SET loan_status = 'FRAUD_SUSPECTED' WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE' WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'OCCUPIED' WHERE locker_id = ?
+        API->>FSM: apply_transition(loan, asset, locker, FRAUD_SUSPECTED)
+        FSM-->>API: loan_status='FRAUD_SUSPECTED', asset_status='AVAILABLE', locker_status='OCCUPIED'
+        API->>DB: UPDATE assets SET locker_id = <checkout_locker_id> WHERE asset_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_FRAUD', payload: {loan_id, asset_id, locker_id}}
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: red}
     else Locker empty + No damage (success)
-        API->>DB: UPDATE loans SET loan_status = 'ACTIVE', borrowed_at = NOW() WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'AVAILABLE', locker_id = NULL WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'AVAILABLE' WHERE locker_id = ?
+        API->>FSM: apply_transition(loan, asset, locker, ACTIVE)
+        FSM-->>API: loan_status='ACTIVE', asset_status='BORROWED', locker_status='AVAILABLE'
+        API->>DB: UPDATE loans SET borrowed_at = NOW() WHERE loan_id = ?
+        API->>DB: UPDATE assets SET locker_id = NULL WHERE asset_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_CONFIRMED', payload: {loan_id, asset_id, locker_id}}
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: green}
     else AI service error / model crash
-        API->>DB: UPDATE loans SET loan_status = 'PENDING_INSPECTION' WHERE loan_id = ?
-        API->>DB: UPDATE assets SET asset_status = 'PENDING_INSPECTION', locker_id = <checkout_locker_id> WHERE asset_id = ?
-        API->>DB: UPDATE lockers SET locker_status = 'MAINTENANCE' WHERE locker_id = ?
+        Note over API,DB: Failure fallback transition is applied only after Loan/Asset/Locker locks are held
+        API->>FSM: apply_transition(loan, asset, locker, PENDING_INSPECTION)
+        FSM-->>API: loan_status='PENDING_INSPECTION', asset_status='PENDING_INSPECTION', locker_status='MAINTENANCE'
+        API->>DB: UPDATE assets SET locker_id = <checkout_locker_id> WHERE asset_id = ?
         API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
         Note over API,VB: locker_id in WSS = logical_number (physical slot int)
         API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
