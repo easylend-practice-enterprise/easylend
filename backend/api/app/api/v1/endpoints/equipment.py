@@ -567,16 +567,12 @@ async def force_open_locker(
             },
         )
         if not command_ok:
-            logger.warning(
+            logger.error(
                 "Hardware command failed after DB commit for admin forced open locker=%s.",
                 locker_id,
             )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Vision Box for this kiosk is currently offline. Cannot open locker.",
-            )
 
-        return {"detail": "Locker opened successfully."}
+        return {"detail": "Force open command initiated."}
     except HTTPException:
         if not db_committed:
             await release_idempotency_key(idempotency_key)
