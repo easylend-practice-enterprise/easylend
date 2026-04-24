@@ -79,8 +79,8 @@ erDiagram
         timestamp returned_at "Nullable"
         enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
-    %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
-    %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
+    %% (*) RETURNING is a pre-vision mutex set by POST /api/v1/loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /api/v1/vision/analyze
     %%     (409 if loan_status != RETURNING for a RETURN evaluation).
 
     AI_EVALUATIONS {

@@ -115,7 +115,7 @@ flowchart TD
 
 ## 2. Security & Core Principles
 
-* **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **rate-limited to 500 req/min per IP (Layer 2)**. `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `/api/v1/vision/analyze` and `/ws/visionbox/{kiosk_id}`. The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
+* **Zero-Trust Authentication:** In V1, virtually all endpoints require a valid Bearer JWT. There are **exactly four** auth endpoints that do not require a Bearer JWT header: `POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. The first two are required for the login flow and are **rate-limited to 500 req/min per IP (Layer 2)**. `refresh` and `logout` validate the token from the JSON body. Hardware communication is additionally protected with `X-Device-Token` and static API keys from `.env` (`VISION_BOX_API_KEY`, `SIMULATION_API_KEY`) and is enforced on both `POST /api/v1/vision/analyze` and websocket connections at `wss://<host>/api/v1/ws/visionbox/{kiosk_id}` (backend route: `/ws/visionbox/{kiosk_id}`). The Vision microservice can push updated model URLs via `POST /api/v1/vision/update-model` (also `X-Device-Token` protected).
 * **Role Management:** Admins can enumerate available system roles via `GET /api/v1/roles` (Bearer JWT required).
 * **Cryptographic Audit Trail:** All critical transactions (`LOGIN_SUCCESS`, `LOGIN_FAILED`, `USER_STATUS_CHANGED`, `USER_PIN_CHANGED`, `USER_NFC_ASSIGNED`, `USER_ANONYMIZED`, `KIOSK_STATUS_CHANGED`, `LOCKER_STATUS_CHANGED`, `ASSET_CREATED`, `ASSET_STATUS_CHANGED`, `ASSET_SOFT_DELETED`, `LOAN_CHECKOUT_INITIATED`, `LOAN_RETURN_INITIATED`, `LOAN_CHECKOUT_CONFIRMED`, `LOAN_CHECKOUT_FRAUD`, `LOAN_RETURN_CONFIRMED`, `GRACE_PERIOD_DAMAGE_REPORTED`, `VISION_EVALUATION_PROCESSED`, `VISION_EVALUATION_FAILED`, `ADMIN_FORCED_OPEN`, `EVALUATION_APPROVED`, `EVALUATION_REJECTED`, `LOAN_RESERVED_TIMEOUT`, `LOAN_OVERDUE`) are stored in `AUDIT_LOGS`. Each row contains a `current_hash` based on the payload and the `previous_hash` of the previous row (SHA-256, 64-char hex), making the database *tamper-proof*. Integrity is verifiable via `GET /api/v1/audit/verify` (hash-chain check).
 * **Rate Limiting (Step 12):** Three-layer hybrid approach using Redis:
@@ -145,9 +145,11 @@ The deterministic lock policy for damage/report and similar multi-entity flows i
 
 * `Loan → Asset → Locker → Users`
 
-All row locks are non-blocking and fail-fast:
+Locking strategy by flow:
 
-* `SELECT ... FOR UPDATE NOWAIT`
+* Checkout uses fail-fast row locks (`SELECT ... FOR UPDATE NOWAIT`) on asset/locker resources.
+* Return locker allocation uses `SELECT ... FOR UPDATE SKIP LOCKED` to pick the first available locker without blocking concurrent return requests.
+* Other deterministic transition paths (for example, `vision/analyze` finalization and report-damage) keep fail-fast lock acquisition where required by conflict semantics.
 
 If any lock cannot be acquired, the endpoint returns a conflict response immediately. This avoids lock convoying and reduces deadlock risk in concurrent kiosk traffic.
 
@@ -157,6 +159,8 @@ Hardware operations are post-transaction side effects.
 
 * Rule: hardware commands execute only after `await db.commit()`.
 * This prevents hardware/database split-brain where a locker is physically actuated while the database state remains uncommitted or rolled back.
+* `POST /api/v1/loans/checkout` and `POST /api/v1/loans/return/initiate` return `202 Accepted` immediately after commit, even if the post-commit `open_slot` command fails.
+* The kiosk must poll `GET /api/v1/loans/{loan_id}/status` as the only authoritative channel for hardware/AI outcomes.
 * On post-commit hardware failures, the database remains the source of truth; the system logs the failure and handles recovery operationally.
 
 ## 3. Database Architecture & Data Model (ERD)
@@ -257,8 +261,8 @@ erDiagram
         timestamp returned_at "Nullable"
         enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
     }
-    %% (*) RETURNING is a pre-vision mutex set by POST /loans/return/initiate.
-    %%     It prevents duplicate return initiations and is enforced by POST /vision/analyze
+    %% (*) RETURNING is a pre-vision mutex set by POST /api/v1/loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /api/v1/vision/analyze
     %%     (409 if loan_status != RETURNING for a RETURN evaluation).
 
     AI_EVALUATIONS {

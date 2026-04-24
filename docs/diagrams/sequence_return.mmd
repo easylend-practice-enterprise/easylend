@@ -36,8 +36,8 @@ sequenceDiagram
                 else Loan found & Owner matches
                     API->>DB: BEGIN TRANSACTION
 
-                    %% Atomic state-transition lock (NOWAIT)
-                    API->>DB: SELECT loan WHERE loan_id = ? AND loan_status = 'ACTIVE' AND return_locker_id IS NULL FOR UPDATE NOWAIT
+                    %% Atomic state-transition guard on the active loan row
+                    API->>DB: SELECT loan WHERE loan_id = ? AND loan_status = 'ACTIVE' AND return_locker_id IS NULL FOR UPDATE
                     alt Loan lock contention
                         API-->>App: 409 Conflict {"A return is already in progress"}
                     else Loan state changed concurrently
@@ -55,17 +55,18 @@ sequenceDiagram
                             API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_INITIATED', payload: {loan_id, asset_id, return_locker_id}}
 
                             %% Hardware command sent AFTER DB commit
-                            Note over API,VB: DB committed BEFORE send, hardware failure leaves RETURNING loan for cleanup
+                            Note over API,VB: DB committed BEFORE send&#59; command outcome does not change endpoint response
                             API->>DB: COMMIT
 
                             Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                             API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: RETURN}
 
-                            alt Hardware command failed / timeout
-                                API-->>App: 503 Service Unavailable
-                                Note over API: RETURNING loan left in DB&#59; timeout worker will clean up
+                            alt Hardware command failed / timeout (post-commit)
+                                Note over API,App: API still returns 202 because commit already succeeded&#59; polling determines final outcome
+                                API-->>App: 202 Accepted {loan_id, return_locker_id, loan_status: RETURNING}
+                                App-->>User: Show loader: "Confirming locker action..."
                             else Hardware command accepted
-                                API-->>App: 202 Accepted {loan_id, return_locker_id, locker_number}
+                                API-->>App: 202 Accepted {loan_id, return_locker_id, loan_status: RETURNING}
                                 App-->>User: Show loader: "Bring item to locker #N"
                             end
                         end
@@ -77,10 +78,11 @@ sequenceDiagram
 
     VB->>VB: GPIO: open slot + LED green
     User->>VB: Places item in locker, closes door
+    VB->>API: WSS: slot_closed {event: "slot_closed", locker_id: "<logical_number>"}
+    Note over API: slot_closed is logged only (no transactional state change)
 
     %% Vision Box triggers AI analysis (M2M, no JWT)
-    Note over VB,AI: Vision Box captures image and sends to API, no slot_closed event processing on API side
-    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, type: RETURN}
+    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, evaluation_type: RETURN}
 
     %% Vision AI analysis with parallel Phase 1 (no row locks held during AI call)
     par Object Detection (Phase 1 of 2)
@@ -91,7 +93,7 @@ sequenceDiagram
         AI-->>API: {has_damage_detected}
     end
 
-    Note over API,DB: After AI: Loan → Asset → Locker locks acquired NOWAIT (deterministic order to avoid deadlocks)
+    Note over API,DB: After AI: deterministic Loan → Asset → Locker lock order during finalization
     Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
     alt Locker empty OR Damage detected
@@ -121,12 +123,15 @@ sequenceDiagram
         API->>VB: WSS: set_led {locker_id: logical_number, color: green}
     end
 
-    Note over App,API: App polls the API every ~3 sec for a status update
+    Note over App,API: Polling GET /api/v1/loans/{loan_id}/status is the only authoritative client signal for hardware/AI outcomes
     App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
-    alt loan_status is PENDING_INSPECTION
-        API-->>App: 200 OK {status: PENDING_INSPECTION}
+    alt loan_status is RETURNING
+        API-->>App: 200 OK {loan_status: RETURNING}
+        App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+    else loan_status is PENDING_INSPECTION
+        API-->>App: 200 OK {loan_status: PENDING_INSPECTION}
         App-->>User: "Damage detected. Administrator has been notified."
     else loan_status is COMPLETED
-        API-->>App: 200 OK {status: COMPLETED}
+        API-->>App: 200 OK {loan_status: COMPLETED}
         App-->>User: "Item successfully returned!"
     end

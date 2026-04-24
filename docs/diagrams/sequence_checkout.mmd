@@ -47,17 +47,18 @@ sequenceDiagram
                         API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_INITIATED', payload: {loan_id, asset_id, locker_id}}
 
                         %% Hardware command sent AFTER DB commit
-                        Note over API,VB: DB committed BEFORE send&#59; hardware failure leaves RESERVED loan for timeout worker
+                        Note over API,VB: DB committed BEFORE send&#59; command outcome does not change HTTP response from this endpoint
                         API->>DB: COMMIT
 
                         Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                         API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
-                        alt Hardware command failed / timeout
-                            API-->>App: 503 Service Unavailable
-                            Note over API: RESERVED loan left in DB&#59; timeout worker will clean up
+                        alt Hardware command failed / timeout (post-commit)
+                            Note over API,App: API still returns 202 because commit already succeeded&#59; polling decides user-visible outcome
+                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, loan_status: RESERVED}
+                            App-->>User: Show loader: "Confirming locker action..."
                         else Hardware command accepted
-                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, status: RESERVED}
+                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, loan_status: RESERVED}
                             App-->>User: Show loader: "Go to locker #N"
                         end
                     end
@@ -68,10 +69,11 @@ sequenceDiagram
 
     VB->>VB: GPIO: open slot + LED green
     User->>VB: Takes item from locker, closes door
+    VB->>API: WSS: slot_closed {event: "slot_closed", locker_id: "<logical_number>"}
+    Note over API: slot_closed is logged only (no transactional state change)
 
     %% Vision Box triggers AI analysis (M2M, no JWT)
-    Note over VB,AI: Vision Box captures image and sends to API&#59; no slot_closed event processing on API side
-    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, type: CHECKOUT}
+    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, evaluation_type: CHECKOUT}
 
     %% Phase 2: Vision AI analysis (row locks acquired AFTER analysis)
     par Object Detection (Phase 1 of 2)
@@ -113,15 +115,18 @@ sequenceDiagram
         Note over API,DB: Loan stays PENDING_INSPECTION&#59; timeout worker also monitors RESERVED loans
     end
 
-    Note over App,API: App polls the API every ~3 sec for a status update
+    Note over App,API: Polling GET /api/v1/loans/{loan_id}/status is the only authoritative client signal for hardware/AI outcomes
     App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
-    alt loan_status is FRAUD_SUSPECTED
-        API-->>App: 200 OK {status: FRAUD_SUSPECTED}
+    alt loan_status is RESERVED
+        API-->>App: 200 OK {loan_status: RESERVED}
+        App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+    else loan_status is FRAUD_SUSPECTED
+        API-->>App: 200 OK {loan_status: FRAUD_SUSPECTED}
         App-->>User: "Error: item not taken."
     else loan_status is ACTIVE
-        API-->>App: 200 OK {status: ACTIVE}
+        API-->>App: 200 OK {loan_status: ACTIVE}
         App-->>User: "Good luck! Return the item on time."
     else loan_status is PENDING_INSPECTION
-        API-->>App: 200 OK {status: PENDING_INSPECTION}
+        API-->>App: 200 OK {loan_status: PENDING_INSPECTION}
         App-->>User: "System error. Administrator has been notified."
     end
