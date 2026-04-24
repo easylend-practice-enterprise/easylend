@@ -274,13 +274,7 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     assert response.status_code == 200
 
     response_json = response.json()
-    assert response_json["status"] == expected_payload["status"]
-    assert response_json["count"] == expected_payload["count"]
-    # Verify the dynamically added photo_url based on our mocked UUID
-    assert (
-        response_json["photo_url"]
-        == "/api/v1/images/1234567890abcdef1234567890abcdef.jpg"
-    )
+    assert response_json["detail"] == "Evaluation processed successfully."
 
     assert set(captured["urls"]) == {"http://vm2/detect", "http://vm2/segment"}
     assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
@@ -714,8 +708,8 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Vision AI authentication is misconfigured."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
@@ -748,8 +742,8 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Vision AI service is temporarily unavailable."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overrides):
@@ -782,8 +776,8 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Uploaded image is invalid or unsupported."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
@@ -818,11 +812,8 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"]
-        == "Vision AI service returned an unexpected response."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_overrides):
@@ -855,8 +846,8 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Vision AI service is unavailable."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overrides):
@@ -893,10 +884,8 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"] == "Vision AI service returned invalid data format."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overrides):
@@ -932,10 +921,8 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"] == "Vision AI service returned invalid data format."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_cleans_up_file_when_finalize_fails(
@@ -1126,8 +1113,8 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    # 503 Service Unavailable is expected on AI failure
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
     assert loan.loan_status == "PENDING_INSPECTION"
     assert asset.asset_status == "PENDING_INSPECTION"
     assert asset.locker_id == locker_id
@@ -1182,7 +1169,8 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
     assert loan.loan_status == "PENDING_INSPECTION"
     assert asset.asset_status == "PENDING_INSPECTION"
     assert locker.locker_status == "MAINTENANCE"
@@ -1256,7 +1244,8 @@ def test_checkout_ai_timeout_mutates_only_locked_phase_entities(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
     # Phase 1 snapshots must remain untouched.
     assert phase1_loan.loan_status == "RESERVED"

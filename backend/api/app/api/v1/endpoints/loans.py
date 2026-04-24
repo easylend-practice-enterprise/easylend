@@ -8,8 +8,8 @@ Business rules (Step 10a, hardware-free path):
   - Admins see all loans.
   - Checkout uses SELECT … FOR UPDATE NOWAIT to prevent concurrent
     double-assignment of the same asset (409 on lock contention).
-    - Return/initiate uses SELECT … FOR UPDATE NOWAIT to fail fast when
-        a candidate locker is currently being processed by another request.
+        - Return/initiate uses SELECT … FOR UPDATE SKIP LOCKED so locked
+                candidate lockers are skipped and the first available locker is chosen.
 """
 
 import logging
@@ -793,27 +793,16 @@ async def return_initiate(
         loan = locked_loan
 
         # --- 2. Find and lock a free locker at this kiosk (SKIP LOCKED) ---
-        try:
-            locker_result = await db.execute(
-                select(Locker)
-                .where(
-                    Locker.kiosk_id == payload.kiosk_id,
-                    Locker.locker_status == LockerStatus.AVAILABLE,
-                )
-                .order_by(Locker.logical_number)
-                .limit(1)
-                .with_for_update(skip_locked=True)
+        locker_result = await db.execute(
+            select(Locker)
+            .where(
+                Locker.kiosk_id == payload.kiosk_id,
+                Locker.locker_status == LockerStatus.AVAILABLE,
             )
-        except OperationalError as exc:
-            if is_lock_not_available_error(exc):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Locker is currently being processed. Please try again shortly.",
-                )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="A database error occurred.",
-            ) from exc
+            .order_by(Locker.logical_number)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
         locker = locker_result.scalar_one_or_none()
 
         if locker is None:

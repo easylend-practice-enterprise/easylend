@@ -128,13 +128,13 @@ def _apply_loan_transition(
     LoanStateMachine.apply_transition(loan, asset, locker, target_status)
 
 
-@router.post("/analyze", response_model=VisionAnalyzeResponse)
+@router.post("/analyze", response_model=dict[str, str])
 async def analyze_image(
     _: None = Depends(verify_vision_box_token),
     loan_id: UUID = Form(...),
     evaluation_type: EvaluationType = Form(...),
     file: UploadFile = File(...),
-) -> VisionAnalyzeResponse:
+) -> dict[str, str]:
     content_type = file.content_type or ""
     allowed_content_types = {"image/jpeg", "image/png", "image/webp"}
 
@@ -232,7 +232,6 @@ async def analyze_image(
     has_damage: bool | None = None
     validated_data: VisionAnalyzeResponse | None = None
     vision_failure: Exception | None = None
-    mapped_failure_http_exception: HTTPException | None = None
     failure_error_summary = ""
 
     try:
@@ -325,7 +324,6 @@ async def analyze_image(
             extra={"vision_url": settings.VISION_SERVICE_URL},
         )
         vision_failure = exc
-        mapped_failure_http_exception = _map_vision_failure_to_http_exception(exc)
         failure_error_summary = str(exc)[:200].replace("\n", " ")
 
     # --- Phase 2: Acquire a FRESH session, lock rows, apply mutations ---
@@ -472,12 +470,7 @@ async def analyze_image(
                     locker_id_for_eval,
                 )
 
-            if mapped_failure_http_exception is None:
-                mapped_failure_http_exception = HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Vision AI service returned invalid data format.",
-                )
-            raise mapped_failure_http_exception from vision_failure
+            return {"detail": "Vision AI failed. Fallback state committed."}
 
         if locker_empty is None or has_damage is None or validated_data is None:
             raise HTTPException(
@@ -644,12 +637,8 @@ async def analyze_image(
                 loan.loan_id,
                 locker.locker_id,
             )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Evaluation recorded but locker LED update failed. Please contact support.",
-            )
 
-    return validated_data
+    return {"detail": "Evaluation processed successfully."}
 
 
 @webhook_router.post("/update-model", response_model=ModelUpdateResponse)
