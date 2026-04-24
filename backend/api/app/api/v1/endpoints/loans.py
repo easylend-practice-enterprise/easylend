@@ -373,10 +373,6 @@ async def checkout(
                 "Hardware command failed after DB commit for checkout loan=%s.",
                 loan.loan_id,
             )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to initiate checkout: kiosk hardware unavailable. Please try again.",
-            )
 
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
@@ -878,10 +874,6 @@ async def return_initiate(
             logger.warning(
                 "Hardware command failed after DB commit for return loan=%s.",
                 loan.loan_id,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Unable to initiate return: kiosk hardware unavailable. Please try again.",
             )
 
         return LoanPublicResponse.model_validate(loan)

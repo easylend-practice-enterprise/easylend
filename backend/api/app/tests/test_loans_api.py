@@ -445,11 +445,12 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     assert fake_db.commit_calls == 1
 
 
-def test_checkout_returns_503_when_manager_send_command_returns_false(
+def test_checkout_returns_202_when_manager_send_command_returns_false(
     monkeypatch, client_with_overrides
 ):
     """If the WebSocket manager fails to send the `open_slot` command,
-    the checkout should commit the DB state first, then return 503.
+    the checkout should commit the DB state first, then still return 202
+    with the created loan payload.
     The RESERVED loan remains in the database; the timeout worker will clean it up.
     """
     student = _make_student()
@@ -469,21 +470,23 @@ def test_checkout_returns_503_when_manager_send_command_returns_false(
             headers=_with_idempotency(_bearer(student), "checkout-sendcmd-fails"),
         )
 
-    assert response.status_code == 503
-    assert (
-        response.json()["detail"]
-        == "Unable to initiate checkout: kiosk hardware unavailable. Please try again."
-    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["loan_id"]
+    assert data["loan_status"] == "RESERVED"
+    assert data["asset_id"] == str(asset.asset_id)
+    assert data["checkout_locker_id"] == str(locker_id)
     # DB is committed first so the loan record is durable; no rollback occurs.
     assert fake_db.commit_calls == 1
     assert fake_db.rollback_calls == 0
 
 
-def test_return_initiate_returns_503_when_manager_send_command_returns_false(
+def test_return_initiate_returns_202_when_manager_send_command_returns_false(
     monkeypatch, client_with_overrides
 ):
     """If the WebSocket manager fails to send the `open_slot` command,
-    the return initiation should commit the DB state first, then return 503.
+    the return initiation should commit the DB state first, then still return 202
+    with the updated loan payload.
     The RETURNING loan remains in the database; the timeout worker will clean it up.
     """
     student = _make_student()
@@ -507,11 +510,11 @@ def test_return_initiate_returns_503_when_manager_send_command_returns_false(
             headers=_with_idempotency(_bearer(student), "return-sendcmd-fails"),
         )
 
-    assert response.status_code == 503
-    assert (
-        response.json()["detail"]
-        == "Unable to initiate return: kiosk hardware unavailable. Please try again."
-    )
+    assert response.status_code == 202
+    data = response.json()
+    assert data["loan_id"] == str(active_loan.loan_id)
+    assert data["loan_status"] == "RETURNING"
+    assert data["return_locker_id"] == str(free_locker.locker_id)
     # DB is committed first so the loan record is durable; no rollback occurs.
     assert fake_db.commit_calls == 1
     assert fake_db.rollback_calls == 0
