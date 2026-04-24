@@ -45,8 +45,7 @@ services:
         condition: service_started
     environment:
       <<: *backend-env
-    command: >
-      sh -c "while true; do python -m app.workers.loan_timeout_worker; sleep 60; done"
+    command: python -m app.workers.loan_timeout_worker
     mem_limit: 512m
     networks:
       - backend-net
@@ -64,8 +63,7 @@ services:
         condition: service_started
     environment:
       <<: *backend-env
-    command: >
-      sh -c "while true; do python -m app.workers.overdue_worker; sleep 3600; done"
+    command: python -m app.workers.overdue_worker
     mem_limit: 512m
     networks:
       - backend-net

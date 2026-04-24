@@ -248,7 +248,7 @@ class ConnectionManager:
             return
 
         self.active_connections.pop(kiosk_id, None)
-        await self._clear_presence(kiosk_id)
+        # Do not explicitly clear presence here; let the Redis TTL expire to prevent multi-instance race conditions.
 
         presence_task = self._presence_tasks.pop(kiosk_id, None)
         command_task = self._command_tasks.pop(kiosk_id, None)
