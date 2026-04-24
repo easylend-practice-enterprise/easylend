@@ -796,7 +796,7 @@ async def return_initiate(
             )
         loan = locked_loan
 
-        # --- 2. Find and lock a free locker at this kiosk (NOWAIT) ---
+        # --- 2. Find and lock a free locker at this kiosk (SKIP LOCKED) ---
         try:
             locker_result = await db.execute(
                 select(Locker)
@@ -806,7 +806,7 @@ async def return_initiate(
                 )
                 .order_by(Locker.logical_number)
                 .limit(1)
-                .with_for_update(nowait=True)
+                .with_for_update(skip_locked=True)
             )
         except OperationalError as exc:
             if is_lock_not_available_error(exc):

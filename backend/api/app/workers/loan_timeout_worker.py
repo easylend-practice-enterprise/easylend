@@ -251,4 +251,4 @@ async def process_timeouts() -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(process_timeouts())
+    asyncio.run(reserved_loan_timeout_worker_loop(asyncio.Event()))

@@ -201,4 +201,4 @@ async def process_overdue() -> int:
 
 
 if __name__ == "__main__":
-    asyncio.run(process_overdue())
+    asyncio.run(overdue_worker_loop(asyncio.Event()))

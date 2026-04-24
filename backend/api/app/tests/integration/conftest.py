@@ -247,17 +247,17 @@ def patch_redis_client_references(
 
 
 @pytest.fixture(autouse=True)
-def reset_integration_state(
+async def reset_integration_state(
     integration_session_maker: async_sessionmaker[AsyncSession],
     integration_redis_client: Redis,
-) -> Iterator[None]:
-    _run(_truncate_public_tables(integration_session_maker))
-    _run(integration_redis_client.flushdb())
+) -> AsyncIterator[None]:
+    await _truncate_public_tables(integration_session_maker)
+    await integration_redis_client.flushdb()
 
     try:
         yield
     finally:
-        _run(integration_redis_client.flushdb())
+        await integration_redis_client.flushdb()
 
 
 @pytest.fixture(scope="session")
