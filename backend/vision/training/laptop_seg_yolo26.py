@@ -18,7 +18,7 @@ def main():
         epochs=100,
         imgsz=640,
         device=0,
-        name="yolo26m-seg_laptop_damage_detection",
+        name="yolo26m-seg_laptop_damage_detectionv3-100-e",
         project=str(VISION_ROOT / "runs" / "laptop-damage-detection"),
     )
 

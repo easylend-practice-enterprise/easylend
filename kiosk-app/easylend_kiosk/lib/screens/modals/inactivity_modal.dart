@@ -1,21 +1,60 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../theme.dart';
 
-class InactivityModal extends StatelessWidget {
+class InactivityModal extends StatefulWidget {
   final VoidCallback onStay;
   final VoidCallback onLogout;
+  final int timeoutSeconds;
+
   const InactivityModal({
     super.key,
     required this.onStay,
     required this.onLogout,
+    this.timeoutSeconds = 30,
   });
+
+  @override
+  State<InactivityModal> createState() => _InactivityModalState();
+}
+
+class _InactivityModalState extends State<InactivityModal> {
+  late int _secondsRemaining;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _secondsRemaining = widget.timeoutSeconds;
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_secondsRemaining > 0) {
+          _secondsRemaining--;
+        } else {
+          _timer?.cancel();
+          widget.onLogout();
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String get _paddedSeconds => _secondsRemaining.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? AppColors.surface
-          : AppColors.background,
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: SizedBox(
         width: 360,
@@ -33,33 +72,39 @@ class InactivityModal extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(
-                    child: _TimeBox(value: '00', label: 'Hours'),
-                  ),
+                  Expanded(child: _TimeBox(value: '00', label: 'Hours')),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: _TimeBox(value: '00', label: 'Minutes'),
-                  ),
+                  Expanded(child: _TimeBox(value: '00', label: 'Minutes')),
                   const SizedBox(width: 8),
-                  Expanded(
-                    child: _TimeBox(value: '30', label: 'Seconds'),
-                  ),
+                  Expanded(child: _TimeBox(value: _paddedSeconds, label: 'Seconds')),
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(
-                'For your security, you will be automatically logged out in 30 seconds due to inactivity.',
+              Text(
+                'For your security, you will be automatically logged out in $_secondsRemaining seconds due to inactivity.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: onStay,
-                child: const Text('Stay Logged In'),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    _timer?.cancel();
+                    widget.onStay();
+                  },
+                  child: const Text('Stay Logged In'),
+                ),
               ),
               const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: onLogout,
-                child: const Text('Logout Now'),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    _timer?.cancel();
+                    widget.onLogout();
+                  },
+                  child: const Text('Logout Now'),
+                ),
               ),
             ],
           ),
@@ -72,6 +117,7 @@ class InactivityModal extends StatelessWidget {
 class _TimeBox extends StatelessWidget {
   final String value;
   final String label;
+
   const _TimeBox({required this.value, required this.label});
 
   @override
@@ -87,7 +133,11 @@ class _TimeBox extends StatelessWidget {
           child: Center(
             child: Text(
               value,
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.text,
+              ),
             ),
           ),
         ),
