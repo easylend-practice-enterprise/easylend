@@ -17,7 +17,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     role_id: UUID
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
     accepted_privacy_policy: bool = Field(default=False)
 
 
@@ -29,7 +29,9 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = Field(default=None, max_length=255)
     nfc_tag_id: str | None = Field(default=None, max_length=100)
     role_id: UUID | None = None
-    pin: str | None = Field(default=None, min_length=4, max_length=32)
+    pin: str | None = Field(
+        default=None, min_length=6, max_length=6, pattern=r"^\d{6}$"
+    )
     failed_login_attempts: int | None = Field(default=None, ge=0)
     locked_until: datetime | None = None
     status: UserStatus | None = None

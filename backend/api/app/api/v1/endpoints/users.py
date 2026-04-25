@@ -174,21 +174,24 @@ async def create_user(
         )
 
     if payload.nfc_tag_id is not None:
+        hashed_nfc = security.hash_nfc_tag(payload.nfc_tag_id)
         existing_nfc = await db.execute(
-            select(User).where(User.nfc_tag_id == payload.nfc_tag_id)
+            select(User).where(User.nfc_tag_id == hashed_nfc)
         )
         if existing_nfc.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NFC tag is already linked to another user.",
             )
+    else:
+        hashed_nfc = None
 
     user = User(
         role_id=payload.role_id,
         first_name=payload.first_name,
         last_name=payload.last_name,
         email=str(payload.email),
-        nfc_tag_id=payload.nfc_tag_id,
+        nfc_tag_id=hashed_nfc,
         pin_hash=security.get_pin_hash(payload.pin),
         accepted_privacy_policy=payload.accepted_privacy_policy,
     )
@@ -267,9 +270,10 @@ async def update_user(
         update_data["email"] = new_email
 
     if "nfc_tag_id" in update_data and update_data["nfc_tag_id"] is not None:
+        hashed_nfc = security.hash_nfc_tag(update_data["nfc_tag_id"])
         existing_nfc = await db.execute(
             select(User).where(
-                User.nfc_tag_id == update_data["nfc_tag_id"],
+                User.nfc_tag_id == hashed_nfc,
                 User.user_id != user_id,
             )
         )
@@ -278,6 +282,7 @@ async def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NFC tag is already linked to another user.",
             )
+        update_data["nfc_tag_id"] = hashed_nfc
 
     if "role_id" in update_data and update_data["role_id"] is not None:
         role_exists = await db.execute(
@@ -480,10 +485,9 @@ async def update_user_nfc(
     """
     user = await _get_user_with_role_or_404(db, user_id)
 
+    hashed_nfc = security.hash_nfc_tag(payload.nfc_tag_id)
     existing_nfc = await db.execute(
-        select(User).where(
-            User.nfc_tag_id == payload.nfc_tag_id, User.user_id != user_id
-        )
+        select(User).where(User.nfc_tag_id == hashed_nfc, User.user_id != user_id)
     )
     if existing_nfc.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -491,7 +495,7 @@ async def update_user_nfc(
             detail="NFC tag is already linked to another user.",
         )
 
-    user.nfc_tag_id = payload.nfc_tag_id
+    user.nfc_tag_id = hashed_nfc
     await log_audit_event(
         db,
         action_type="USER_NFC_ASSIGNED",

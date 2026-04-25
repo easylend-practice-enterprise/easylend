@@ -73,7 +73,7 @@ Rate-limited: 500 req/min per IP.
 ```json
 {
   "nfc_tag_id": "string",  // required, 1–100 chars
-  "pin": "string"          // required, 4–32 chars
+  "pin": "string"          // required, exactly 6 digits (regex: ^\d{6}$)
 }
 ```
 
@@ -691,7 +691,7 @@ CHECKOUT | RETURN
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
 | `nfc_tag_id` | string | ✅ | 1–100 chars |
-| `pin` | string | ✅ | 4–32 chars |
+| `pin` | string | ✅ | exactly 6 digits |
 
 #### `RefreshTokenRequest`
 
@@ -736,7 +736,7 @@ CHECKOUT | RETURN
 | `first_name` | string | ✅ | |
 | `last_name` | string | ✅ | |
 | `email` | string | ✅ | |
-| `nfc_tag_id` | string \| null | ✅ | |
+| `nfc_tag_id` | string \| null | ✅ | HMAC-SHA256 hashed digest (raw tag never returned) |
 | `failed_login_attempts` | integer | ✅ | |
 | `locked_until` | datetime \| null | ✅ | |
 | `status` | `UserStatus` | ✅ | |
@@ -796,3 +796,32 @@ Minimal payload returned by the polling endpoint.
 | `loan_status` | `LoanStatus` \| null | ✅ | null if no active loan |
 | `borrower_first_name` | string \| null | ✅ | |
 | `borrower_last_name` | string \| null | ✅ | |
+
+---
+
+## 10. Webhooks
+
+### Update AI Model (Vision Box)
+
+`PATCH /api/v1/update-model`
+
+Allows the hardware orchestrator or external admin services to dynamically update the underlying models used by the Vision Box. This endpoint is forwarded to the Vision microservice.
+
+**Required Header:** `X-Device-Token: <static_device_secret>`
+
+**Request Body** — `ModelUpdateRequest`:
+
+```json
+{
+  "object_detection_url": "https://models.example.com/object.pt",
+  "segmentation_url": "https://models.example.com/segmentation.pt"
+}
+```
+
+**Success Response** — `200 OK`:
+
+```json
+{
+  "message": "Model update received successfully."
+}
+```

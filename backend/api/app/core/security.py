@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -137,3 +139,15 @@ def verify_pin(plain_pin: str, hashed_pin: str) -> bool:
     Verifies whether a plain-text PIN matches the hash stored in the database.
     """
     return bcrypt.checkpw(plain_pin.encode("utf-8"), hashed_pin.encode("utf-8"))
+
+
+def hash_nfc_tag(tag: str) -> str:
+    """
+    Computes a deterministic HMAC-SHA256 of the NFC tag using the application
+    secret key. The raw NFC UUID is never stored in the database.
+    """
+    return hmac.new(
+        settings.JWT_SECRET_KEY.encode("utf-8"),
+        tag.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()

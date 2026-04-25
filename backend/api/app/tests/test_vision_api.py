@@ -1006,7 +1006,7 @@ def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.post(
+        response = client.patch(
             "/api/v1/update-model",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
             json={
@@ -1050,7 +1050,7 @@ def test_update_model_accepts_single_model_url(monkeypatch, client_with_override
     monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
 
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.post(
+        response = client.patch(
             "/api/v1/update-model",
             headers={"X-Device-Token": vision_endpoints.settings.VISION_BOX_API_KEY},
             json={"object_detection_url": "https://models.example.com/object.pt"},

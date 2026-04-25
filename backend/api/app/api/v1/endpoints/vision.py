@@ -641,7 +641,7 @@ async def analyze_image(
     return {"detail": "Evaluation processed successfully."}
 
 
-@webhook_router.post("/update-model", response_model=ModelUpdateResponse)
+@webhook_router.patch("/update-model", response_model=ModelUpdateResponse)
 async def update_model(
     payload: ModelUpdateRequest,
     _: None = Depends(verify_vision_box_token),

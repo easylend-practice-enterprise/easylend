@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from app.core import security
 from app.db.models import UserStatus
 from app.tests.conftest import _bearer, _make_admin, _make_medewerker, _QueuedSession
 
@@ -214,7 +215,7 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
         "last_name": "Member",
         "email": "new@easylend.be",
         "role_id": str(target_role_id),
-        "pin": "securepin123",
+        "pin": "123456",
     }
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
@@ -236,7 +237,7 @@ def test_create_user_returns_400_on_duplicate_email(client_with_overrides):
         "last_name": "Email",
         "email": existing_user.email,
         "role_id": str(uuid.uuid4()),
-        "pin": "securepin123",
+        "pin": "123456",
     }
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
@@ -256,7 +257,7 @@ def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
         "last_name": "Member",
         "email": "new2@easylend.be",
         "role_id": str(uuid.uuid4()),
-        "pin": "securepin123",
+        "pin": "123456",
     }
     with client_with_overrides(fake_db) as client:
         response = client.post("/api/v1/users", json=payload, headers=_bearer(admin))
@@ -379,7 +380,9 @@ def test_update_user_nfc_links_new_tag(client_with_overrides, monkeypatch):
         accepted_privacy_policy=False,
         role=SimpleNamespace(role_name="Medewerker"),
     )
-    updated_user = SimpleNamespace(**{**vars(target_user), "nfc_tag_id": "NFC-NEW-007"})
+    updated_user = SimpleNamespace(
+        **{**vars(target_user), "nfc_tag_id": security.hash_nfc_tag("NFC-NEW-007")}
+    )
     # DB execute order:
     # [1] get_current_user                          → admin
     # [2] _get_user_with_role_or_404                → target_user
@@ -393,7 +396,7 @@ def test_update_user_nfc_links_new_tag(client_with_overrides, monkeypatch):
             headers=_bearer(admin),
         )
     assert response.status_code == 200
-    assert response.json()["nfc_tag_id"] == "NFC-NEW-007"
+    assert response.json()["nfc_tag_id"] == security.hash_nfc_tag("NFC-NEW-007")
     assert fake_db.commit_calls == 1
 
 

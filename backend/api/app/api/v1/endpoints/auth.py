@@ -47,7 +47,7 @@ class PinLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class RefreshTokenRequest(BaseModel):
@@ -153,7 +153,8 @@ async def nfc_login(
     Rate-limited: 500 req/min per IP (Layer 2).
     """
     await check_ip_rate_limit(request)
-    await _get_active_user_by_nfc(body.nfc_tag_id, db)
+    hashed_tag = security.hash_nfc_tag(body.nfc_tag_id)
+    await _get_active_user_by_nfc(hashed_tag, db)
     return {"detail": "NFC badge recognized. Enter PIN."}
 
 
@@ -172,7 +173,8 @@ async def pin_login(
     await check_ip_rate_limit(request)
 
     # Step 1: Look up the user by NFC tag (no row lock yet).
-    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=False)
+    hashed_tag = security.hash_nfc_tag(body.nfc_tag_id)
+    user = await _get_active_user_by_nfc(hashed_tag, db, lock_row=False)
 
     # Step 2: Lock the user row by user_id to serialize all login attempts
     # against this account, regardless of which NFC tag triggered the request.
