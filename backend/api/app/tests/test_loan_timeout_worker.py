@@ -22,6 +22,7 @@ def _make_loan(**kwargs) -> SimpleNamespace:
         loan_status=kwargs.get("loan_status", "RESERVED"),
         reserved_at=kwargs.get("reserved_at"),
         returned_at=kwargs.get("returned_at"),
+        updated_at=kwargs.get("updated_at"),
     )
 
 
@@ -183,7 +184,7 @@ async def test_process_single_returning_loan_marks_inspection_and_maintenance():
         checkout_locker_id=checkout_locker_id,
         return_locker_id=return_locker_id,
         loan_status=LoanStatus.RETURNING,
-        returned_at=now - timedelta(minutes=5),
+        updated_at=now - timedelta(minutes=5),
     )
     checkout_locker = _make_locker(
         locker_id=checkout_locker_id, locker_status=LockerStatus.OCCUPIED
@@ -271,11 +272,11 @@ async def test_process_single_reserved_loan_skips_if_not_yet_timed_out():
 
 @pytest.mark.anyio
 async def test_process_single_returning_loan_skips_if_not_yet_timed_out():
-    """If returned_at is still within the timeout window, the loan is not processed."""
+    """If updated_at is still within the timeout window, the loan is not processed."""
     now = datetime.now(UTC)
     loan = _make_loan(
         loan_status=LoanStatus.RETURNING,
-        returned_at=now - timedelta(minutes=1),  # within 3-minute window
+        updated_at=now - timedelta(minutes=1),  # within 3-minute window
     )
     fake_db = _FakeSession(loan, None, None, None, None)
 

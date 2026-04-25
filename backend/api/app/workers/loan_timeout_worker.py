@@ -56,7 +56,7 @@ async def _process_single_timed_out_loan(
             if loan.reserved_at is None or loan.reserved_at >= cutoff:
                 return False
         elif loan.loan_status == LoanStatus.RETURNING:
-            if loan.returned_at is None or loan.returned_at >= cutoff:
+            if loan.updated_at is None or loan.updated_at >= cutoff:
                 return False
 
         asset = None
@@ -177,8 +177,8 @@ async def process_timed_out_loans(
                         & (Loan.reserved_at.is_not(None))
                         & (Loan.reserved_at < cutoff),
                         (Loan.loan_status == LoanStatus.RETURNING)
-                        & (Loan.returned_at.is_not(None))
-                        & (Loan.returned_at < cutoff),
+                        & (Loan.updated_at.is_not(None))
+                        & (Loan.updated_at < cutoff),
                     ),
                     Loan.asset.has(is_deleted=False),
                 )
@@ -186,7 +186,7 @@ async def process_timed_out_loans(
                     # Order by the relevant timestamp per status to process oldest first
                     case(
                         (Loan.loan_status == LoanStatus.RESERVED, Loan.reserved_at),
-                        else_=Loan.returned_at,
+                        else_=Loan.updated_at,
                     )
                 )
             )

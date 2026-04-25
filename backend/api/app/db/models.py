@@ -231,6 +231,9 @@ class Loan(Base):
     returned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, onupdate=func.now(), default=func.now()
+    )
 
     loan_status: Mapped[LoanStatus] = mapped_column(
         Enum(LoanStatus), default=LoanStatus.RESERVED
