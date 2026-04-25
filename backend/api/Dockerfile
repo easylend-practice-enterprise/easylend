@@ -27,6 +27,8 @@ RUN uv sync --locked --no-install-project
 COPY app/ ./app/
 COPY alembic.ini .
 COPY alembic/ ./alembic/
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 
 # STEP 3: Sync the project itself (fast because dependencies are already present)
 RUN uv sync --locked
@@ -47,5 +49,5 @@ USER appuser
 
 EXPOSE 8000
 
-# Run migrations first, then start uvicorn when migrations succeed
-CMD ["sh", "-c", "alembic upgrade head && fastapi run app/main.py --host 0.0.0.0 --port 8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--ws-ping-interval", "15", "--ws-ping-timeout", "30"]
