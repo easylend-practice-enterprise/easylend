@@ -17,6 +17,7 @@ __pycache__/
 venv/
 env/
 .env
+dockge.env
 .venv/
 .pytest_cache/
 .ruff_cache/
