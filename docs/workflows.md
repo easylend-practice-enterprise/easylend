@@ -3,7 +3,7 @@
 > This document describes the definitive system workflows through sequence diagrams.
 > Architecture: The Kiosk App communicates via REST (with Polling for asynchronous hardware actions). The Vision Box listens to commands via WebSockets (WSS).
 
-The seven core flows are:
+The core flows are:
 
 1. Login
 2. Checkout (Lending)
@@ -12,6 +12,7 @@ The seven core flows are:
 5. Catalog & Authorisation Flow (RBAC)
 6. Kiosk Boot & Admin Remote Control
 7. Admin Dashboard (Management)
+8. Grace Period Damage Report
 
 ---
 
@@ -28,6 +29,8 @@ The user scans their NFC badge and enters their PIN to receive an access token a
 The app requests a loan via REST. The API controls the Vision Box via WSS. In the meantime the app polls the API to find out whether the hardware and AI actions have completed.
 
 > **Prerequisite:** Requires `Idempotency-Key` HTTP header (UUID recommended) on `POST /api/v1/loans/checkout`.
+> **Post-commit contract:** `POST /api/v1/loans/checkout` returns `202 Accepted` immediately after DB commit. If the post-commit `open_slot` command fails, the response remains `202` and the client must continue polling.
+> **Authoritative outcome channel:** The kiosk must treat `GET /api/v1/loans/{loan_id}/status` as the only authoritative source of hardware/AI outcome.
 
 [View the sequence diagram: Checkout Flow](./diagrams/sequence_checkout.mmd)
 
@@ -38,6 +41,9 @@ The app requests a loan via REST. The API controls the Vision Box via WSS. In th
 The user scans the Aztec code via the tablet. The API assigns an available locker. After closing, the AI verifies that the item is actually inside the locker and checks for damage.
 
 > **Prerequisites:** Requires `Idempotency-Key` HTTP header (UUID recommended) on `POST /api/v1/loans/return/initiate`. Inspection photos taken during the return flow are served via `GET /api/v1/images/{filename}` (Admin or Loan Owner access).
+> **Locking model:** Return locker selection uses `FOR UPDATE SKIP LOCKED` to safely allocate the first free locker without blocking concurrent requests.
+> **Post-commit contract:** `POST /api/v1/loans/return/initiate` returns `202 Accepted` immediately after DB commit. If the post-commit `open_slot` command fails, the response remains `202` and the client must continue polling.
+> **Authoritative outcome channel:** The kiosk must treat `GET /api/v1/loans/{loan_id}/status` as the only authoritative source of hardware/AI outcome.
 
 [View the sequence diagram: Return Flow](./diagrams/sequence_return.mmd)
 
@@ -72,3 +78,11 @@ When a Kiosk starts up, it fetches its own hardware status via an M2M token. An 
 Admin users manage assets, quarantine cases, and kiosk lockers via the Admin Dashboard.
 
 [View the sequence diagram: Admin App Flow](./diagrams/sequence_admin_app.mmd)
+
+---
+
+## 8. Grace Period Damage Report
+
+Immediately after checkout, a user can submit a grace-period damage report. The endpoint enforces idempotency, deterministic lock order, centralized state transitions to `DISPUTED`, conditional user suspension, audit logging, and post-commit hardware LED synchronization.
+
+[View the sequence diagram: Grace Period Damage Report](./diagrams/sequence_report_damage.mmd)

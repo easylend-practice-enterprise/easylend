@@ -15,7 +15,15 @@ from app.core import security
 from app.core.audit import log_audit_event
 from app.core.db_utils import is_lock_not_available_error
 from app.db.database import get_db
-from app.db.models import AIEvaluation, AuditLog, Loan, LoanStatus, Role, User
+from app.db.models import (
+    AIEvaluation,
+    AuditLog,
+    Loan,
+    LoanStatus,
+    Role,
+    User,
+    UserStatus,
+)
 from app.db.redis import revoke_all_refresh_tokens
 from app.schemas.user import (
     UserCreate,
@@ -166,21 +174,24 @@ async def create_user(
         )
 
     if payload.nfc_tag_id is not None:
+        hashed_nfc = security.hash_nfc_tag(payload.nfc_tag_id)
         existing_nfc = await db.execute(
-            select(User).where(User.nfc_tag_id == payload.nfc_tag_id)
+            select(User).where(User.nfc_tag_id == hashed_nfc)
         )
         if existing_nfc.scalar_one_or_none() is not None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NFC tag is already linked to another user.",
             )
+    else:
+        hashed_nfc = None
 
     user = User(
         role_id=payload.role_id,
         first_name=payload.first_name,
         last_name=payload.last_name,
         email=str(payload.email),
-        nfc_tag_id=payload.nfc_tag_id,
+        nfc_tag_id=hashed_nfc,
         pin_hash=security.get_pin_hash(payload.pin),
         accepted_privacy_policy=payload.accepted_privacy_policy,
     )
@@ -213,7 +224,7 @@ async def update_user(
     user_id: UUID,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> User:
     """
     Partially update an existing user.
@@ -222,10 +233,13 @@ async def update_user(
     """
     user = await _get_user_with_role_or_404(db, user_id)
 
+    # Capture old status for audit logging before any mutations
+    old_status = user.status
+
     update_data = payload.model_dump(exclude_unset=True)
 
     # Prevent non-nullable columns from being explicitly set to None
-    non_nullable_fields = {"email", "role_id", "first_name", "last_name", "is_active"}
+    non_nullable_fields = {"email", "role_id", "first_name", "last_name", "status"}
     invalid_null_fields = [
         field
         for field in non_nullable_fields
@@ -235,6 +249,12 @@ async def update_user(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Request contains fields that cannot be set to null.",
+        )
+
+    if "status" in payload.model_fields_set and payload.status is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User status cannot be set to null.",
         )
 
     if "email" in update_data and update_data["email"] is not None:
@@ -250,9 +270,10 @@ async def update_user(
         update_data["email"] = new_email
 
     if "nfc_tag_id" in update_data and update_data["nfc_tag_id"] is not None:
+        hashed_nfc = security.hash_nfc_tag(update_data["nfc_tag_id"])
         existing_nfc = await db.execute(
             select(User).where(
-                User.nfc_tag_id == update_data["nfc_tag_id"],
+                User.nfc_tag_id == hashed_nfc,
                 User.user_id != user_id,
             )
         )
@@ -261,6 +282,7 @@ async def update_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="NFC tag is already linked to another user.",
             )
+        update_data["nfc_tag_id"] = hashed_nfc
 
     if "role_id" in update_data and update_data["role_id"] is not None:
         role_exists = await db.execute(
@@ -277,10 +299,41 @@ async def update_user(
     else:
         update_data.pop("pin", None)
 
+    old_pin_hash = getattr(user, "pin_hash", None)
+
     for field, value in update_data.items():
         setattr(user, field, value)
 
+    if update_data.get("status") == UserStatus.ANONYMIZED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot set status to ANONYMIZED via update. Use the dedicated /anonymize endpoint.",
+        )
+
+    new_status = update_data.get("status")
+
     try:
+        await db.flush()
+        if new_status is not None and new_status != old_status:
+            await log_audit_event(
+                db,
+                action_type="USER_STATUS_CHANGED",
+                payload={
+                    "target_user_id": str(user_id),
+                    "old_status": getattr(old_status, "value", old_status),
+                    "new_status": getattr(new_status, "value", new_status),
+                },
+                user_id=current_admin.user_id,
+            )
+        if "pin_hash" in update_data and update_data["pin_hash"] != old_pin_hash:
+            await log_audit_event(
+                db,
+                action_type="USER_PIN_CHANGED",
+                payload={
+                    "target_user_id": str(user_id),
+                },
+                user_id=current_admin.user_id,
+            )
         await db.commit()
     except IntegrityError:
         await db.rollback()
@@ -314,31 +367,35 @@ async def anonymize_user(
     Replaces all PII fields (first_name, last_name, email, nfc_tag_id) with
     non-identifying placeholder values and replaces pin_hash with a hash of a
     randomly generated credential, effectively disabling login with the original PIN.
-    Also sets is_active=False and is_anonymized=True.
+    Also sets status=UserStatus.ANONYMIZED.
     Writes an audit log entry with action_type="USER_ANONYMIZED".
 
     Requires Admin role.
     """
-    user = await _get_user_with_role_or_404(db, user_id)
-
-    if user.is_anonymized:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is already anonymized.",
-        )
-
-    # Lock user row to prevent TOCTOU race: between this lock and the loan check,
-    # no concurrent transaction can create a loan for this user.
     try:
-        await db.execute(select(User).where(User.user_id == user_id).with_for_update())
-    except OperationalError as e:
-        await db.rollback()  # ALWAYS rollback on db error before raising
-        if is_lock_not_available_error(e):
+        result = await db.execute(
+            select(User).where(User.user_id == user_id).with_for_update(nowait=True)
+        )
+    except OperationalError as exc:
+        await db.rollback()
+        if is_lock_not_available_error(exc):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User is currently being modified. Please retry.",
             )
         raise
+
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
+        )
+
+    if user.status == UserStatus.ANONYMIZED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already anonymized.",
+        )
 
     # Block anonymization if user has active/reserved/overdue loans
     active_loans_count_result = await db.execute(
@@ -364,8 +421,7 @@ async def anonymize_user(
             user.email = f"anon_{uuid.uuid4()}@easylend.local"
             user.nfc_tag_id = None
             user.pin_hash = security.get_pin_hash(secrets.token_urlsafe(16))
-            user.is_active = False
-            user.is_anonymized = True
+            user.status = UserStatus.ANONYMIZED
             user.ban_reason = None
             user.failed_login_attempts = 0
             user.locked_until = None
@@ -420,7 +476,7 @@ async def update_user_nfc(
     user_id: UUID,
     payload: UserNfcUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_admin),
+    current_admin: User = Depends(get_current_admin),
 ) -> User:
     """
     Update the NFC tag linked to a user account.
@@ -429,10 +485,9 @@ async def update_user_nfc(
     """
     user = await _get_user_with_role_or_404(db, user_id)
 
+    hashed_nfc = security.hash_nfc_tag(payload.nfc_tag_id)
     existing_nfc = await db.execute(
-        select(User).where(
-            User.nfc_tag_id == payload.nfc_tag_id, User.user_id != user_id
-        )
+        select(User).where(User.nfc_tag_id == hashed_nfc, User.user_id != user_id)
     )
     if existing_nfc.scalar_one_or_none() is not None:
         raise HTTPException(
@@ -440,7 +495,16 @@ async def update_user_nfc(
             detail="NFC tag is already linked to another user.",
         )
 
-    user.nfc_tag_id = payload.nfc_tag_id
+    user.nfc_tag_id = hashed_nfc
+    await log_audit_event(
+        db,
+        action_type="USER_NFC_ASSIGNED",
+        payload={
+            "target_user_id": str(user_id),
+            "nfc_tag_id": payload.nfc_tag_id,
+        },
+        user_id=current_admin.user_id,
+    )
     try:
         await db.commit()
     except IntegrityError:
@@ -491,6 +555,7 @@ async def export_user_data(
         )
         .where(Loan.user_id == user_id)
         .order_by(Loan.reserved_at.desc())
+        .limit(1000)
     )
     all_loans = []
     for loan in loans_result.scalars().all():
@@ -544,6 +609,7 @@ async def export_user_data(
             )
         )
         .order_by(AuditLog.created_at)
+        .limit(1000)
     )
     audit_history = [
         {
@@ -557,7 +623,7 @@ async def export_user_data(
                     )
                     for k, v in log.payload.items()
                 }
-                if (user.is_anonymized and log.payload)
+                if (user.status == UserStatus.ANONYMIZED and log.payload)
                 else log.payload
             ),
             "created_at": (log.created_at.isoformat() if log.created_at else None),
@@ -568,13 +634,18 @@ async def export_user_data(
     return {
         "user": {
             "user_id": str(user.user_id),
-            "first_name": "[REDACTED]" if user.is_anonymized else user.first_name,
-            "last_name": "[REDACTED]" if user.is_anonymized else user.last_name,
-            "email": "[REDACTED]" if user.is_anonymized else user.email,
+            "first_name": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.first_name,
+            "last_name": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.last_name,
+            "email": "[REDACTED]"
+            if user.status == UserStatus.ANONYMIZED
+            else user.email,
             "role_name": user.role.role_name,
             "nfc_tag_id": user.nfc_tag_id,
-            "is_active": user.is_active,
-            "is_anonymized": user.is_anonymized,
+            "status": user.status,
             "accepted_privacy_policy": user.accepted_privacy_policy,
         },
         "loans": all_loans,

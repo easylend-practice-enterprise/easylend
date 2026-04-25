@@ -27,6 +27,7 @@ def _vision_form_data(
 def _make_loan(**kwargs) -> SimpleNamespace:
     return SimpleNamespace(
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
+        user_id=kwargs.get("user_id", uuid.uuid4()),
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         checkout_locker_id=kwargs.get("checkout_locker_id", uuid.uuid4()),
         return_locker_id=kwargs.get("return_locker_id"),
@@ -131,6 +132,12 @@ class _ConcurrentLoanLockSession(_QueuedSession):
         self._owns_lock = False
         self._phase = 0  # 0=phase1, 1=phase2
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return False
+
     async def execute(self, query):
         query_str = str(query)
         is_phase2 = "FOR UPDATE" in query_str
@@ -198,7 +205,7 @@ def _mock_success_upstream(monkeypatch, payload: dict, captured: dict | None = N
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
 
-def _mock_common_vision_runtime(monkeypatch, tmp_path):
+def _mock_common_vision_runtime(monkeypatch, tmp_path, fake_db=None):
     monkeypatch.setattr(vision_endpoints.settings, "VISION_SERVICE_URL", "http://vm2")
     monkeypatch.setattr(
         vision_endpoints.settings, "VISION_API_KEY", "vision-service-key"
@@ -207,9 +214,21 @@ def _mock_common_vision_runtime(monkeypatch, tmp_path):
     send_command_mock = AsyncMock(return_value=True)
     audit_mock = AsyncMock()
     monkeypatch.setattr(vision_endpoints.manager, "send_command", send_command_mock)
-    monkeypatch.setattr(vision_endpoints, "log_audit_event", audit_mock)
+    monkeypatch.setattr("app.api.v1.endpoints.vision.log_audit_event", audit_mock)
     monkeypatch.setattr(vision_endpoints, "UPLOAD_DIR", tmp_path)
+    if fake_db is not None:
+        _patch_session_factory(monkeypatch, fake_db)
     return send_command_mock, audit_mock
+
+
+def _patch_session_factory(monkeypatch, fake_db):
+    """Monkeypatch AsyncSessionLocal in the vision module to return the fake session.
+
+    The refactored analyze_image uses ``async with AsyncSessionLocal() as db:``
+    instead of ``Depends(get_db)``. This helper makes the factory callable
+    return the given fake_db stub directly.
+    """
+    monkeypatch.setattr(vision_endpoints, "AsyncSessionLocal", lambda: fake_db)
 
 
 def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
@@ -228,7 +247,6 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
 
     monkeypatch.setattr(vision_endpoints.uuid, "uuid4", lambda: MockUUID())
     _mock_success_upstream(monkeypatch, expected_payload, captured)
-    _send_command_mock, _audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
     asset_id = uuid.UUID("22222222-2222-2222-2222-222222222222")
@@ -241,6 +259,9 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
     fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _send_command_mock, _audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -253,13 +274,7 @@ def test_vision_analyze_success(monkeypatch, client_with_overrides, tmp_path):
     assert response.status_code == 200
 
     response_json = response.json()
-    assert response_json["status"] == expected_payload["status"]
-    assert response_json["count"] == expected_payload["count"]
-    # Verify the dynamically added photo_url based on our mocked UUID
-    assert (
-        response_json["photo_url"]
-        == "/api/v1/images/1234567890abcdef1234567890abcdef.jpg"
-    )
+    assert response_json["detail"] == "Evaluation processed successfully."
 
     assert set(captured["urls"]) == {"http://vm2/detect", "http://vm2/segment"}
     assert captured["headers"] == {"Authorization": "Bearer vision-service-key"}
@@ -283,7 +298,6 @@ def test_checkout_success_branch_sets_active_and_green_led(
         "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -304,6 +318,9 @@ def test_checkout_success_branch_sets_active_and_green_led(
         locker_status="AVAILABLE",
     )
     fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -322,13 +339,17 @@ def test_checkout_success_branch_sets_active_and_green_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "7", "color": "green"},
+        {"action": "set_led", "locker_id": 7, "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
-    assert kwargs["action_type"] == "VISION_EVALUATION_PROCESSED"
+    # There are now two audit calls: LOAN_CHECKOUT_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -348,7 +369,6 @@ def test_vision_analyze_concurrent_requests_return_409(monkeypatch, tmp_path):
         "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
-    _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -364,13 +384,16 @@ def test_vision_analyze_concurrent_requests_return_409(monkeypatch, tmp_path):
     locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
     state = _ConcurrentLoanLockState(loan, asset, locker)
 
-    from app.db.database import get_db
+    # Patch AsyncSessionLocal to return a fresh _ConcurrentLoanLockSession per call.
+    # Each concurrent thread gets its own session, sharing the lock state.
+    monkeypatch.setattr(
+        vision_endpoints,
+        "AsyncSessionLocal",
+        lambda: _ConcurrentLoanLockSession(state),
+    )
+    _mock_common_vision_runtime(monkeypatch, tmp_path)
+
     from app.main import app
-
-    async def _override_get_db():
-        yield _ConcurrentLoanLockSession(state)
-
-    app.dependency_overrides[get_db] = _override_get_db
 
     responses = []
     errors = []
@@ -393,15 +416,12 @@ def test_vision_analyze_concurrent_requests_return_409(monkeypatch, tmp_path):
         except Exception as exc:  # pragma: no cover - defensive test guard
             errors.append(exc)
 
-    try:
-        thread_1 = threading.Thread(target=_send_once)
-        thread_2 = threading.Thread(target=_send_once)
-        thread_1.start()
-        thread_2.start()
-        thread_1.join(timeout=5)
-        thread_2.join(timeout=5)
-    finally:
-        app.dependency_overrides.clear()
+    thread_1 = threading.Thread(target=_send_once)
+    thread_2 = threading.Thread(target=_send_once)
+    thread_1.start()
+    thread_2.start()
+    thread_1.join(timeout=5)
+    thread_2.join(timeout=5)
 
     assert not errors
     assert len(responses) == 2
@@ -424,7 +444,6 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -445,6 +464,9 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
         locker_status="AVAILABLE",
     )
     fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -462,12 +484,17 @@ def test_checkout_fraud_branch_sets_fraud_and_red_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "8", "color": "red"},
+        {"action": "set_led", "locker_id": 8, "color": "red"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_CHECKOUT_FRAUD + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "CHECKOUT"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -489,7 +516,6 @@ def test_return_success_branch_sets_completed_and_green_led(
         "has_damage_detected": False,
     }
     _mock_success_upstream(monkeypatch, payload)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -510,6 +536,9 @@ def test_return_success_branch_sets_completed_and_green_led(
         locker_status="OCCUPIED",
     )
     fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -528,12 +557,17 @@ def test_return_success_branch_sets_completed_and_green_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "9", "color": "green"},
+        {"action": "set_led", "locker_id": 9, "color": "green"},
     )
-    audit_mock.assert_awaited_once()
-    audit_call = audit_mock.await_args
-    assert audit_call is not None
-    kwargs = audit_call.kwargs
+    # There are now two audit calls: LOAN_RETURN_CONFIRMED + VISION_EVALUATION_PROCESSED.
+    audit_mock.assert_awaited()
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call is not None
+    kwargs = vision_call.kwargs
     assert kwargs["payload"]["evaluation_type"] == "RETURN"
     assert kwargs["payload"]["has_damage_detected"] is False
 
@@ -555,7 +589,6 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
         "has_damage_detected": True,
     }
     _mock_success_upstream(monkeypatch, payload)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -576,6 +609,9 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
         locker_status="OCCUPIED",
     )
     fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -593,7 +629,7 @@ def test_return_damage_branch_sets_pending_inspection_and_orange_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "10", "color": "orange"},
+        {"action": "set_led", "locker_id": 10, "color": "orange"},
     )
     audit_mock.assert_awaited_once()
     audit_call = audit_mock.await_args
@@ -661,7 +697,8 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -671,8 +708,8 @@ def test_vision_analyze_maps_upstream_auth_errors_to_500(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Vision AI authentication is misconfigured."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
@@ -694,7 +731,8 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -704,8 +742,8 @@ def test_vision_analyze_maps_upstream_503(monkeypatch, client_with_overrides):
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Vision AI service is temporarily unavailable."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overrides):
@@ -727,7 +765,8 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -737,8 +776,8 @@ def test_vision_analyze_maps_upstream_400_to_400(monkeypatch, client_with_overri
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Uploaded image is invalid or unsupported."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
@@ -762,7 +801,8 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -772,11 +812,8 @@ def test_vision_analyze_maps_unexpected_upstream_errors_to_502(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"]
-        == "Vision AI service returned an unexpected response."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_overrides):
@@ -798,7 +835,8 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -808,8 +846,8 @@ def test_vision_analyze_maps_request_errors_to_503(monkeypatch, client_with_over
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Vision AI service is unavailable."
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overrides):
@@ -835,7 +873,8 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -845,10 +884,8 @@ def test_vision_analyze_maps_invalid_json_to_502(monkeypatch, client_with_overri
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"] == "Vision AI service returned invalid data format."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overrides):
@@ -873,7 +910,8 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
     )
     asset = _make_asset(asset_id=asset_id)
     locker = _make_locker(locker_id=checkout_locker_id)
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -883,10 +921,8 @@ def test_vision_analyze_maps_non_dict_json_to_502(monkeypatch, client_with_overr
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 502
-    assert (
-        response.json()["detail"] == "Vision AI service returned invalid data format."
-    )
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
 
 
 def test_vision_analyze_cleans_up_file_when_finalize_fails(
@@ -921,6 +957,7 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
 
     # Phase 1 (3) + Phase 2 lock acquisition (3)
     fake_db = _FailingCommitSession(loan, asset, locker, loan, asset, locker)
+    _patch_session_factory(monkeypatch, fake_db)
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -969,7 +1006,7 @@ def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides
     monkeypatch.setattr(vision_endpoints.httpx, "AsyncClient", _async_client_factory)
 
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.post(
+        response = client.patch(
             "/api/v1/update-model",
             headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
             json={
@@ -1013,7 +1050,7 @@ def test_update_model_accepts_single_model_url(monkeypatch, client_with_override
     monkeypatch.setattr(vision_endpoints.settings, "VISION_BOX_API_KEY", "device-key")
 
     with client_with_overrides(_QueuedSession()) as client:
-        response = client.post(
+        response = client.patch(
             "/api/v1/update-model",
             headers={"X-Device-Token": vision_endpoints.settings.VISION_BOX_API_KEY},
             json={"object_detection_url": "https://models.example.com/object.pt"},
@@ -1043,7 +1080,6 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
         raise httpx.RequestError("Mocked Timeout")
 
     monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -1064,7 +1100,10 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="AVAILABLE",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1074,8 +1113,8 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    # 503 Service Unavailable is expected on AI failure
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
     assert loan.loan_status == "PENDING_INSPECTION"
     assert asset.asset_status == "PENDING_INSPECTION"
     assert asset.locker_id == locker_id
@@ -1083,7 +1122,7 @@ def test_checkout_ai_timeout_sets_pending_inspection_and_orange_led(
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "4", "color": "orange"},
+        {"action": "set_led", "locker_id": 4, "color": "orange"},
     )
 
 
@@ -1097,7 +1136,6 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
         raise httpx.RequestError("Mocked Timeout")
 
     monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
-    send_command_mock, audit_mock = _mock_common_vision_runtime(monkeypatch, tmp_path)
 
     loan_id = uuid.uuid4()
     asset_id = uuid.uuid4()
@@ -1118,7 +1156,10 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
         locker_status="OCCUPIED",
     )
 
-    fake_db = _QueuedSession(loan, asset, locker)
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
 
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -1128,12 +1169,97 @@ def test_return_ai_timeout_sets_pending_inspection_and_orange_led(
             files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
         )
 
-    assert response.status_code == 503
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
     assert loan.loan_status == "PENDING_INSPECTION"
     assert asset.asset_status == "PENDING_INSPECTION"
     assert locker.locker_status == "MAINTENANCE"
 
     send_command_mock.assert_awaited_once_with(
         str(kiosk_id),
-        {"action": "set_led", "locker_id": "5", "color": "orange"},
+        {"action": "set_led", "locker_id": 5, "color": "orange"},
+    )
+
+
+def test_checkout_ai_timeout_mutates_only_locked_phase_entities(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    """Fallback state mutation must target Phase 2 locked rows, not Phase 1 snapshots."""
+
+    async def mock_post(*args, **kwargs):
+        raise httpx.RequestError("Mocked Timeout")
+
+    monkeypatch.setattr("httpx.AsyncClient.post", mock_post)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    phase1_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    phase1_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    phase1_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    locked_loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    locked_asset = _make_asset(asset_id=asset_id, asset_status="BORROWED")
+    locked_locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=7,
+        locker_status="AVAILABLE",
+    )
+
+    fake_db = _QueuedSession(
+        phase1_loan,
+        phase1_asset,
+        phase1_locker,
+        locked_loan,
+        locked_asset,
+        locked_locker,
+    )
+    send_command_mock, _audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Vision AI failed. Fallback state committed."
+
+    # Phase 1 snapshots must remain untouched.
+    assert phase1_loan.loan_status == "RESERVED"
+    assert phase1_asset.asset_status == "BORROWED"
+    assert phase1_asset.locker_id is None
+    assert phase1_locker.locker_status == "AVAILABLE"
+
+    # Locked Phase 2 rows receive the fallback mutation.
+    assert locked_loan.loan_status == "PENDING_INSPECTION"
+    assert locked_asset.asset_status == "PENDING_INSPECTION"
+    assert locked_asset.locker_id == locker_id
+    assert locked_locker.locker_status == "MAINTENANCE"
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": 7, "color": "orange"},
     )

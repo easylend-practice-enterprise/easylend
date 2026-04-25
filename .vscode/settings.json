@@ -4,5 +4,9 @@
     "reportDeprecated": "warning"
   },
   "cmake.ignoreCMakeListsMissing": true,
-  "python.terminal.useEnvFile": true
+  "python.terminal.useEnvFile": true,
+  "markdownlint.config": {
+    "MD040": false,
+    "MD060": false
+  }
 }

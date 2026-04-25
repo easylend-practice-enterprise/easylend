@@ -56,7 +56,11 @@ async def _check_rate_limit(
     except RedisError:
         # Fail open: if Redis is unavailable we allow the request rather than
         # blocking all users. The failure is logged for observability.
-        logger.warning("Rate-limit Redis check failed; allowing request (key=%s)", key)
+        logger.warning(
+            "REDIS_RATE_LIMIT_DEGRADED: Rate limiting is currently bypassing all "
+            "requests due to Redis failure (key=%s).",
+            key,
+        )
         return
 
     if count > limit:

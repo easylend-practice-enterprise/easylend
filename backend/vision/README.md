@@ -60,6 +60,7 @@ docker compose -f docker-compose.prod.yml up -d
 ## Dual-Model System
 
 The Vision service uses a **dual-model approach**:
+
 1. **Detection model** (`POST /detect`): Counts objects in the locker image to determine if it is empty or occupied.
 2. **Segmentation model** (`POST /segment`): Detects physical damage on assets.
 

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 from redis.exceptions import RedisError
 
@@ -111,20 +112,18 @@ def test_pin_endpoint_lockout_after_five_failed_attempts(
     monkeypatch.setattr(
         auth_endpoints, "revoke_refresh_token", _mock_revoke_refresh_token
     )
+    monkeypatch.setattr(auth_endpoints, "log_audit_event", AsyncMock())
 
     user = build_user(pin="123456")
     fake_db = FakeAsyncSession(user)
 
-    payload = {"nfc_tag_id": user.nfc_tag_id, "pin": "000000"}
+    payload = {"nfc_tag_id": "NFC-001", "pin": "000000"}
 
     with client_with_overrides(fake_db) as client:
-        for remaining in [4, 3, 2, 1]:
+        for _ in range(4):
             response = client.post("/api/v1/auth/pin", json=payload)
             assert response.status_code == 401
-            assert (
-                response.json()["detail"]
-                == f"Incorrect PIN. {remaining} attempts remaining."
-            )
+            assert response.json()["detail"] == "Invalid credentials."
 
         # Fifth failed attempt applies lockout immediately.
         lock_response = client.post("/api/v1/auth/pin", json=payload)
@@ -146,7 +145,7 @@ def test_nfc_endpoint_returns_200_for_known_badge(build_user, client_with_overri
     fake_db = FakeAsyncSession(user)
 
     with client_with_overrides(fake_db) as client:
-        response = client.post("/api/v1/auth/nfc", json={"nfc_tag_id": user.nfc_tag_id})
+        response = client.post("/api/v1/auth/nfc", json={"nfc_tag_id": "NFC-001"})
 
     assert response.status_code == 200
     assert response.json()["detail"] == "NFC badge recognized. Enter PIN."
@@ -173,6 +172,7 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     monkeypatch.setattr(
         auth_endpoints, "store_refresh_token", _mock_store_refresh_token
     )
+    monkeypatch.setattr(auth_endpoints, "log_audit_event", AsyncMock())
 
     user = build_user(pin="123456")
     fake_db = FakeAsyncSession(user)
@@ -180,7 +180,7 @@ def test_pin_endpoint_returns_503_when_redis_store_fails(
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/auth/pin",
-            json={"nfc_tag_id": user.nfc_tag_id, "pin": "123456"},
+            json={"nfc_tag_id": "NFC-001", "pin": "123456"},
         )
 
     assert response.status_code == 503

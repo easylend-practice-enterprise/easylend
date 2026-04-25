@@ -22,6 +22,14 @@ class Base(DeclarativeBase):
     pass
 
 
+# USER STATUS ENUM — defined before User class
+class UserStatus(enum.StrEnum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    BANNED = "BANNED"
+    ANONYMIZED = "ANONYMIZED"
+
+
 # ROLES
 class Role(Base):
     __tablename__ = "roles"
@@ -58,11 +66,13 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_anonymized: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default=text("false"), nullable=False
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus),
+        default=UserStatus.ACTIVE,
+        server_default=text("'ACTIVE'"),
+        nullable=False,
     )
+    ban_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     accepted_privacy_policy: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
@@ -221,6 +231,9 @@ class Loan(Base):
     returned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, onupdate=func.now(), default=func.now()
+    )
 
     loan_status: Mapped[LoanStatus] = mapped_column(
         Enum(LoanStatus), default=LoanStatus.RESERVED
@@ -305,6 +318,9 @@ class AuditLog(Base):
         ForeignKey("users.user_id"), nullable=True
     )
 
+    # Audit event type written by callers throughout the application.
+    # This column intentionally stores string literals (typically UPPER_SNAKE_CASE)
+    # and is not documented here as an exhaustive list to avoid comment drift.
     action_type: Mapped[str] = mapped_column(String(100), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

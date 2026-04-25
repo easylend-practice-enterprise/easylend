@@ -24,14 +24,16 @@ flowchart TD
     SelectAsset -->|Yes| ConfirmLend[Confirm Lending in Catalog]
     SelectAsset -->|No| Dashboard
 
-    ConfirmLend --> APIOpenBox[POST /api/v1/loans/checkout]
-    APIOpenBox --> PollCheckout["App polls: GET /api/v1/loans/{loan_id}/status"]
-    
+    ConfirmLend --> APIOpenBox["POST /api/v1/loans/checkout<br/>(Authorization + Idempotency-Key)"]
+    APIOpenBox --> CheckoutAccepted["202 Accepted after DB commit<br/>(even if post-commit hardware command fails)"]
+    CheckoutAccepted --> PollCheckout["App polls: GET /api/v1/loans/{loan_id}/status"]
+
     PollCheckout --> CheckoutStatus{Status updated?}
     CheckoutStatus -->|No - Still RESERVED| PollCheckout
     CheckoutStatus -->|Yes - ACTIVE| LendSuccess[Transaction Complete]
     CheckoutStatus -->|Yes - FRAUD_SUSPECTED| CheckoutError[Show Checkout Error]
-    
+    CheckoutStatus -->|Yes - PENDING_INSPECTION| CheckoutError
+
     CheckoutError --> Dashboard
     LendSuccess --> Dashboard
 
@@ -42,15 +44,15 @@ flowchart TD
 
     ConfirmReturn --> ScanAztecReturn[Tablet Camera: Scan Aztec Code]
     ScanAztecReturn --> ValidateAztecReturn[POST /api/v1/loans/return/initiate]
-    
+
     ValidateAztecReturn -->|Error| ShowAztecErrorReturn[Show Aztec Error]
     ShowAztecErrorReturn --> ScanAztecReturn
 
-    ValidateAztecReturn -->|Success| ReturnOpenBox["API Opens Vision Box<br/>Response: {loan_id}"]
-    ReturnOpenBox --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id from initiate)"]
+    ValidateAztecReturn -->|Success| ReturnAccepted["202 Accepted after DB commit<br/>(even if post-commit hardware command fails)"]
+    ReturnAccepted --> PollReturn["App polls: GET /api/v1/loans/{loan_id}/status<br/>(loan_id from initiate)"]
 
     PollReturn --> ReturnStatus{Status updated?}
-    ReturnStatus -->|No - Still ACTIVE| PollReturn
+    ReturnStatus -->|No - Still RETURNING| PollReturn
     ReturnStatus -->|Yes - COMPLETED| ReturnSuccess[Return Complete]
     ReturnStatus -->|Yes - PENDING_INSPECTION| ReturnQuarantine[Show Damage Alert]
 

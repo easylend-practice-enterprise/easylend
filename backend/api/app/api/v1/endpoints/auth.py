@@ -10,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import security
+from app.core.audit import log_audit_event
 from app.core.config import settings
 from app.core.db_utils import is_lock_not_available_error
 from app.core.rate_limit import check_ip_rate_limit
 from app.db.database import get_db
-from app.db.models import User
+from app.db.models import User, UserStatus
 from app.db.redis import (
     revoke_refresh_token,
     store_refresh_token,
@@ -46,7 +47,7 @@ class PinLoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     nfc_tag_id: str = Field(..., min_length=1, max_length=100)
-    pin: str = Field(..., min_length=6, max_length=32)
+    pin: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class RefreshTokenRequest(BaseModel):
@@ -98,7 +99,7 @@ async def _get_active_user_by_nfc(
         ) from exc
     user = result.scalar_one_or_none()
 
-    if user is None or not user.is_active:
+    if user is None or user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
@@ -128,7 +129,7 @@ async def _create_and_store_refresh_token(user_id) -> str:
             jti=str(refresh_payload.jti),
             expires_in_seconds=_REFRESH_TOKEN_TTL_SECONDS,
         )
-    except RedisError as exc:
+    except (TimeoutError, RedisError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service is temporarily unavailable. Please try again later.",
@@ -152,7 +153,8 @@ async def nfc_login(
     Rate-limited: 500 req/min per IP (Layer 2).
     """
     await check_ip_rate_limit(request)
-    await _get_active_user_by_nfc(body.nfc_tag_id, db)
+    hashed_tag = security.hash_nfc_tag(body.nfc_tag_id)
+    await _get_active_user_by_nfc(hashed_tag, db)
     return {"detail": "NFC badge recognized. Enter PIN."}
 
 
@@ -171,7 +173,8 @@ async def pin_login(
     await check_ip_rate_limit(request)
 
     # Step 1: Look up the user by NFC tag (no row lock yet).
-    user = await _get_active_user_by_nfc(body.nfc_tag_id, db, lock_row=False)
+    hashed_tag = security.hash_nfc_tag(body.nfc_tag_id)
+    user = await _get_active_user_by_nfc(hashed_tag, db, lock_row=False)
 
     # Step 2: Lock the user row by user_id to serialize all login attempts
     # against this account, regardless of which NFC tag triggered the request.
@@ -195,7 +198,7 @@ async def pin_login(
         ) from exc
 
     user = locked_result.scalar_one_or_none()
-    if user is None or not user.is_active:
+    if user is None or user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid NFC badge or account status.",
@@ -213,21 +216,57 @@ async def pin_login(
         if user.failed_login_attempts >= _MAX_ATTEMPTS:
             user.locked_until = datetime.now(UTC) + timedelta(minutes=_LOCKOUT_MINUTES)
             user.failed_login_attempts = _MAX_ATTEMPTS
+            try:
+                await log_audit_event(
+                    db,
+                    action_type="LOGIN_FAILED",
+                    payload={
+                        "nfc_tag_id": body.nfc_tag_id,
+                        "reason": "ACCOUNT_LOCKED",
+                        "lockout_until": str(user.locked_until),
+                    },
+                )
+            except Exception:
+                await db.rollback()
+                raise
             await db.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Account is locked. Try again later.",
             )
 
+        try:
+            await log_audit_event(
+                db,
+                action_type="LOGIN_FAILED",
+                payload={
+                    "nfc_tag_id": body.nfc_tag_id,
+                    "reason": "INVALID_PIN",
+                    "remaining_attempts": remaining_attempts,
+                },
+            )
+        except Exception:
+            await db.rollback()
+            raise
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",
+            detail="Invalid credentials.",
         )
 
     # Successful login: reset brute-force counters
     user.failed_login_attempts = 0
     user.locked_until = None
+    try:
+        await log_audit_event(
+            db,
+            action_type="LOGIN_SUCCESS",
+            payload={"nfc_tag_id": body.nfc_tag_id},
+            user_id=user.user_id,
+        )
+    except Exception:
+        await db.rollback()
+        raise
     await db.commit()
 
     access_token = security.create_access_token(
@@ -303,7 +342,7 @@ async def refresh_access_token(
 
     if (
         user is None
-        or not user.is_active
+        or user.status != UserStatus.ACTIVE
         or (user.locked_until is not None and user.locked_until > datetime.now(UTC))
     ):
         raise HTTPException(

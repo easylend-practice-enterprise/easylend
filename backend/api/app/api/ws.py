@@ -62,7 +62,9 @@ async def visionbox_websocket_endpoint(
         return
 
     # Token valid and kiosk registered — register with the manager
-    await manager.connect(websocket, kiosk_id)
+    connected = await manager.connect(websocket, kiosk_id)
+    if not connected:
+        return
 
     try:
         while True:
@@ -83,12 +85,12 @@ async def visionbox_websocket_endpoint(
                 logger.info(f"Slot closed event received for locker_id={locker_id}")
 
     except WebSocketDisconnect:
-        manager.disconnect(kiosk_id, websocket)
+        pass
     except Exception as e:
         logger.error(f"WebSocket error for kiosk_id={kiosk_id}: {str(e)}")
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         except RuntimeError:
             logger.debug("WebSocket close failed: client already disconnected.")
-        finally:
-            manager.disconnect(kiosk_id, websocket)
+    finally:
+        await manager.disconnect(kiosk_id, websocket)

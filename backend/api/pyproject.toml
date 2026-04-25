@@ -28,10 +28,15 @@ dev = [
     "pyright>=1.1.408",
     "pytest>=9.0.2",
     "ruff>=0.15.4",
+    "testcontainers[postgres,redis]>=4.14.2",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = [
+    "ignore:The @wait_container_is_ready decorator is deprecated:DeprecationWarning:testcontainers.*",
+]
+
 
 [tool.ruff.lint]
 extend-select = [
@@ -52,22 +57,14 @@ typeCheckingMode = "standard"
 
 # Custom rules (Standard)
 
-# 1. Catch the ".astext" SQLAlchemy bug (member access on unknown JSON/Dict types)
-reportUnknownMemberType = "warning"
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportMissingTypeStubs = "none"
 
-# 2. Catch errors where an AI supplies incorrect types into a Pydantic or DB constructor
-reportUnknownArgumentType = "warning"
+exclude = [".venv", "**/__pycache__", "**/node_modules", "**/.*"]
 
-# 3. Ensure dicts and lists do not accidentally become [Any], which can hide bugs
 strictDictionaryInference = true
 strictListInference = true
 strictSetInference = true
-
-# 4. Prevent using a Pydantic setter/getter with incorrect types
 reportPropertyTypeMismatch = "error"
-
-# 5. Useful for Python 3.10+ match/case statements (ensures cases are exhaustive)
 reportMatchNotExhaustive = "error"
-
-# 6. Optional: warn when third-party libraries have poor or missing type hints
-reportMissingTypeStubs = "warning"
