@@ -82,14 +82,15 @@ class CheckoutRequest(BaseModel):
 class ReturnInitiateRequest(BaseModel):
     """Payload sent to start the return flow.
 
-    The backend looks up the active loan for ``loan_id``, finds a free
-    locker at the kiosk identified by ``kiosk_id`` (the kiosk where the
-    user is currently standing), and begins the return process.
+    The backend resolves the active loan from the scanned ``aztec_code``,
+    finds a free locker at the kiosk identified by ``kiosk_id`` (the
+    kiosk where the user is currently standing), and begins the return
+    process.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    loan_id: UUID
+    aztec_code: str = Field(..., min_length=1, max_length=100)
     kiosk_id: UUID
 
 

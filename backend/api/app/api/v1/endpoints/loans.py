@@ -791,8 +791,30 @@ async def return_initiate(
                 detail="The chosen Vision Box is currently offline. Cannot return here.",
             )
 
-        # --- 1. Fetch and validate the loan (non-locking) ---
-        loan = await _get_loan_or_404(db, payload.loan_id)
+        # --- 1. Resolve asset from the scanned aztec_code ---
+        asset_result = await db.execute(
+            select(Asset).where(Asset.aztec_code == payload.aztec_code)
+        )
+        asset = asset_result.scalar_one_or_none()
+        if asset is None or asset.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset not found.",
+            )
+
+        # --- 1a. Find the active loan for this asset ---
+        loan_result = await db.execute(
+            select(Loan).where(
+                Loan.asset_id == asset.asset_id,
+                Loan.loan_status.in_((LoanStatus.ACTIVE, LoanStatus.RESERVED)),
+            )
+        )
+        loan = loan_result.scalar_one_or_none()
+        if loan is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active loan found for this asset.",
+            )
 
         if not _is_admin(current_user) and loan.user_id != current_user.user_id:
             raise HTTPException(
@@ -811,7 +833,7 @@ async def return_initiate(
             locked_loan_result = await db.execute(
                 select(Loan)
                 .where(
-                    Loan.loan_id == payload.loan_id,
+                    Loan.loan_id == loan.loan_id,
                     Loan.loan_status == LoanStatus.ACTIVE,
                     Loan.return_locker_id.is_(None),
                 )

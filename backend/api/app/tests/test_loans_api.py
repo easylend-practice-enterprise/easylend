@@ -254,7 +254,7 @@ def test_return_initiate_returns_401_without_token(client_with_overrides):
     with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
-            json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
+            json={"aztec_code": "AZT-001", "kiosk_id": str(uuid.uuid4())},
             headers={"Idempotency-Key": "return-401"},
         )
     assert response.status_code == 401
@@ -282,7 +282,7 @@ def test_return_initiate_returns_400_when_idempotency_header_missing(
     with client_with_overrides(_QueuedSession(student, 0)) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
-            json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
+            json={"aztec_code": "AZT-001", "kiosk_id": str(uuid.uuid4())},
             headers=_bearer(student),
         )
 
@@ -492,12 +492,15 @@ def test_return_initiate_returns_202_when_manager_send_command_returns_false(
     The RETURNING loan remains in the database; the timeout worker will clean it up.
     """
     student = _make_student()
-    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    asset = _make_asset(aztec_code="AZT-RET-CMD")
+    active_loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    # Queue: [auth user, kiosk exists, loan, locked loan, free_locker]
+    # Queue: [auth, count, kiosk, asset, loan, locked loan, free_locker]
     fake_db = _QueuedSession(
-        student, 0, SimpleNamespace(), active_loan, active_loan, free_locker
+        student, 0, SimpleNamespace(), asset, active_loan, active_loan, free_locker
     )
 
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
@@ -506,7 +509,7 @@ def test_return_initiate_returns_202_when_manager_send_command_returns_false(
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(active_loan.loan_id),
+                "aztec_code": asset.aztec_code,
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
             headers=_with_idempotency(_bearer(student), "return-sendcmd-fails"),
@@ -673,21 +676,28 @@ def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
 
     DB execute order:
     [1] get_current_user      → student
-    [2] kiosk query           → kiosk object (exists)
-    [3] _get_loan_or_404      → active loan (same user)
-    [4] lock loan row         → active loan (locked)
-    [5] free locker query     → available locker
+    [2] count query           → 0
+    [3] kiosk query           → kiosk object (exists)
+    [4] asset query           → asset
+    [5] loan query            → active loan (same user)
+    [6] lock loan row         → active loan (locked)
+    [7] free locker query     → available locker
     """
     student = _make_student()
-    loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    asset = _make_asset(aztec_code="AZT-RET-HAPPY")
+    loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    # Queue: [1]=student, [2]=count(0), [3]=kiosk, [4]=loan, [5]=locked loan, [6]=free_locker
-    fake_db = _QueuedSession(student, 0, SimpleNamespace(), loan, loan, free_locker)
+    # Queue: [1]=student, [2]=count(0), [3]=kiosk, [4]=asset, [5]=loan, [6]=locked loan, [7]=free_locker
+    fake_db = _QueuedSession(
+        student, 0, SimpleNamespace(), asset, loan, loan, free_locker
+    )
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
-            json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
+            json={"aztec_code": asset.aztec_code, "kiosk_id": str(_VALID_KIOSK_ID)},
             headers=_with_idempotency(_bearer(student), "return-happy"),
         )
     assert response.status_code == 202
@@ -701,25 +711,26 @@ def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
     assert fake_db.commit_calls == 1
 
 
-def test_return_initiate_returns_404_for_unknown_loan(client_with_overrides):
-    """POST /return/initiate with an unknown loan_id → 404.
+def test_return_initiate_returns_404_for_unknown_asset(client_with_overrides):
+    """POST /return/initiate with an unknown aztec_code → 404.
 
     DB execute order:
     [1] get_current_user → student
-    [2] kiosk query      → kiosk object (exists)
-    [3] loan query       → None → 404
+    [2] count query      → 0
+    [3] kiosk query      → kiosk object (exists)
+    [4] asset query      → None → 404
     """
     student = _make_student()
     fake_db = _QueuedSession(student, 0, SimpleNamespace(), None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
-            json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(_VALID_KIOSK_ID)},
-            headers=_with_idempotency(_bearer(student), "return-unknown-loan"),
+            json={"aztec_code": "DOES-NOT-EXIST", "kiosk_id": str(_VALID_KIOSK_ID)},
+            headers=_with_idempotency(_bearer(student), "return-unknown-asset"),
         )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Loan not found."
+    assert response.json()["detail"] == "Asset not found."
 
 
 def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
@@ -727,47 +738,54 @@ def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
 
     DB execute order:
     [1] get_current_user → student_b
-    [2] kiosk query      → kiosk object (exists)
-    [3] loan query       → loan owned by student_a
+    [2] count query      → 0
+    [3] kiosk query      → kiosk object (exists)
+    [4] asset query      → asset
+    [5] loan query       → loan owned by student_a
     """
     student_b = _make_student()
-    loan = _make_loan(user_id=uuid.uuid4())  # owned by someone else
+    asset = _make_asset(aztec_code="AZT-WRONG-USER")
+    loan = _make_loan(
+        user_id=uuid.uuid4(), asset_id=asset.asset_id
+    )  # owned by someone else
 
-    fake_db = _QueuedSession(student_b, 0, SimpleNamespace(), loan)
+    fake_db = _QueuedSession(student_b, 0, SimpleNamespace(), asset, loan)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
-            json={"loan_id": str(loan.loan_id), "kiosk_id": str(_VALID_KIOSK_ID)},
+            json={"aztec_code": asset.aztec_code, "kiosk_id": str(_VALID_KIOSK_ID)},
             headers=_with_idempotency(_bearer(student_b), "return-wrong-user"),
         )
 
     assert response.status_code == 403
 
 
-def test_return_initiate_returns_400_when_loan_not_active(client_with_overrides):
-    """POST /return/initiate on a COMPLETED loan → 400.
+def test_return_initiate_returns_400_when_no_active_loan(client_with_overrides):
+    """POST /return/initiate when asset has no active loan → 400.
 
     DB execute order:
     [1] get_current_user → student
-    [2] kiosk query      → kiosk object (exists)
-    [3] loan query       → loan with status=COMPLETED
+    [2] count query      → 0
+    [3] kiosk query      → kiosk object (exists)
+    [4] asset query      → asset
+    [5] loan query       → None (no active loan)
     """
     student = _make_student()
-    completed_loan = _make_loan(user_id=student.user_id, loan_status="COMPLETED")
+    asset = _make_asset(aztec_code="AZT-NO-ACTIVE")
 
-    fake_db = _QueuedSession(student, 0, SimpleNamespace(), completed_loan)
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), asset, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(completed_loan.loan_id),
+                "aztec_code": asset.aztec_code,
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
             headers=_with_idempotency(_bearer(student), "return-not-active"),
         )
 
     assert response.status_code == 400
-    assert "not active" in response.json()["detail"]
+    assert "No active loan" in response.json()["detail"]
     assert fake_db.commit_calls == 0
 
 
@@ -776,22 +794,27 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
 
     DB execute order:
     [1] get_current_user      → student
-    [2] kiosk query           → kiosk object (exists)
-    [3] loan query            → active loan
-    [4] lock loan row         → active loan (locked)
-    [5] free locker query     → None (no available locker)
+    [2] count query           → 0
+    [3] kiosk query           → kiosk object (exists)
+    [4] asset query           → asset
+    [5] loan query            → active loan
+    [6] lock loan row         → active loan (locked)
+    [7] free locker query     → None (no available locker)
     """
     student = _make_student()
-    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    asset = _make_asset(aztec_code="AZT-NO-LOCKER")
+    active_loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
 
     fake_db = _QueuedSession(
-        student, 0, SimpleNamespace(), active_loan, active_loan, None
+        student, 0, SimpleNamespace(), asset, active_loan, active_loan, None
     )
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(active_loan.loan_id),
+                "aztec_code": asset.aztec_code,
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
             headers=_with_idempotency(_bearer(student), "return-no-locker"),
@@ -806,15 +829,16 @@ def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
 
     DB execute order:
     [1] get_current_user      → student
-    [2] kiosk query           → None (kiosk does not exist)
+    [2] count query           → 0
+    [3] kiosk query           → None (kiosk does not exist)
     """
     student = _make_student()
-    fake_db = _QueuedSession(student, None)
+    fake_db = _QueuedSession(student, 0, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(uuid.uuid4()),
+                "aztec_code": "AZT-001",
                 "kiosk_id": str(uuid.uuid4()),  # non-existent kiosk
             },
             headers=_with_idempotency(_bearer(student), "return-unknown-kiosk"),
@@ -826,16 +850,40 @@ def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
 
 
 def test_return_initiate_returns_409_on_loan_lock_contention(client_with_overrides):
-    """POST /return/initiate returns 409 when loan lock is contended."""
-    student = _make_student()
-    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    """POST /return/initiate returns 409 when loan lock is contended.
 
-    locking_db = _LoanLockingSession(student, 0, SimpleNamespace(), active_loan)
+    _LoanLockingSession raises OperationalError on the 5th execute call.
+    Queue: [1]=auth, [2]=count, [3]=kiosk, [4]=asset, [5]=loan (non-locking),
+    [6]=loan lock (raises on call 6 now — need adjusted session).
+    """
+    student = _make_student()
+    asset = _make_asset(aztec_code="AZT-LOCK-LOAN")
+    active_loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
+
+    # Lock raises on call 6: auth(1), count(2), kiosk(3), asset(4), loan(5), lock(6)
+    class _LoanLockAt6(_QueuedSession):
+        def __init__(self, *results):
+            super().__init__(*results)
+            self._call_count = 0
+
+        async def execute(self, query):
+            self._call_count += 1
+            if self._call_count == 6:
+                raise OperationalError(
+                    "lock not available",
+                    params=None,
+                    orig=Exception("lock not available"),
+                )
+            return await super().execute(query)
+
+    locking_db = _LoanLockAt6(student, 0, SimpleNamespace(), asset, active_loan)
     with client_with_overrides(locking_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(active_loan.loan_id),
+                "aztec_code": asset.aztec_code,
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
             headers=_with_idempotency(_bearer(student), "return-loan-lock"),
@@ -851,14 +899,18 @@ def test_return_initiate_returns_409_when_loan_state_changed_concurrently(
 ):
     """POST /return/initiate returns 409 when lock query no longer matches."""
     student = _make_student()
-    active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    asset = _make_asset(aztec_code="AZT-STATE-RACE")
+    active_loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
 
-    fake_db = _QueuedSession(student, 0, SimpleNamespace(), active_loan, None)
+    # Queue: auth, count, kiosk, asset, loan (non-locking), lock query returns None
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), asset, active_loan, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={
-                "loan_id": str(active_loan.loan_id),
+                "aztec_code": asset.aztec_code,
                 "kiosk_id": str(_VALID_KIOSK_ID),
             },
             headers=_with_idempotency(_bearer(student), "return-loan-state-changed"),
@@ -874,19 +926,22 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
 ):
     """POST /return/initiate with a reused Idempotency-Key returns 409."""
     student = _make_student()
-    loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
+    asset = _make_asset(aztec_code="AZT-IDEM-DUP")
+    loan = _make_loan(
+        user_id=student.user_id, asset_id=asset.asset_id, loan_status="ACTIVE"
+    )
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
     # Queue slots:
-    # First request:  [1] auth user, [2] kiosk, [3] loan, [4] locked loan, [5] locker
-    # Second request: [6] auth user (idempotency 409 happens before endpoint DB queries)
+    # First request:  [1] auth, [2] count, [3] kiosk, [4] asset, [5] loan, [6] locked loan, [7] locker
+    # Second request: [8] auth (idempotency 409 happens before endpoint DB queries)
     fake_db = _QueuedSession(
-        student, 0, SimpleNamespace(), loan, loan, free_locker, student
+        student, 0, SimpleNamespace(), asset, loan, loan, free_locker, student
     )
 
     with client_with_overrides(fake_db) as client:
         payload = {
-            "loan_id": str(loan.loan_id),
+            "aztec_code": asset.aztec_code,
             "kiosk_id": str(_VALID_KIOSK_ID),
         }
         headers = _with_idempotency(_bearer(student), "duplicate-return-key-123")
