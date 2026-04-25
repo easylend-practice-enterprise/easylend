@@ -18,8 +18,10 @@ def _make_loan(**kwargs) -> SimpleNamespace:
         loan_id=kwargs.get("loan_id", uuid.uuid4()),
         asset_id=kwargs.get("asset_id", uuid.uuid4()),
         checkout_locker_id=kwargs.get("checkout_locker_id"),
+        return_locker_id=kwargs.get("return_locker_id"),
         loan_status=kwargs.get("loan_status", "RESERVED"),
         reserved_at=kwargs.get("reserved_at"),
+        returned_at=kwargs.get("returned_at"),
     )
 
 
@@ -68,13 +70,15 @@ class _FakeSession:
     """Fake async session supporting ``async with AsyncSessionLocal() as db``."""
 
     def __init__(self, *execute_results) -> None:
-        self._queue = list(execute_results)
+        self._results = list(execute_results)
+        self._index = 0
         self.added: list = []
         self.commit_calls: int = 0
         self.rollback_calls: int = 0
 
     async def execute(self, _query):  # noqa: ARG002
-        value = self._queue.pop(0) if self._queue else None
+        value = self._results[self._index] if self._index < len(self._results) else None
+        self._index += 1
         return _FakeResult(value)
 
     async def commit(self):
@@ -114,11 +118,11 @@ def _reload_with_fake_session(fake_session_factory):
     with patch.object(db_mod, "AsyncSessionLocal", fake_session_factory):
         importlib.reload(mod)
 
-    return mod, mod._process_single_reserved_loan, mod.process_reserved_loan_timeouts
+    return mod, mod._process_single_timed_out_loan, mod.process_timed_out_loans
 
 
 # ---------------------------------------------------------------------------
-# _process_single_reserved_loan
+# _process_single_timed_out_loan (RESERVED path)
 # ---------------------------------------------------------------------------
 
 
@@ -138,12 +142,13 @@ async def test_process_single_reserved_loan_marks_inspection_and_creates_audit()
     asset = _make_asset(
         asset_id=asset_id, asset_status=AssetStatus.BORROWED, locker_id=locker_id
     )
-    # Execute call sequence in _process_single_reserved_loan:
+    # Execute call sequence in _process_single_timed_out_loan:
     # [1] SELECT Loan FOR UPDATE NOWAIT
     # [2] SELECT Asset FOR UPDATE NOWAIT
-    # [3] SELECT Locker FOR UPDATE NOWAIT
-    # [4] log_audit_event: SELECT most recent audit log
-    fake_db = _FakeSession(loan, asset, locker, None)
+    # [3] SELECT Locker (checkout) FOR UPDATE NOWAIT
+    # [4] SELECT Locker (return) FOR UPDATE NOWAIT — returns None
+    # [5] log_audit_event: SELECT most recent audit log
+    fake_db = _FakeSession(loan, asset, locker, None, None)
 
     _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
     result = await _proc(loan.loan_id, now, timeout_minutes=3)
@@ -158,18 +163,70 @@ async def test_process_single_reserved_loan_marks_inspection_and_creates_audit()
 
     audit_log = fake_db.added[0]
     assert audit_log.action_type == "LOAN_RESERVED_TIMEOUT"
-    assert audit_log.payload["event"] == "reserved_loan_timeout"
+    assert audit_log.payload["event"] == "loan_timeout"
     assert audit_log.payload["loan_id"] == str(loan.loan_id)
-    assert audit_log.payload["locker_id"] == str(locker.locker_id)
+    assert audit_log.payload["original_status"] == LoanStatus.RESERVED.value
+    assert audit_log.payload["checkout_locker_id"] == str(locker.locker_id)
     assert len(audit_log.previous_hash) == 64
     assert len(audit_log.current_hash) == 64
+
+
+@pytest.mark.anyio
+async def test_process_single_returning_loan_marks_inspection_and_maintenance():
+    """A timed-out RETURNING loan is moved to PENDING_INSPECTION with both lockers MAINTENANCE."""
+    now = datetime.now(UTC)
+    checkout_locker_id = uuid.uuid4()
+    return_locker_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    loan = _make_loan(
+        asset_id=asset_id,
+        checkout_locker_id=checkout_locker_id,
+        return_locker_id=return_locker_id,
+        loan_status=LoanStatus.RETURNING,
+        returned_at=now - timedelta(minutes=5),
+    )
+    checkout_locker = _make_locker(
+        locker_id=checkout_locker_id, locker_status=LockerStatus.OCCUPIED
+    )
+    return_locker = _make_locker(
+        locker_id=return_locker_id, locker_status=LockerStatus.OCCUPIED
+    )
+    asset = _make_asset(
+        asset_id=asset_id,
+        asset_status=AssetStatus.BORROWED,
+        locker_id=checkout_locker_id,
+    )
+    # Execute call sequence in _process_single_timed_out_loan:
+    # [1] SELECT Loan FOR UPDATE NOWAIT
+    # [2] SELECT Asset FOR UPDATE NOWAIT
+    # [3] SELECT Locker (checkout) FOR UPDATE NOWAIT
+    # [4] SELECT Locker (return) FOR UPDATE NOWAIT
+    # [5] log_audit_event
+    fake_db = _FakeSession(loan, asset, checkout_locker, return_locker, None)
+
+    _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
+    result = await _proc(loan.loan_id, now, timeout_minutes=3)
+
+    assert result is True
+    assert loan.loan_status == LoanStatus.PENDING_INSPECTION
+    assert checkout_locker.locker_status == LockerStatus.MAINTENANCE
+    assert return_locker.locker_status == LockerStatus.MAINTENANCE
+    assert asset.asset_status == AssetStatus.PENDING_INSPECTION
+    assert fake_db.commit_calls == 1
+
+    audit_log = fake_db.added[0]
+    assert audit_log.action_type == "LOAN_RESERVED_TIMEOUT"
+    assert audit_log.payload["event"] == "loan_timeout"
+    assert audit_log.payload["original_status"] == LoanStatus.RETURNING.value
+    assert audit_log.payload["checkout_locker_id"] == str(checkout_locker_id)
+    assert audit_log.payload["return_locker_id"] == str(return_locker_id)
 
 
 @pytest.mark.anyio
 async def test_process_single_reserved_loan_skips_if_loan_not_found():
     """If the loan row does not exist, returns False without side effects."""
     now = datetime.now(UTC)
-    fake_db = _FakeSession(None, None, None, None)
+    fake_db = _FakeSession(None, None, None, None, None)
 
     _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
     result = await _proc(uuid.uuid4(), now, 3)
@@ -180,13 +237,13 @@ async def test_process_single_reserved_loan_skips_if_loan_not_found():
 
 @pytest.mark.anyio
 async def test_process_single_reserved_loan_skips_if_already_active():
-    """If the loan is no longer RESERVED, it is skipped."""
+    """If the loan is no longer RESERVED or RETURNING, it is skipped."""
     now = datetime.now(UTC)
     loan = _make_loan(
         loan_status=LoanStatus.ACTIVE,
         reserved_at=now - timedelta(minutes=5),
     )
-    fake_db = _FakeSession(loan, None, None, None)
+    fake_db = _FakeSession(loan, None, None, None, None)
 
     _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
     result = await _proc(loan.loan_id, now, 3)
@@ -203,7 +260,24 @@ async def test_process_single_reserved_loan_skips_if_not_yet_timed_out():
         loan_status=LoanStatus.RESERVED,
         reserved_at=now - timedelta(minutes=1),  # within 3-minute window
     )
-    fake_db = _FakeSession(loan, None, None, None)
+    fake_db = _FakeSession(loan, None, None, None, None)
+
+    _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
+    result = await _proc(loan.loan_id, now, 3)
+
+    assert result is False
+    assert fake_db.commit_calls == 0
+
+
+@pytest.mark.anyio
+async def test_process_single_returning_loan_skips_if_not_yet_timed_out():
+    """If returned_at is still within the timeout window, the loan is not processed."""
+    now = datetime.now(UTC)
+    loan = _make_loan(
+        loan_status=LoanStatus.RETURNING,
+        returned_at=now - timedelta(minutes=1),  # within 3-minute window
+    )
+    fake_db = _FakeSession(loan, None, None, None, None)
 
     _, _proc, _ = _reload_with_fake_session(lambda: fake_db)
     result = await _proc(loan.loan_id, now, 3)
@@ -213,7 +287,7 @@ async def test_process_single_reserved_loan_skips_if_not_yet_timed_out():
 
 
 # ---------------------------------------------------------------------------
-# process_reserved_loan_timeouts (batch dispatcher)
+# process_timed_out_loans (batch dispatcher)
 # ---------------------------------------------------------------------------
 
 
@@ -231,7 +305,7 @@ async def test_process_reserved_loan_timeouts_returns_zero_when_batch_is_empty()
 @pytest.mark.anyio
 async def test_process_reserved_loan_timeouts_calls_process_for_each_batch_id():
     """
-    process_reserved_loan_timeouts dispatches one call to _process_single_reserved_loan
+    process_timed_out_loans dispatches one call to _process_single_timed_out_loan
     per loan ID. Uses AsyncMock to count internal calls.
     """
     now = datetime.now(UTC)
@@ -250,14 +324,14 @@ async def test_process_reserved_loan_timeouts_calls_process_for_each_batch_id():
         call_count[0] += 1
         if call_count[0] == 1:
             return _FakeSession([loan_a.loan_id, loan_b.loan_id])
-        return _FakeSession(None, None, None, None)
+        return _FakeSession(None, None, None, None, None)
 
     _, _, _proc = _reload_with_fake_session(factory)
 
     import app.workers.loan_timeout_worker as mod
 
     mock_proc = AsyncMock(return_value=True)
-    with patch.object(mod, "_process_single_reserved_loan", mock_proc):
+    with patch.object(mod, "_process_single_timed_out_loan", mock_proc):
         processed = await _proc(now=now, timeout_minutes=3)
 
     assert processed == 2
@@ -265,11 +339,11 @@ async def test_process_reserved_loan_timeouts_calls_process_for_each_batch_id():
 
 
 @pytest.mark.anyio
-async def test_process_timeouts_delegates_to_process_reserved_loan_timeouts():
+async def test_process_timeouts_delegates_to_process_timed_out_loans():
     import app.workers.loan_timeout_worker as mod
 
     mock_proc = AsyncMock(return_value=7)
-    with patch.object(mod, "process_reserved_loan_timeouts", mock_proc):
+    with patch.object(mod, "process_timed_out_loans", mock_proc):
         processed = await mod.process_timeouts()
 
     assert processed == 7
