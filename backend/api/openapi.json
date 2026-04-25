@@ -1,0 +1,4549 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EasyLend API",
+    "description": "Core Backend for the EasyLend Practice Enterprise",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Read Root",
+        "operationId": "read_root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health Check",
+        "operationId": "health_check_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/nfc": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Nfc Login",
+        "description": "Validate an NFC badge before PIN verification.\n\nPublic endpoint for the kiosk sign-in flow.\nRate-limited: 500 req/min per IP (Layer 2).",
+        "operationId": "nfc_login_api_v1_auth_nfc_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NfcLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Nfc Login Api V1 Auth Nfc Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/pin": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Pin Login",
+        "description": "Verify the PIN and issue access and refresh tokens.\n\nPublic endpoint for the kiosk sign-in flow.\nRate-limited: 500 req/min per IP (Layer 2).",
+        "operationId": "pin_login_api_v1_auth_pin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Refresh Access Token",
+        "description": "Rotate a valid refresh token and return a new token pair.\n\nPublic endpoint for authenticated kiosk sessions.\nRate-limited: 500 req/min per IP (Layer 2).",
+        "operationId": "refresh_access_token_api_v1_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "description": "Revoke the provided refresh token and end the active session.\n\nPublic endpoint and idempotent by design.",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Logout Api V1 Auth Logout Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/roles": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "List Roles",
+        "description": "Return all roles that can be assigned to users.\n\nRequires Admin role. No request body is required.",
+        "operationId": "list_roles_api_v1_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Roles Api V1 Roles Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "List Users",
+        "description": "List users with pagination.\n\nRequires Admin role.",
+        "operationId": "list_users_api_v1_users_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of users to skip before returning results (pagination offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of users to skip before returning results (pagination offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of users to return in a single response (pagination page size).",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of users to return in a single response (pagination page size)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Create User",
+        "description": "Create a new user account.\n\nRequires Admin role.",
+        "operationId": "create_user_api_v1_users_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get Me",
+        "description": "Return the profile of the currently authenticated user.\n\nRequires authentication.",
+        "operationId": "get_me_api_v1_users_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Get User By Id",
+        "description": "Return a user by unique identifier.\n\nRequires Admin role.",
+        "operationId": "get_user_by_id_api_v1_users__user_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User",
+        "description": "Partially update an existing user.\n\nRequires Admin role.",
+        "operationId": "update_user_api_v1_users__user_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/anonymize": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Anonymize User",
+        "description": "Anonymize a user account (GDPR Right to be Forgotten).\n\nReplaces all PII fields (first_name, last_name, email, nfc_tag_id) with\nnon-identifying placeholder values and replaces pin_hash with a hash of a\nrandomly generated credential, effectively disabling login with the original PIN.\nAlso sets status=UserStatus.ANONYMIZED.\nWrites an audit log entry with action_type=\"USER_ANONYMIZED\".\n\nRequires Admin role.",
+        "operationId": "anonymize_user_api_v1_users__user_id__anonymize_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "User already anonymized"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/nfc": {
+      "patch": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Update User Nfc",
+        "description": "Update the NFC tag linked to a user account.\n\nRequires Admin role.",
+        "operationId": "update_user_nfc_api_v1_users__user_id__nfc_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserNfcUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{user_id}/export": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Export User Data",
+        "description": "Export all personal data for a user (GDPR Right to Portability).\n\nAccessible by the user themselves OR an Admin. Raises 403 otherwise.",
+        "operationId": "export_user_data_api_v1_users__user_id__export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Export User Data Api V1 Users  User Id  Export Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories": {
+      "get": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "List Categories",
+        "description": "List all asset categories with pagination.\n\nAccessible by every authenticated user (student, medewerker, admin).\nUsed by the kiosk catalog view to group available assets.",
+        "operationId": "list_categories_api_v1_categories_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Create Category",
+        "description": "Create a new asset category.\n\nRequires Admin role. `category_name` must be unique (DB constraint).",
+        "operationId": "create_category_api_v1_categories_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Category name already exists"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/categories/{category_id}": {
+      "patch": {
+        "tags": [
+          "categories"
+        ],
+        "summary": "Update Category",
+        "description": "Update an existing category.\n\nRequires Admin role. All fields in the request body are optional so\npartial updates are supported.",
+        "operationId": "update_category_api_v1_categories__category_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Category name already exists"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Category not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kiosks": {
+      "get": {
+        "tags": [
+          "kiosks"
+        ],
+        "summary": "List Kiosks",
+        "description": "List all registered kiosk devices with pagination.\n\nRequires Admin role.",
+        "operationId": "list_kiosks_api_v1_kiosks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KioskListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "kiosks"
+        ],
+        "summary": "Create Kiosk",
+        "description": "Register a new kiosk device.\n\nRequires Admin role. Status defaults to `ONLINE` unless explicitly\nset otherwise in the request body.",
+        "operationId": "create_kiosk_api_v1_kiosks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KioskCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KioskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kiosks/{kiosk_id}/lockers": {
+      "get": {
+        "tags": [
+          "kiosks"
+        ],
+        "summary": "List Kiosk Lockers",
+        "description": "List all lockers that belong to a specific kiosk, ordered by slot number.\n\nAccessible by every authenticated user. Used by both the kiosk boot\nsequence (JWT Service Account) and the Admin Locker Grid UI (JWT Admin token).\nReturns a 404 if the kiosk does not exist.",
+        "operationId": "list_kiosk_lockers_api_v1_kiosks__kiosk_id__lockers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kiosk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kiosk Id"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockerListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Kiosk not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kiosks/{kiosk_id}/status": {
+      "patch": {
+        "tags": [
+          "kiosks"
+        ],
+        "summary": "Update Kiosk Status",
+        "description": "Update a kiosk's operational status.\n\nRequires Admin role. Typically used to change `kiosk_status`\n(e.g. `ONLINE` \u2192 `MAINTENANCE`) via the Admin Remote Control flow.",
+        "operationId": "update_kiosk_status_api_v1_kiosks__kiosk_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kiosk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Kiosk Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KioskStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KioskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Kiosk not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockers": {
+      "get": {
+        "tags": [
+          "lockers"
+        ],
+        "summary": "List Lockers",
+        "description": "List all lockers across all kiosks with pagination.\n\nRequires Admin role.",
+        "operationId": "list_lockers_api_v1_lockers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockerListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "lockers"
+        ],
+        "summary": "Create Locker",
+        "description": "Add a new locker to an existing kiosk.\n\nRequires Admin role. `kiosk_id` must reference an existing kiosk.\n`logical_number` is the physical slot label (1, 2, 3 \u2026) and must be\nunique within the kiosk.",
+        "operationId": "create_locker_api_v1_lockers_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockerResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid kiosk_id or duplicate logical_number"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockers/{locker_id}": {
+      "get": {
+        "tags": [
+          "lockers"
+        ],
+        "summary": "Get Locker By Id",
+        "description": "Retrieve a single locker by its unique identifier.\n\nRequires Admin role.",
+        "operationId": "get_locker_by_id_api_v1_lockers__locker_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "locker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Locker Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockerResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Locker not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockers/{locker_id}/open": {
+      "post": {
+        "tags": [
+          "lockers"
+        ],
+        "summary": "Force Open Locker",
+        "description": "Force-open a locker door via the Vision Box WebSocket.\n\nRequires Admin role. Sends an `open_slot` WSS command to the kiosk that\nowns the locker and writes an `ADMIN_FORCED_OPEN` audit log entry.\nReturns 503 if the Vision Box for the associated kiosk is offline.\nIdempotency: requires Idempotency-Key header. Duplicate keys return 409.",
+        "operationId": "force_open_locker_api_v1_lockers__locker_id__open_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "locker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Locker Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Force Open Locker Api V1 Lockers  Locker Id  Open Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Locker not found"
+          },
+          "503": {
+            "description": "Vision Box offline for this kiosk"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lockers/{locker_id}/status": {
+      "patch": {
+        "tags": [
+          "lockers"
+        ],
+        "summary": "Update Locker Status",
+        "description": "Update a locker's operational status.\n\nRequires Admin role. Primarily used by the Quarantine flow to set\n`locker_status = MAINTENANCE` when a damage inspection is pending,\nor to restore a locker to `AVAILABLE` after an admin resolves it.\n\nPayload must include a locker_status value.",
+        "operationId": "update_locker_status_api_v1_lockers__locker_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "locker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Locker Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockerStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockerResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Locker not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Get Catalog",
+        "description": "Role-aware catalog view.\n\n- Admins: return one row per asset including active/reserved loan context.\n- Non-admins: return grouped counts per category of AVAILABLE assets.",
+        "operationId": "get_catalog_api_v1_catalog_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CatalogAdminView"
+                      }
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CatalogUserView"
+                      }
+                    }
+                  ],
+                  "title": "Response Get Catalog Api V1 Catalog Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "List Assets",
+        "description": "List assets with pagination and an optional status filter.\n\nAccessible by every authenticated user. Soft-deleted assets\n(`is_deleted = True`) are always excluded from this listing so\nthat the catalog never surfaces retired equipment.\n\nUse the `asset_status` query parameter to narrow results:\n- Kiosk app catalog view: `?asset_status=AVAILABLE`\n- Admin overview: omit the filter to see everything active.",
+        "operationId": "list_assets_api_v1_assets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          },
+          {
+            "name": "asset_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AssetStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional filter. Only return assets with this status. Possible values: AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST.",
+              "title": "Asset Status"
+            },
+            "description": "Optional filter. Only return assets with this status. Possible values: AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Create Asset",
+        "description": "Register a new physical asset in the system.\n\nRequires Admin role.\n\n- `aztec_code` must be unique (matches the barcode printed on the item).\n- `category_id` must reference an existing category.\n- `locker_id` is optional; omit it if the asset is not yet physically\n  placed in a locker (e.g. asset is being prepared).",
+        "operationId": "create_asset_api_v1_assets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Duplicate aztec_code, invalid category_id, or invalid locker_id"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Get Asset By Id",
+        "description": "Retrieve a single asset by its unique identifier.\n\nAccessible by every authenticated user. Returns the asset regardless\nof `is_deleted` status so that historical records remain retrievable\nwhen the ID is known.",
+        "operationId": "get_asset_by_id_api_v1_assets__asset_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Asset not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Update Asset",
+        "description": "Update an existing asset.\n\nRequires Admin role. All fields in `AssetUpdate` are optional so\npartial updates are supported.\n\nCommon admin use-cases:\n- Mark an asset `MAINTENANCE` or `LOST` via `asset_status`.\n- Re-assign an asset to a different category or locker.\n- Correct a typo in `name` or `aztec_code`.\n\n`is_deleted` is deliberately **not** updatable here: use the\ndedicated `DELETE /{asset_id}` endpoint for soft-deletion.",
+        "operationId": "update_asset_api_v1_assets__asset_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssetUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Duplicate aztec_code, invalid category_id, or invalid locker_id"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Asset not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "assets"
+        ],
+        "summary": "Soft Delete Asset",
+        "description": "Soft-delete an asset (sets `is_deleted = True`).\n\nRequires Admin role. The record is **not** physically removed; all\nhistorical loan records and AI evaluations that reference this asset\nremain intact. The asset is hidden from the `GET /assets` listing\nimmediately after deletion.\n\n`asset_status` is intentionally preserved as-is so that audit logs\nand in-flight loans are not silently corrupted.\n\nReturns 409 Conflict if the asset has an ACTIVE or RESERVED loan.",
+        "operationId": "soft_delete_asset_api_v1_assets__asset_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: Admin only"
+          },
+          "404": {
+            "description": "Asset not found"
+          },
+          "409": {
+            "description": "Asset has active or reserved loans"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/loans": {
+      "get": {
+        "tags": [
+          "loans"
+        ],
+        "summary": "List Loans",
+        "description": "List loans with pagination.\n\n- **Admin**: all loans in the system.\n- **Any other role**: only the caller's own loans.",
+        "operationId": "list_loans_api_v1_loans_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of records to skip (offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Number of records to skip (offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Maximum number of records to return.",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum number of records to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LoanListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LoanPublicListResponse"
+                    }
+                  ],
+                  "title": "Response List Loans Api V1 Loans Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/loans/{loan_id}/status": {
+      "get": {
+        "tags": [
+          "loans"
+        ],
+        "summary": "Get Loan Status",
+        "description": "Retrieve the current status of a single loan.\n\nIntended as a lightweight polling endpoint for the kiosk app.\n\n- **Admin**: may poll any loan.\n- **Other roles**: may only poll their own loans (returns 403 otherwise).",
+        "operationId": "get_loan_status_api_v1_loans__loan_id__status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "loan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Loan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: not the loan owner"
+          },
+          "404": {
+            "description": "Loan not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/loans/checkout": {
+      "post": {
+        "tags": [
+          "loans"
+        ],
+        "summary": "Checkout",
+        "description": "Begin a checkout by scanning an asset's Aztec barcode.\n\nUses `SELECT \u2026 FOR UPDATE NOWAIT` to guarantee that two concurrent\nrequests for the same asset cannot both succeed. If the row is already\nlocked, a **409 Conflict** is returned immediately (no retry).\n\n**State transitions (hardware-free path):**\n- `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)\n- `Asset.asset_status`: `AVAILABLE` \u2192 `BORROWED`\n- `Asset.locker_id`: unchanged until Vision confirms the checkout result\n- `Locker.locker_status`: unchanged until Vision confirms the locker is empty\n- New `Loan` record created with `loan_status = RESERVED`\n\nRate-limited: 60 req/min per authenticated user (Layer 3).",
+        "operationId": "checkout_api_v1_loans_checkout_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanPublicResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Asset unavailable, not found, or has no locker assigned"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "404": {
+            "description": "Locker not found"
+          },
+          "409": {
+            "description": "Conflict: lock contention or processing error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/loans/{loan_id}/report-damage": {
+      "post": {
+        "tags": [
+          "loans"
+        ],
+        "summary": "Report Damage",
+        "description": "Report damage during the immediate post-checkout grace period.",
+        "operationId": "report_damage_api_v1_loans__loan_id__report_damage_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "loan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Loan Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanPublicResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid state or grace period elapsed"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: not the loan owner"
+          },
+          "404": {
+            "description": "Loan, asset, locker, or user not found"
+          },
+          "409": {
+            "description": "Conflict: lock contention or duplicate request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/loans/return/initiate": {
+      "post": {
+        "tags": [
+          "loans"
+        ],
+        "summary": "Return Initiate",
+        "description": "Initiate the return process for an active loan.\n\nFinds and locks the first available locker at the kiosk where the\nuser is standing (`payload.kiosk_id`) using `SELECT \u2026 FOR UPDATE NOWAIT`\nto fail fast if the slot is currently in use by another transaction.\n\n**State transitions:**\n- `Locker.locker_status`: `AVAILABLE` \u2192 `OCCUPIED` (reserved for this return)\n- `Loan.return_locker_id`: assigned to the chosen locker\n- `Loan.loan_status`: `ACTIVE` \u2192 `RETURNING`\n\nRate-limited: 60 req/min per authenticated user (Layer 3).",
+        "operationId": "return_initiate_api_v1_loans_return_initiate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnInitiateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoanPublicResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Loan is not in ACTIVE state"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Forbidden: not the loan owner"
+          },
+          "404": {
+            "description": "Loan or Kiosk not found"
+          },
+          "409": {
+            "description": "Conflict: loan state changed or lock contention"
+          },
+          "503": {
+            "description": "No available lockers at the requested kiosk"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/analyze": {
+      "post": {
+        "tags": [
+          "vision"
+        ],
+        "summary": "Analyze Image",
+        "operationId": "analyze_image_api_v1_vision_analyze_post",
+        "parameters": [
+          {
+            "name": "X-Device-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_image_api_v1_vision_analyze_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Analyze Image Api V1 Vision Analyze Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/update-model": {
+      "post": {
+        "tags": [
+          "vision"
+        ],
+        "summary": "Update Model",
+        "operationId": "update_model_api_v1_update_model_post",
+        "parameters": [
+          {
+            "name": "X-Device-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Device-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelUpdateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarantine": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List Quarantine Loans",
+        "description": "List all loans in PENDING_INSPECTION status with joined relation names.",
+        "operationId": "list_quarantine_loans_api_v1_admin_quarantine_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records to skip (pagination offset).",
+              "default": 0,
+              "title": "Skip"
+            },
+            "description": "Records to skip (pagination offset)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Maximum records to return (max 500).",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Maximum records to return (max 500)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuarantineLoanView"
+                  },
+                  "title": "Response List Quarantine Loans Api V1 Admin Quarantine Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not an admin"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/evaluations/{loan_id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Get Latest Evaluation",
+        "description": "Return the most recent AI evaluation for a given loan.",
+        "operationId": "get_latest_evaluation_api_v1_admin_evaluations__loan_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "loan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Loan Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDetailView"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not an admin"
+          },
+          "404": {
+            "description": "Loan or evaluation not found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/evaluations/{evaluation_id}/judge": {
+      "patch": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Judge Evaluation",
+        "description": "Admin verdict on a quarantined AI evaluation.\n\n- **is_approved == True** (AI was right): Loan \u2192 DISPUTED, Asset \u2192 MAINTENANCE.\n- **is_approved == False** (AI was wrong):\n    - CHECKOUT eval: Loan \u2192 ACTIVE, Asset \u2192 BORROWED, Locker \u2192 AVAILABLE.\n    - RETURN eval: Loan \u2192 COMPLETED, Asset \u2192 AVAILABLE, Locker \u2192 OCCUPIED.",
+        "operationId": "judge_evaluation_api_v1_admin_evaluations__evaluation_id__judge_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "evaluation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evaluation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuarantineJudgmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not an admin"
+          },
+          "404": {
+            "description": "Evaluation, loan, asset, or locker not found"
+          },
+          "409": {
+            "description": "Lock contention"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit/": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "List Audit Logs",
+        "description": "Return a paginated list of audit logs (admin-only).",
+        "operationId": "list_audit_logs_api_v1_audit__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogView"
+                  },
+                  "title": "Response List Audit Logs Api V1 Audit  Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not an admin"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audit/verify": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Verify Audit Chain",
+        "description": "Verify the integrity of the audit chain.\n\nDeterministic ordering is enforced via `created_at.asc(), audit_id.asc()`.\nThe verification walks the chain, checking previous_hash continuity and\nrecomputing each record's current_hash.\n\nPagination prevents memory exhaustion when the audit log grows large.\nUse `skip` and `limit` to walk the chain in batches; the chain must\nbe verified contiguously \u2014 gaps indicate tampering.",
+        "operationId": "verify_audit_chain_api_v1_audit_verify_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerifyResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not an admin"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/images/{filename}": {
+      "get": {
+        "tags": [
+          "images"
+        ],
+        "summary": "Get Image",
+        "description": "Serve an uploaded image by filename. Enforces strict UUID format and admin access.",
+        "operationId": "get_image_api_v1_images__filename__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssetCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "aztec_code": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Aztec Code"
+          },
+          "asset_status": {
+            "$ref": "#/components/schemas/AssetStatus",
+            "default": "AVAILABLE"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locker Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "aztec_code",
+          "category_id"
+        ],
+        "title": "AssetCreate",
+        "description": "category_id is required; locker_id is optional (asset may be unassigned initially)."
+      },
+      "AssetListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AssetResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AssetListResponse"
+      },
+      "AssetResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "aztec_code": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Aztec Code"
+          },
+          "asset_status": {
+            "$ref": "#/components/schemas/AssetStatus",
+            "default": "AVAILABLE"
+          },
+          "asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Asset Id"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locker Id"
+          },
+          "is_deleted": {
+            "type": "boolean",
+            "title": "Is Deleted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "aztec_code",
+          "asset_id",
+          "category_id",
+          "locker_id",
+          "is_deleted"
+        ],
+        "title": "AssetResponse"
+      },
+      "AssetStatus": {
+        "type": "string",
+        "enum": [
+          "AVAILABLE",
+          "BORROWED",
+          "RESERVED",
+          "PENDING_INSPECTION",
+          "MAINTENANCE",
+          "LOST"
+        ],
+        "title": "AssetStatus"
+      },
+      "AssetUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "aztec_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aztec Code"
+          },
+          "asset_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locker Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AssetUpdate",
+        "description": "All fields Optional for PATCH/PUT.\n\nAdmins may update any attribute individually, including re-assigning an asset\nto a different category or locker, or marking it LOST / MAINTENANCE.\nis_deleted is intentionally excluded: use the dedicated soft-delete endpoint."
+      },
+      "AuditLogView": {
+        "properties": {
+          "audit_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Audit Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "action_type": {
+            "type": "string",
+            "title": "Action Type"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "previous_hash": {
+            "type": "string",
+            "title": "Previous Hash"
+          },
+          "current_hash": {
+            "type": "string",
+            "title": "Current Hash"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "audit_id",
+          "user_id",
+          "action_type",
+          "payload",
+          "previous_hash",
+          "current_hash",
+          "created_at"
+        ],
+        "title": "AuditLogView"
+      },
+      "AuditVerifyResponse": {
+        "properties": {
+          "is_valid": {
+            "type": "boolean",
+            "title": "Is Valid"
+          },
+          "tampered_record_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tampered Record Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "is_valid",
+          "tampered_record_id"
+        ],
+        "title": "AuditVerifyResponse"
+      },
+      "Body_analyze_image_api_v1_vision_analyze_post": {
+        "properties": {
+          "loan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Loan Id"
+          },
+          "evaluation_type": {
+            "$ref": "#/components/schemas/EvaluationType"
+          },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loan_id",
+          "evaluation_type",
+          "file"
+        ],
+        "title": "Body_analyze_image_api_v1_vision_analyze_post"
+      },
+      "CatalogAdminView": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Asset Id"
+          },
+          "asset_name": {
+            "type": "string",
+            "title": "Asset Name"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "asset_status": {
+            "$ref": "#/components/schemas/AssetStatus"
+          },
+          "locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locker Id"
+          },
+          "is_deleted": {
+            "type": "boolean",
+            "title": "Is Deleted"
+          },
+          "loan_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoanStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "borrower_first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrower First Name"
+          },
+          "borrower_last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrower Last Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "asset_id",
+          "asset_name",
+          "category_id",
+          "asset_status",
+          "locker_id",
+          "is_deleted",
+          "loan_status",
+          "borrower_first_name",
+          "borrower_last_name"
+        ],
+        "title": "CatalogAdminView"
+      },
+      "CatalogUserView": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "available_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Available Count",
+            "description": "Number of assets in this category that are currently available for checkout."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category_id",
+          "category_name",
+          "available_count"
+        ],
+        "title": "CatalogUserView"
+      },
+      "CategoryCreate": {
+        "properties": {
+          "category_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Category Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category_name"
+        ],
+        "title": "CategoryCreate",
+        "description": "No extra fields beyond Base; category_name uniqueness is enforced DB-side."
+      },
+      "CategoryListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "CategoryListResponse"
+      },
+      "CategoryResponse": {
+        "properties": {
+          "category_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Category Name"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category_name",
+          "category_id"
+        ],
+        "title": "CategoryResponse"
+      },
+      "CategoryUpdate": {
+        "properties": {
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CategoryUpdate",
+        "description": "All fields Optional for PATCH/PUT."
+      },
+      "CheckoutRequest": {
+        "properties": {
+          "aztec_code": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Aztec Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "aztec_code"
+        ],
+        "title": "CheckoutRequest",
+        "description": "Payload the kiosk sends to initiate a checkout.\n\nThe ``aztec_code`` is the barcode scanned from the asset label on the\nkiosk screen. The backend resolves the associated asset, uses that\nasset's current locker to lock the asset/locker, creates the loan\nrecord, and then frees the locker."
+      },
+      "EvaluationDetailView": {
+        "properties": {
+          "evaluation_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Evaluation Id"
+          },
+          "evaluation_type": {
+            "$ref": "#/components/schemas/EvaluationType"
+          },
+          "photo_url": {
+            "type": "string",
+            "title": "Photo Url"
+          },
+          "ai_confidence": {
+            "type": "number",
+            "title": "Ai Confidence"
+          },
+          "has_damage_detected": {
+            "type": "boolean",
+            "title": "Has Damage Detected"
+          },
+          "detected_objects": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Objects"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version"
+          },
+          "analyzed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Analyzed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evaluation_id",
+          "evaluation_type",
+          "photo_url",
+          "ai_confidence",
+          "has_damage_detected",
+          "detected_objects",
+          "model_version",
+          "analyzed_at"
+        ],
+        "title": "EvaluationDetailView",
+        "description": "Most recent AI evaluation for a loan, returned to the admin for judging."
+      },
+      "EvaluationType": {
+        "type": "string",
+        "enum": [
+          "CHECKOUT",
+          "RETURN"
+        ],
+        "title": "EvaluationType"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KioskCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "location_description": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Location Description"
+          },
+          "kiosk_status": {
+            "$ref": "#/components/schemas/KioskStatus",
+            "default": "ONLINE"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "location_description"
+        ],
+        "title": "KioskCreate",
+        "description": "No extra fields; kiosk_status defaults to ONLINE on creation."
+      },
+      "KioskListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KioskResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "KioskListResponse"
+      },
+      "KioskResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "location_description": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Location Description"
+          },
+          "kiosk_status": {
+            "$ref": "#/components/schemas/KioskStatus",
+            "default": "ONLINE"
+          },
+          "kiosk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Kiosk Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "location_description",
+          "kiosk_id"
+        ],
+        "title": "KioskResponse"
+      },
+      "KioskStatus": {
+        "type": "string",
+        "enum": [
+          "ONLINE",
+          "OFFLINE",
+          "MAINTENANCE"
+        ],
+        "title": "KioskStatus"
+      },
+      "KioskStatusUpdate": {
+        "properties": {
+          "kiosk_status": {
+            "$ref": "#/components/schemas/KioskStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kiosk_status"
+        ],
+        "title": "KioskStatusUpdate",
+        "description": "Schema specifically for the /status endpoint."
+      },
+      "LoanListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LoanResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "LoanListResponse",
+        "description": "Paginated list of loans (admin-facing, includes user_id per item)."
+      },
+      "LoanPublicListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LoanPublicResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "LoanPublicListResponse",
+        "description": "Paginated list of loans for regular (non-admin) users \u2014 no user_id per item."
+      },
+      "LoanPublicResponse": {
+        "properties": {
+          "loan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Loan Id"
+          },
+          "asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Asset Id"
+          },
+          "checkout_locker_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkout Locker Id"
+          },
+          "return_locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Locker Id"
+          },
+          "reserved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved At"
+          },
+          "borrowed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrowed At"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "loan_status": {
+            "$ref": "#/components/schemas/LoanStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "loan_id",
+          "asset_id",
+          "checkout_locker_id",
+          "return_locker_id",
+          "reserved_at",
+          "borrowed_at",
+          "due_date",
+          "returned_at",
+          "loan_status"
+        ],
+        "title": "LoanPublicResponse",
+        "description": "Loan response WITHOUT user identity \u2014 for regular (non-admin) users.\n\nExcludes user_id to prevent IDOR: regular authenticated users must not\nlearn which other users are associated with specific loans."
+      },
+      "LoanResponse": {
+        "properties": {
+          "loan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Loan Id"
+          },
+          "asset_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Asset Id"
+          },
+          "checkout_locker_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Checkout Locker Id"
+          },
+          "return_locker_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Locker Id"
+          },
+          "reserved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved At"
+          },
+          "borrowed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrowed At"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "loan_status": {
+            "$ref": "#/components/schemas/LoanStatus"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "loan_id",
+          "asset_id",
+          "checkout_locker_id",
+          "return_locker_id",
+          "reserved_at",
+          "borrowed_at",
+          "due_date",
+          "returned_at",
+          "loan_status",
+          "user_id"
+        ],
+        "title": "LoanResponse",
+        "description": "Full representation of a loan record returned from the API.\n\nIncludes user_id \u2014 for admin users only."
+      },
+      "LoanStatus": {
+        "type": "string",
+        "enum": [
+          "RESERVED",
+          "ACTIVE",
+          "RETURNING",
+          "OVERDUE",
+          "COMPLETED",
+          "FRAUD_SUSPECTED",
+          "DISPUTED",
+          "PENDING_INSPECTION"
+        ],
+        "title": "LoanStatus"
+      },
+      "LoanStatusResponse": {
+        "properties": {
+          "loan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Loan Id"
+          },
+          "loan_status": {
+            "$ref": "#/components/schemas/LoanStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loan_id",
+          "loan_status"
+        ],
+        "title": "LoanStatusResponse",
+        "description": "Minimal payload for the status-polling endpoint.\n\nThe kiosk polls ``GET /api/v1/loans/{loan_id}/status`` until the\n``loan_status`` reaches the desired state for the kiosk flow (for\nexample, a final state such as ``COMPLETED`` or ``FRAUD_SUSPECTED``)."
+      },
+      "LockerCreate": {
+        "properties": {
+          "logical_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Logical Number"
+          },
+          "locker_status": {
+            "$ref": "#/components/schemas/LockerStatus",
+            "default": "AVAILABLE"
+          },
+          "kiosk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Kiosk Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "logical_number",
+          "kiosk_id"
+        ],
+        "title": "LockerCreate",
+        "description": "kiosk_id is required on creation to assign the locker to a physical kiosk."
+      },
+      "LockerListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LockerResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "LockerListResponse"
+      },
+      "LockerResponse": {
+        "properties": {
+          "logical_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Logical Number"
+          },
+          "locker_status": {
+            "$ref": "#/components/schemas/LockerStatus",
+            "default": "AVAILABLE"
+          },
+          "locker_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Locker Id"
+          },
+          "kiosk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Kiosk Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "logical_number",
+          "locker_id",
+          "kiosk_id"
+        ],
+        "title": "LockerResponse"
+      },
+      "LockerStatus": {
+        "type": "string",
+        "enum": [
+          "AVAILABLE",
+          "OCCUPIED",
+          "MAINTENANCE",
+          "ERROR_OPEN"
+        ],
+        "title": "LockerStatus"
+      },
+      "LockerStatusUpdate": {
+        "properties": {
+          "locker_status": {
+            "$ref": "#/components/schemas/LockerStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "locker_status"
+        ],
+        "title": "LockerStatusUpdate",
+        "description": "Schema specifically for the /status endpoint."
+      },
+      "ModelUpdateRequest": {
+        "properties": {
+          "object_detection_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Detection Url"
+          },
+          "segmentation_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmentation Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ModelUpdateRequest"
+      },
+      "ModelUpdateResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ModelUpdateResponse"
+      },
+      "NfcLoginRequest": {
+        "properties": {
+          "nfc_tag_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Nfc Tag Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nfc_tag_id"
+        ],
+        "title": "NfcLoginRequest"
+      },
+      "PinLoginRequest": {
+        "properties": {
+          "nfc_tag_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Nfc Tag Id"
+          },
+          "pin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 4,
+            "title": "Pin"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nfc_tag_id",
+          "pin"
+        ],
+        "title": "PinLoginRequest"
+      },
+      "QuarantineJudgmentRequest": {
+        "properties": {
+          "is_approved": {
+            "type": "boolean",
+            "title": "Is Approved"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason",
+            "description": "Required when is_approved is False. Max 255 characters."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "is_approved"
+        ],
+        "title": "QuarantineJudgmentRequest",
+        "description": "Admin verdict on a quarantined AI evaluation."
+      },
+      "QuarantineLoanView": {
+        "properties": {
+          "loan_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Loan Id"
+          },
+          "asset_name": {
+            "type": "string",
+            "title": "Asset Name"
+          },
+          "user_name": {
+            "type": "string",
+            "title": "User Name"
+          },
+          "kiosk_name": {
+            "type": "string",
+            "title": "Kiosk Name"
+          },
+          "reserved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved At"
+          },
+          "borrowed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Borrowed At"
+          },
+          "returned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returned At"
+          },
+          "loan_status": {
+            "$ref": "#/components/schemas/LoanStatus"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "loan_id",
+          "asset_name",
+          "user_name",
+          "kiosk_name",
+          "reserved_at",
+          "borrowed_at",
+          "returned_at",
+          "loan_status"
+        ],
+        "title": "QuarantineLoanView",
+        "description": "Quarantined loan with joined relation names for the admin dashboard."
+      },
+      "RefreshTokenRequest": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Refresh Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshTokenRequest"
+      },
+      "ReturnInitiateRequest": {
+        "properties": {
+          "aztec_code": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Aztec Code"
+          },
+          "kiosk_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Kiosk Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "aztec_code",
+          "kiosk_id"
+        ],
+        "title": "ReturnInitiateRequest",
+        "description": "Payload sent to start the return flow.\n\nThe backend resolves the active loan from the scanned ``aztec_code``,\nfinds a free locker at the kiosk identified by ``kiosk_id`` (the\nkiosk where the user is currently standing), and begins the return\nprocess."
+      },
+      "RoleResponse": {
+        "properties": {
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "role_name": {
+            "type": "string",
+            "title": "Role Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role_id",
+          "role_name"
+        ],
+        "title": "RoleResponse"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "Bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "TokenResponse"
+      },
+      "UserCreate": {
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Last Name"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "format": "email",
+            "title": "Email"
+          },
+          "nfc_tag_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nfc Tag Id"
+          },
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "pin": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 4,
+            "title": "Pin"
+          },
+          "accepted_privacy_policy": {
+            "type": "boolean",
+            "title": "Accepted Privacy Policy",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "first_name",
+          "last_name",
+          "email",
+          "role_id",
+          "pin"
+        ],
+        "title": "UserCreate"
+      },
+      "UserListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "UserListResponse"
+      },
+      "UserNfcUpdate": {
+        "properties": {
+          "nfc_tag_id": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Nfc Tag Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "nfc_tag_id"
+        ],
+        "title": "UserNfcUpdate"
+      },
+      "UserResponse": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "role_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Role Id"
+          },
+          "role_name": {
+            "type": "string",
+            "title": "Role Name"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name"
+          },
+          "last_name": {
+            "type": "string",
+            "title": "Last Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "nfc_tag_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nfc Tag Id"
+          },
+          "failed_login_attempts": {
+            "type": "integer",
+            "title": "Failed Login Attempts"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Until"
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserStatus"
+          },
+          "ban_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ban Reason"
+          },
+          "accepted_privacy_policy": {
+            "type": "boolean",
+            "title": "Accepted Privacy Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "role_id",
+          "role_name",
+          "first_name",
+          "last_name",
+          "email",
+          "nfc_tag_id",
+          "failed_login_attempts",
+          "locked_until",
+          "status",
+          "ban_reason",
+          "accepted_privacy_policy"
+        ],
+        "title": "UserResponse"
+      },
+      "UserStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "INACTIVE",
+          "BANNED",
+          "ANONYMIZED"
+        ],
+        "title": "UserStatus"
+      },
+      "UserUpdate": {
+        "properties": {
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "nfc_tag_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nfc Tag Id"
+          },
+          "role_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Id"
+          },
+          "pin": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "minLength": 4
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin"
+          },
+          "failed_login_attempts": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Login Attempts"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Until"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ban_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ban Reason"
+          },
+          "accepted_privacy_policy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Privacy Policy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UserUpdate"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
