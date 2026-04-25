@@ -19,6 +19,23 @@ PUBSUB_POLL_TIMEOUT_SECONDS = 1.0
 
 
 class ConnectionManager:
+    """
+    Manages WebSocket connections for hardware client (Vision Box) communication.
+
+    WARNING: This application relies on the ASGI server (e.g., Uvicorn) to send
+    RFC 6455 WebSocket ping/pong control frames via `ws_ping_interval` and
+    `ws_ping_timeout` configuration to detect zombie TCP connections. The
+    application-level presence heartbeat only updates Redis TTL; it does NOT
+    actively detect broken sockets.
+
+    Do NOT deploy behind proxies (e.g., certain load balancers or VPN gateways)
+    that strip WebSocket control frames without ensuring the ASGI server's ping
+    timeout is set appropriately (e.g., Uvicorn: --ws-ping-timeout 30). If
+    deploying without ASGI ping support, implement application-level ping/pong
+    where the client responds with a "pong" text frame, and the server waits
+    for that response with a timeout to detect broken connections.
+    """
+
     def __init__(self) -> None:
         self.active_connections: dict[str, WebSocket] = {}
         self._presence_tasks: dict[str, asyncio.Task[None]] = {}
