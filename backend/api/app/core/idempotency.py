@@ -7,6 +7,7 @@ receive 409 Conflict.
 """
 
 import logging
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from redis.exceptions import RedisError
@@ -19,9 +20,9 @@ _IDEMPOTENCY_TTL_SECONDS = 86400  # 24 hours
 _MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 
-async def guard_idempotency(idempotency_key: str) -> None:
+async def guard_idempotency(idempotency_key: str, user_id: UUID) -> None:
     """
-    Atomically claim an idempotency key in Redis.
+    Atomically claim an idempotency key in Redis, scoped per-user.
 
     Raises HTTPException 400 if the key exceeds the length limit.
     Raises HTTPException 409 if the key already exists (duplicate request).
@@ -32,7 +33,7 @@ async def guard_idempotency(idempotency_key: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Idempotency-Key must not exceed {_MAX_IDEMPOTENCY_KEY_LENGTH} characters.",
         )
-    redis_key = f"idempotency:{idempotency_key}"
+    redis_key = f"idempotency:{user_id}:{idempotency_key}"
     try:
         was_set = await redis_client.set(
             redis_key, "processing", ex=_IDEMPOTENCY_TTL_SECONDS, nx=True
@@ -53,7 +54,7 @@ async def guard_idempotency(idempotency_key: str) -> None:
         )
 
 
-async def release_idempotency_key(idempotency_key: str) -> None:
+async def release_idempotency_key(idempotency_key: str, user_id: UUID) -> None:
     """
     Remove a consumed idempotency key from Redis.
 
@@ -61,7 +62,7 @@ async def release_idempotency_key(idempotency_key: str) -> None:
     failure (e.g., 503 hardware unreachable). Burns the key immediately so
     a subsequent retry with the same key can re-acquire it.
     """
-    redis_key = f"idempotency:{idempotency_key}"
+    redis_key = f"idempotency:{user_id}:{idempotency_key}"
     try:
         await redis_client.delete(redis_key)
     except (TimeoutError, RedisError):

@@ -232,9 +232,31 @@ async def checkout(
     db_committed = False
 
     await check_token_rate_limit(request, str(current_user.user_id))
-    await guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
+        # --- 0. Enforce concurrent loan cap (max 2 active loans) ---
+        active_statuses = (
+            LoanStatus.ACTIVE,
+            LoanStatus.RESERVED,
+            LoanStatus.RETURNING,
+            LoanStatus.OVERDUE,
+            LoanStatus.DISPUTED,
+            LoanStatus.PENDING_INSPECTION,
+        )
+        active_loans_result = await db.execute(
+            select(func.count())
+            .select_from(Loan)
+            .where(Loan.user_id == current_user.user_id)
+            .where(Loan.loan_status.in_(active_statuses))
+        )
+        active_loans_count = active_loans_result.scalar_one_or_none()
+        if isinstance(active_loans_count, int) and active_loans_count >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Maximum of 2 active loans reached.",
+            )
+
         # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
         try:
             result = await db.execute(
@@ -378,14 +400,14 @@ async def checkout(
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         if not db_committed:
-            await release_idempotency_key(idempotency_key)
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key)
+        await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
 
@@ -425,7 +447,7 @@ async def report_damage(
 
     # Step 1 — rate limit before idempotency guard to avoid stale key locks.
     await check_token_rate_limit(request, str(current_user.user_id))
-    await guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
         # Step 2 — lock loan.
@@ -641,14 +663,14 @@ async def report_damage(
         await db.refresh(loan)
     except HTTPException:
         if not db_committed:
-            await release_idempotency_key(idempotency_key)
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key)
+        await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
     # Step 10 — hardware sync after commit; failures are logged but do not rollback.
@@ -725,10 +747,32 @@ async def return_initiate(
     db_committed = False
 
     await check_token_rate_limit(request, str(current_user.user_id))
-    await guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
-        # --- 0. Validate that the kiosk exists (BEFORE hardware check) ---
+        # --- 0. Enforce concurrent loan cap ---
+        active_statuses = (
+            LoanStatus.ACTIVE,
+            LoanStatus.RESERVED,
+            LoanStatus.RETURNING,
+            LoanStatus.OVERDUE,
+            LoanStatus.DISPUTED,
+            LoanStatus.PENDING_INSPECTION,
+        )
+        active_loans_result = await db.execute(
+            select(func.count())
+            .select_from(Loan)
+            .where(Loan.user_id == current_user.user_id)
+            .where(Loan.loan_status.in_(active_statuses))
+        )
+        active_loans_count = active_loans_result.scalar_one_or_none()
+        if isinstance(active_loans_count, int) and active_loans_count >= 2:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Maximum of 2 active loans reached.",
+            )
+
+        # --- 1. Validate that the kiosk exists (BEFORE hardware check) ---
         kiosk_result = await db.execute(
             select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
         )
@@ -869,12 +913,12 @@ async def return_initiate(
     except HTTPException:
         # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         if not db_committed:
-            await release_idempotency_key(idempotency_key)
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
         try:
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key)
+        await release_idempotency_key(idempotency_key, current_user.user_id)
         raise

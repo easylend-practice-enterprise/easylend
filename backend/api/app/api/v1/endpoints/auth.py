@@ -249,7 +249,7 @@ async def pin_login(
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Incorrect PIN. {remaining_attempts} attempts remaining.",
+            detail="Invalid credentials.",
         )
 
     # Successful login: reset brute-force counters

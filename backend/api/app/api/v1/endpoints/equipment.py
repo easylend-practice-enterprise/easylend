@@ -541,7 +541,7 @@ async def force_open_locker(
         )
     db_committed = False
 
-    await guard_idempotency(idempotency_key)
+    await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
         locker = await _get_locker_or_404(db, locker_id)
@@ -575,7 +575,7 @@ async def force_open_locker(
         return {"detail": "Force open command initiated."}
     except HTTPException:
         if not db_committed:
-            await release_idempotency_key(idempotency_key)
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
         try:
@@ -584,7 +584,7 @@ async def force_open_locker(
             logger.exception(
                 "Failed to rollback DB during error handling in force_open_locker."
             )
-        await release_idempotency_key(idempotency_key)
+        await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
 

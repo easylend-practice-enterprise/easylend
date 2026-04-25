@@ -162,10 +162,10 @@ def _with_idempotency(headers: dict, key: str) -> dict:
 
 
 class _LockingSession(_QueuedSession):
-    """Like _QueuedSession but raises OperationalError on the 2nd execute call.
+    """Like _QueuedSession but raises OperationalError on the 3rd execute call.
 
     Use this to simulate a locked row (FOR UPDATE NOWAIT contention).
-    Queue slot [1] is consumed by get_current_user; execute #2 raises.
+    Queue slot [1]=get_current_user, [2]=count query (passes), [3]=raises.
     """
 
     def __init__(self, *results):
@@ -174,7 +174,7 @@ class _LockingSession(_QueuedSession):
 
     async def execute(self, query):
         self._call_count += 1
-        if self._call_count == 2:  # 1st is get_current_user, 2nd is FOR UPDATE NOWAIT
+        if self._call_count == 3:  # 1st=get_current_user, 2nd=count, 3rd=asset NOWAIT
             raise OperationalError(
                 "could not obtain lock",
                 params=None,
@@ -184,7 +184,7 @@ class _LockingSession(_QueuedSession):
 
 
 class _LockerLockingSession(_QueuedSession):
-    """Raises OperationalError on locker lock (3rd execute call)."""
+    """Raises OperationalError on locker lock (4th execute call)."""
 
     def __init__(self, *results):
         super().__init__(*results)
@@ -192,7 +192,7 @@ class _LockerLockingSession(_QueuedSession):
 
     async def execute(self, query):
         self._call_count += 1
-        if self._call_count == 3:
+        if self._call_count == 4:
             raise OperationalError(
                 "lock not available",
                 params=None,
@@ -202,7 +202,7 @@ class _LockerLockingSession(_QueuedSession):
 
 
 class _LoanLockingSession(_QueuedSession):
-    """Raises OperationalError on loan lock (4th execute call)."""
+    """Raises OperationalError on loan lock (5th execute call)."""
 
     def __init__(self, *results):
         super().__init__(*results)
@@ -210,7 +210,7 @@ class _LoanLockingSession(_QueuedSession):
 
     async def execute(self, query):
         self._call_count += 1
-        if self._call_count == 4:
+        if self._call_count == 5:
             raise OperationalError(
                 "lock not available",
                 params=None,
@@ -263,7 +263,7 @@ def test_return_initiate_returns_401_without_token(client_with_overrides):
 def test_checkout_returns_400_when_idempotency_header_missing(client_with_overrides):
     """POST /loans/checkout with auth but no Idempotency-Key header → 400."""
     student = _make_student()
-    with client_with_overrides(_QueuedSession(student)) as client:
+    with client_with_overrides(_QueuedSession(student, 0)) as client:
         response = client.post(
             "/api/v1/loans/checkout",
             json={"aztec_code": "AZT-001"},
@@ -279,7 +279,7 @@ def test_return_initiate_returns_400_when_idempotency_header_missing(
 ):
     """POST /loans/return/initiate with auth but no Idempotency-Key header → 400."""
     student = _make_student()
-    with client_with_overrides(_QueuedSession(student)) as client:
+    with client_with_overrides(_QueuedSession(student, 0)) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
             json={"loan_id": str(uuid.uuid4()), "kiosk_id": str(uuid.uuid4())},
@@ -424,7 +424,8 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
     locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
 
-    fake_db = _QueuedSession(student, asset, locker)
+    # Queue: [1]=count(0), [2]=get_current_user, [3]=asset, [4]=locker
+    fake_db = _QueuedSession(student, 0, asset, locker)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -458,7 +459,8 @@ def test_checkout_returns_202_when_manager_send_command_returns_false(
     asset = _make_asset(asset_status="AVAILABLE", locker_id=locker_id)
     locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
 
-    fake_db = _QueuedSession(student, asset, locker)
+    # Queue: [1]=count(0), [2]=get_current_user, [3]=asset, [4]=locker
+    fake_db = _QueuedSession(student, 0, asset, locker)
 
     # Simulate failing send_command (hardware unreachable despite an active connection)
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
@@ -495,7 +497,7 @@ def test_return_initiate_returns_202_when_manager_send_command_returns_false(
 
     # Queue: [auth user, kiosk exists, loan, locked loan, free_locker]
     fake_db = _QueuedSession(
-        student, SimpleNamespace(), active_loan, active_loan, free_locker
+        student, 0, SimpleNamespace(), active_loan, active_loan, free_locker
     )
 
     monkeypatch.setattr(manager, "send_command", AsyncMock(return_value=False))
@@ -546,12 +548,13 @@ def test_checkout_returns_400_when_asset_not_available(client_with_overrides):
 
     DB execute order:
     [1] get_current_user → student
-    [2] asset query      → asset with status=BORROWED
+    [2] count(0)
+    [3] asset query      → asset with status=BORROWED
     """
     student = _make_student()
     borrowed_asset = _make_asset(asset_status="BORROWED")
 
-    fake_db = _QueuedSession(student, borrowed_asset)
+    fake_db = _QueuedSession(student, 0, borrowed_asset, None, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -569,7 +572,7 @@ def test_checkout_returns_400_when_asset_has_no_locker(client_with_overrides):
     student = _make_student()
     orphaned_asset = _make_asset(asset_status="AVAILABLE", locker_id=None)
 
-    fake_db = _QueuedSession(student, orphaned_asset)
+    fake_db = _QueuedSession(student, 0, orphaned_asset, None, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -588,12 +591,12 @@ def test_checkout_returns_400_when_asset_has_no_locker(client_with_overrides):
 def test_checkout_returns_409_on_lock_contention(client_with_overrides):
     """POST /checkout when the asset row is locked by another TX → 409.
 
-    The _LockingSession raises OperationalError on the 2nd execute call
+    The _LockingSession raises OperationalError on the 3rd execute call
     (which is the FOR UPDATE NOWAIT on the asset).
     """
     student = _make_student()
-    # Queue: [0] student (for get_current_user), execute #2 raises OperationalError
-    locking_db = _LockingSession(student)
+    # Queue: [1]=get_current_user, [2]=count(passes), [3]=asset NOWAIT→raises
+    locking_db = _LockingSession(student, 0)
     with client_with_overrides(locking_db) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -611,7 +614,7 @@ def test_checkout_returns_409_on_locker_lock_contention(client_with_overrides):
     student = _make_student()
     asset = _make_asset(asset_status="AVAILABLE", locker_id=uuid.uuid4())
 
-    locking_db = _LockerLockingSession(student, asset)
+    locking_db = _LockerLockingSession(student, 0, asset)
     with client_with_overrides(locking_db) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -633,7 +636,7 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
     locker = _make_locker(locker_id=locker_id, locker_status="OCCUPIED")
     idem_key = "checkout-idempotent-dup"
 
-    first_db = _QueuedSession(student, asset, locker)
+    first_db = _QueuedSession(student, 0, asset, locker)
     with client_with_overrides(first_db) as client:
         first_response = client.post(
             "/api/v1/loans/checkout",
@@ -641,7 +644,7 @@ def test_checkout_returns_409_for_duplicate_idempotency_key(client_with_override
             headers=_with_idempotency(_bearer(student), idem_key),
         )
 
-    second_db = _QueuedSession(student)
+    second_db = _QueuedSession(student, 0)
     with client_with_overrides(second_db) as client:
         second_response = client.post(
             "/api/v1/loans/checkout",
@@ -679,7 +682,8 @@ def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
     loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
     free_locker = _make_locker(kiosk_id=_VALID_KIOSK_ID, locker_status="AVAILABLE")
 
-    fake_db = _QueuedSession(student, SimpleNamespace(), loan, loan, free_locker)
+    # Queue: [1]=student, [2]=count(0), [3]=kiosk, [4]=loan, [5]=locked loan, [6]=free_locker
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), loan, loan, free_locker)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -706,7 +710,7 @@ def test_return_initiate_returns_404_for_unknown_loan(client_with_overrides):
     [3] loan query       → None → 404
     """
     student = _make_student()
-    fake_db = _QueuedSession(student, SimpleNamespace(), None)
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -729,7 +733,7 @@ def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
     student_b = _make_student()
     loan = _make_loan(user_id=uuid.uuid4())  # owned by someone else
 
-    fake_db = _QueuedSession(student_b, SimpleNamespace(), loan)
+    fake_db = _QueuedSession(student_b, 0, SimpleNamespace(), loan)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -751,7 +755,7 @@ def test_return_initiate_returns_400_when_loan_not_active(client_with_overrides)
     student = _make_student()
     completed_loan = _make_loan(user_id=student.user_id, loan_status="COMPLETED")
 
-    fake_db = _QueuedSession(student, SimpleNamespace(), completed_loan)
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), completed_loan)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -780,7 +784,9 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, SimpleNamespace(), active_loan, active_loan, None)
+    fake_db = _QueuedSession(
+        student, 0, SimpleNamespace(), active_loan, active_loan, None
+    )
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -824,7 +830,7 @@ def test_return_initiate_returns_409_on_loan_lock_contention(client_with_overrid
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    locking_db = _LoanLockingSession(student, SimpleNamespace(), active_loan)
+    locking_db = _LoanLockingSession(student, 0, SimpleNamespace(), active_loan)
     with client_with_overrides(locking_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -847,7 +853,7 @@ def test_return_initiate_returns_409_when_loan_state_changed_concurrently(
     student = _make_student()
     active_loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
 
-    fake_db = _QueuedSession(student, SimpleNamespace(), active_loan, None)
+    fake_db = _QueuedSession(student, 0, SimpleNamespace(), active_loan, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -875,7 +881,7 @@ def test_return_initiate_returns_409_for_duplicate_idempotency_key(
     # First request:  [1] auth user, [2] kiosk, [3] loan, [4] locked loan, [5] locker
     # Second request: [6] auth user (idempotency 409 happens before endpoint DB queries)
     fake_db = _QueuedSession(
-        student, SimpleNamespace(), loan, loan, free_locker, student
+        student, 0, SimpleNamespace(), loan, loan, free_locker, student
     )
 
     with client_with_overrides(fake_db) as client:
@@ -910,7 +916,7 @@ def test_report_damage_returns_400_when_idempotency_header_missing(
     client_with_overrides,
 ):
     student = _make_student()
-    with client_with_overrides(_QueuedSession(student)) as client:
+    with client_with_overrides(_QueuedSession(student, 0)) as client:
         response = client.post(
             f"/api/v1/loans/{uuid.uuid4()}/report-damage",
             headers=_bearer(student),
@@ -1085,7 +1091,7 @@ def test_report_damage_rate_limit_before_idempotency_does_not_lock_key(
         ),
     )
 
-    with client_with_overrides(_QueuedSession(student)) as client:
+    with client_with_overrides(_QueuedSession(student, 0)) as client:
         first = client.post(
             f"/api/v1/loans/{uuid.uuid4()}/report-damage",
             headers=_with_idempotency(_bearer(student), "report-damage-rate-limit"),
