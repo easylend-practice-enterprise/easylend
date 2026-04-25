@@ -10,6 +10,8 @@ Transition the MVP from HTTP-first orchestration toward a fully event-driven har
 
 ## V2 Architecture
 
+- [ ] **Kiosk App UX - Hardware Polling:** Voeg een active polling-timeout toe aan de Kiosk App (`GET /status`). Also de backend 202 teruggeeft maar de kluis gaat na ~10 seconden niet open, toon dan een duidelijke foutmelding aan de gebruiker (mitigatie voor 'Phantom Disconnects').
+
 ### Fleet-Shared Hardware Auth Boundary (Technical Debt)
 
 Current state:
