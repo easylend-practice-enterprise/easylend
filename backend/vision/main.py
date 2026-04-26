@@ -355,12 +355,6 @@ def _download_via_ip(
 
 def _update_single_model(url: str, model_path: str):
     """Helper function to download, backup, and update a single model file."""
-    if not is_safe_url(url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid or unsafe model URL: {url}",
-        )
-
     parsed_url = urlparse(url)
     hostname = parsed_url.hostname
     if not hostname:
@@ -377,32 +371,35 @@ def _update_single_model(url: str, model_path: str):
     backup_path = f"{model_path}.backup"
     openvino_dir = model_path.replace(".pt", "_openvino_model")
 
+    # Resolve once — no TOCTOU window. Skip non-global IPs; prefer IPv4.
+    addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    chosen_ip: str | None = None
+    for info in addr_info:
+        candidate = str(info[4][0])
+        ip_obj = ipaddress.ip_address(candidate)
+        if not ip_obj.is_global:
+            continue
+        if chosen_ip is None or ip_obj.version == 4:
+            chosen_ip = candidate
+        if ip_obj.version == 4:
+            break
+
+    if not chosen_ip:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No global IP address found for model host.",
+        )
+    chosen_ip = str(chosen_ip)
+
+    temp_path = f"{model_path}.tmp"
     try:
-        if os.path.exists(model_path):
-            logger.info(f"Creating backup of the current model at {model_path}...")
-            shutil.copy2(model_path, backup_path)
+        try:
+            if os.path.exists(model_path):
+                logger.info(f"Creating backup of the current model at {model_path}...")
+                shutil.copy2(model_path, backup_path)
+        except OSError:
+            pass  # No backup needed if model_path doesn't exist yet
 
-        addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
-        chosen_ip = None
-        for info in addr_info:
-            candidate = info[4][0]
-            ip_obj = ipaddress.ip_address(candidate)
-            if not ip_obj.is_global:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid or unsafe model URL.",
-                )
-            if chosen_ip is None or ip_obj.version == 4:
-                chosen_ip = candidate
-
-        if not chosen_ip:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to resolve model host",
-            )
-        chosen_ip = str(chosen_ip)
-
-        temp_path = f"{model_path}.tmp"
         resp = _download_via_ip(
             hostname,
             chosen_ip,
@@ -450,7 +447,6 @@ def _update_single_model(url: str, model_path: str):
 
         if os.path.exists(openvino_dir):
             shutil.rmtree(openvino_dir)
-
     except HTTPException:
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
@@ -464,7 +460,6 @@ def _update_single_model(url: str, model_path: str):
             detail="Update failed, backup restored",
         ) from e
     finally:
-        temp_path = f"{model_path}.tmp"
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)

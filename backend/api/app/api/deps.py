@@ -99,6 +99,10 @@ def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
 
 def _verify_device_token(expected_token: str, provided_token: str | None) -> None:
     """Verify a device token with timing-safe comparison and WWW-Authenticate header."""
+    if not expected_token:
+        raise RuntimeError(
+            "VISION_BOX_API_KEY environment variable is not set or is empty"
+        )
     if provided_token is None or not secrets.compare_digest(
         provided_token, expected_token
     ):
