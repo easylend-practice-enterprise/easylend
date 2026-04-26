@@ -803,11 +803,17 @@ Minimal payload returned by the polling endpoint.
 
 ### Update AI Model (Vision Box)
 
-`PATCH /api/v1/update-model`
+**External Contract:** `PATCH /api/v1/update-model`
+**Internal Proxied Contract:** `POST /update-model` (to Vision Microservice)
 
-Allows the hardware orchestrator or external admin services to dynamically update the underlying models used by the Vision Box. This endpoint is forwarded to the Vision microservice.
+Allows the hardware orchestrator or external admin services to dynamically update the underlying models used by the Vision Box. This endpoint provides support for updating the YOLO26 Dual-Model architecture (Detection & Segmentation).
 
-**Required Header:** `X-Device-Token: <static_device_secret>`
+This endpoint implements a dual-layer reverse proxy architecture:
+
+1. **Main API Layer:** Receives the `PATCH /api/v1/update-model` request with the JSON payload, verifies the `verify_vision_box_token` dependency (`X-Device-Token`), translates the HTTP method to `POST`, attaches the `Authorization: Bearer <VISION_API_KEY>` header, and forwards the request.
+2. **Vision Microservice Layer:** Receives the internal `POST /update-model` request, verifies the bearer token, downloads the model(s) with Fail-Fast behavior, and schedules a `BackgroundTask` to restart the server upon successful download.
+
+**Required Header (External):** `X-Device-Token: <static_device_secret>`
 
 **Request Body** — `ModelUpdateRequest`:
 

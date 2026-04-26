@@ -7,7 +7,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
+      - vision_models:/app/models
     environment:
       - MODEL_PATH=models/best.pt
       - VISION_API_KEY=${VISION_API_KEY}
@@ -28,3 +28,6 @@ services:
       - TZ=Europe/Brussels
       - REPO_USER=${GHCR_USERNAME}
       - REPO_PASS=${GHCR_PAT}
+
+volumes:
+  vision_models:

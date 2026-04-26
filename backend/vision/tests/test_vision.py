@@ -57,7 +57,7 @@ def test_detect_valid_token_no_file(client):
 def test_detect_rejects_non_image(client):
     """Test that the detect endpoint rejects non-image files."""
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     response = client.post(
         "/detect",
         headers=AUTH_HEADER,
@@ -71,7 +71,7 @@ def test_detect_rejects_oversize(client, monkeypatch):
     """Test that the detect endpoint rejects images larger than MAX_UPLOAD_SIZE."""
     monkeypatch.setenv("MAX_UPLOAD_SIZE", "10")
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     big_bytes = b"A" * 11
     response = client.post(
         "/detect",
@@ -85,7 +85,7 @@ def test_detect_rejects_oversize(client, monkeypatch):
 def test_detect_handles_corrupt_image(client):
     """Test that a corrupt image payload returns a 400 with a generic error."""
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     response = client.post(
         "/detect",
         headers=AUTH_HEADER,
