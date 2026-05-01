@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = (
         "postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
     )
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
 
     JWT_SECRET_KEY: str = _DUMMY_SECRET
     VISION_SERVICE_URL: str = "http://localhost:8001"

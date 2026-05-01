@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Global model variables
 det_model: YOLO | None = None
 seg_model: YOLO | None = None
+MAX_MODEL_SIZE_BYTES = 200 * 1024 * 1024
 
 
 def _env_flag(name: str) -> bool:
@@ -459,14 +460,35 @@ def _update_single_model(url: str, model_path: str):
                     detail="Model download failed: Received HTML",
                 )
 
+            content_length_header = resp.getheader("Content-Length")
+            if content_length_header:
+                try:
+                    content_length = int(content_length_header)
+                except ValueError:
+                    content_length = None
+                if content_length is not None and content_length > MAX_MODEL_SIZE_BYTES:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail="Model download exceeds maximum allowed size of 200MB.",
+                    )
+
             total = 0
             with open(temp_path, "wb") as out_file:
                 while True:
                     chunk = resp.read(8192)
                     if not chunk:
                         break
-                    out_file.write(chunk)
                     total += len(chunk)
+                    if total > MAX_MODEL_SIZE_BYTES:
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail="Model download exceeds maximum allowed size of 200MB.",
+                        )
+                    out_file.write(chunk)
 
             if total == 0:
                 raise HTTPException(
