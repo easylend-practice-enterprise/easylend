@@ -972,6 +972,83 @@ def test_vision_analyze_cleans_up_file_when_finalize_fails(
     assert list(tmp_path.iterdir()) == []
 
 
+def test_vision_analyze_continues_when_image_write_fails(
+    monkeypatch, client_with_overrides, tmp_path
+):
+    payload = {
+        "status": "success",
+        "count": 0,
+        "detections": [],
+        "locker_empty": True,
+        "has_damage_detected": False,
+    }
+    _mock_success_upstream(monkeypatch, payload)
+
+    loan_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    locker_id = uuid.uuid4()
+    kiosk_id = uuid.uuid4()
+
+    loan = _make_loan(
+        loan_id=loan_id,
+        asset_id=asset_id,
+        checkout_locker_id=locker_id,
+        loan_status="RESERVED",
+    )
+    asset = _make_asset(asset_id=asset_id, asset_status="BORROWED", locker_id=locker_id)
+    locker = _make_locker(
+        locker_id=locker_id,
+        kiosk_id=kiosk_id,
+        logical_number=11,
+        locker_status="AVAILABLE",
+    )
+    fake_db = _QueuedSession(loan, asset, locker, loan, asset, locker)
+    send_command_mock, audit_mock = _mock_common_vision_runtime(
+        monkeypatch, tmp_path, fake_db
+    )
+
+    class _FailingOpen:
+        async def __aenter__(self):
+            raise RuntimeError("disk full")
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):  # noqa: ANN001
+            return False
+
+    monkeypatch.setattr(
+        vision_endpoints.aiofiles, "open", lambda *args, **kwargs: _FailingOpen()
+    )  # noqa: ARG005
+
+    with client_with_overrides(fake_db) as client:
+        response = client.post(
+            "/api/v1/vision/analyze",
+            headers={"X-Device-Token": "device-key"},
+            data=_vision_form_data(loan_id=loan_id, evaluation_type="CHECKOUT"),
+            files={"file": ("sample.jpg", b"image-bytes", "image/jpeg")},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["detail"] == "Evaluation processed successfully."
+    assert response.json()["image_path"] == "storage_write_failed"
+
+    assert loan.loan_status == "ACTIVE"
+    assert fake_db.commit_calls == 1
+    assert fake_db.rollback_calls == 0
+    assert len(fake_db.added) == 1
+    assert fake_db.added[0].photo_url.startswith("storage_error://")
+
+    vision_call = next(
+        c
+        for c in audit_mock.call_args_list
+        if c.kwargs.get("action_type") == "VISION_EVALUATION_PROCESSED"
+    )
+    assert vision_call.kwargs["payload"]["photo_url"].startswith("storage_error://")
+
+    send_command_mock.assert_awaited_once_with(
+        str(kiosk_id),
+        {"action": "set_led", "locker_id": 11, "color": "green"},
+    )
+
+
 def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides):
     """The update-model webhook must forward the payload to the Vision microservice."""
 
