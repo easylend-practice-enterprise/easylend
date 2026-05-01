@@ -8,15 +8,10 @@ from typing import Any
 from fastapi import WebSocket
 from redis.exceptions import RedisError
 
+from app.core.config import settings
 from app.db.redis import redis_client
 
 logger = logging.getLogger(__name__)
-
-MAX_CONNECTIONS = 100
-PRESENCE_TTL_SECONDS = 30
-PRESENCE_REFRESH_SECONDS = 10
-COMMAND_SEND_TIMEOUT_SECONDS = 3.0
-PUBSUB_POLL_TIMEOUT_SECONDS = 1.0
 
 
 class ConnectionManager:
@@ -55,7 +50,7 @@ class ConnectionManager:
             await redis_client.set(
                 self._presence_key(kiosk_id),
                 "online",
-                ex=PRESENCE_TTL_SECONDS,
+                ex=settings.KIOSK_PRESENCE_TTL_SECONDS,
             )
         except RedisError:
             logger.warning(
@@ -144,7 +139,7 @@ class ConnectionManager:
         try:
             while self.active_connections.get(kiosk_id) is websocket:
                 await self._set_presence(kiosk_id)
-                await asyncio.sleep(PRESENCE_REFRESH_SECONDS)
+                await asyncio.sleep(settings.KIOSK_PRESENCE_REFRESH_SECONDS)
         except asyncio.CancelledError:
             raise
 
@@ -157,7 +152,7 @@ class ConnectionManager:
             try:
                 message = await pubsub.get_message(
                     ignore_subscribe_messages=True,
-                    timeout=PUBSUB_POLL_TIMEOUT_SECONDS,
+                    timeout=settings.KIOSK_PUBSUB_POLL_TIMEOUT_SECONDS,
                 )
             except asyncio.CancelledError:
                 raise
@@ -170,7 +165,7 @@ class ConnectionManager:
                 return
 
             if message is None:
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(settings.KIOSK_PUBSUB_IDLE_SLEEP_SECONDS)
                 continue
 
             raw_payload = message.get("data")
@@ -195,7 +190,7 @@ class ConnectionManager:
             try:
                 await asyncio.wait_for(
                     websocket.send_json(command),
-                    timeout=COMMAND_SEND_TIMEOUT_SECONDS,
+                    timeout=settings.KIOSK_COMMAND_SEND_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:  # noqa: UP041
                 logger.error(
@@ -214,10 +209,10 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, kiosk_id: str) -> bool:
         # Global connection cap to prevent memory / fd exhaustion.
-        if len(self.active_connections) >= MAX_CONNECTIONS:
+        if len(self.active_connections) >= settings.KIOSK_WS_MAX_CONNECTIONS:
             logger.warning(
                 "Connection rejected: global connection limit reached (MAX_CONNECTIONS=%d)",
-                MAX_CONNECTIONS,
+                settings.KIOSK_WS_MAX_CONNECTIONS,
             )
             await websocket.close(code=1013, reason="Connection limit reached")
             return False

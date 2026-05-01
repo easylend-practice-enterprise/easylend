@@ -58,9 +58,6 @@ def _is_lock_not_available_error(exc: OperationalError) -> bool:
     return "database is locked" in message or "lock not available" in message
 
 
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024
-
-
 class VisionAIServiceError(Exception):
     """Raised to represent a non-200 or otherwise problematic response from the Vision AI upstream."""
 
@@ -145,8 +142,8 @@ async def analyze_image(
             detail="Uploaded file must be a JPEG/PNG/WebP image.",
         )
 
-    image_data = await file.read(MAX_UPLOAD_SIZE + 1)
-    if len(image_data) > MAX_UPLOAD_SIZE:
+    image_data = await file.read(settings.VISION_MAX_UPLOAD_SIZE_BYTES + 1)
+    if len(image_data) > settings.VISION_MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Image too large.",
@@ -235,7 +232,9 @@ async def analyze_image(
     failure_error_summary = ""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.VISION_API_TIMEOUT_SECONDS
+        ) as client:
             detect_req = client.post(
                 f"{settings.VISION_SERVICE_URL.rstrip('/')}/detect",
                 headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
@@ -677,7 +676,9 @@ async def update_model(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.VISION_API_TIMEOUT_SECONDS
+        ) as client:
             response = await client.post(
                 f"{settings.VISION_SERVICE_URL.rstrip('/')}/update-model",
                 json=payload.model_dump(),

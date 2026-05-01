@@ -69,7 +69,7 @@ def test_detect_rejects_non_image(client):
 
 def test_detect_rejects_oversize(client, monkeypatch):
     """Test that the detect endpoint rejects images larger than MAX_UPLOAD_SIZE."""
-    monkeypatch.setenv("MAX_UPLOAD_SIZE", "10")
+    monkeypatch.setattr(main.settings, "max_upload_size", 10)
     # Ensure a model is present so the request proceeds past the model check
     main.det_model = DummyModel()
     big_bytes = b"A" * 11

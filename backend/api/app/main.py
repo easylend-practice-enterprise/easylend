@@ -58,25 +58,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             or path.startswith("/redoc")
             or path == "/openapi.json"
         ):
-            csp = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "img-src 'self' data: https://fastapi.tiangolo.com; "
-                "connect-src 'self' https://cdn.jsdelivr.net; "
-                "object-src 'none'; frame-ancestors 'none'; base-uri 'self'; "
-                "font-src 'self' https://cdn.jsdelivr.net data:;"
-            )
+            csp = settings.DOCS_CONTENT_SECURITY_POLICY
         else:
-            csp = (
-                "default-src 'self'; script-src 'self'; "
-                "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
-            )
+            csp = settings.DEFAULT_CONTENT_SECURITY_POLICY
         response.headers["Content-Security-Policy"] = csp
         # Permissions policy: disable unnecessary browser features
-        response.headers["Permissions-Policy"] = (
-            "camera=(), microphone=(), geolocation=(), payment=()"
-        )
+        response.headers["Permissions-Policy"] = settings.PERMISSIONS_POLICY_HEADER
         return response
 
 
@@ -126,9 +113,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="EasyLend API",
-    description="Core Backend for the EasyLend Practice Enterprise",
-    version="1.0.0",
+    title=settings.PROJECT_NAME,
+    description=settings.PROJECT_DESCRIPTION,
+    version=settings.PROJECT_VERSION,
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -144,7 +131,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["X-Request-Id"],
-    max_age=600,  # Browser may cache preflight for 10 minutes
+    max_age=settings.CORS_MAX_AGE_SECONDS,
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
