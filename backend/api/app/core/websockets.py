@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 import logging
+from collections import defaultdict
 from typing import Any
 
 from fastapi import WebSocket
@@ -41,6 +42,7 @@ class ConnectionManager:
         self._presence_tasks: dict[str, asyncio.Task[None]] = {}
         self._command_tasks: dict[str, asyncio.Task[None]] = {}
         self._pubsubs: dict[str, Any] = {}
+        self._locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     def _presence_key(self, kiosk_id: str) -> str:
         return f"kiosk:presence:{kiosk_id}"
@@ -108,6 +110,35 @@ class ConnectionManager:
                 "Failed to close Redis pubsub client for kiosk_id=%s",
                 kiosk_id,
             )
+
+    async def _disconnect_unlocked(
+        self,
+        kiosk_id: str,
+        websocket: WebSocket,
+        *,
+        close_websocket: bool = False,
+    ) -> None:
+        if close_websocket:
+            try:
+                await websocket.close()
+            except Exception:  # noqa: S110
+                pass
+
+        # Only disconnect if this exact websocket is still the active one for kiosk_id.
+        if self.active_connections.get(kiosk_id) is not websocket:
+            return
+
+        self.active_connections.pop(kiosk_id, None)
+        # Do not explicitly clear presence here; let the Redis TTL expire to prevent multi-instance race conditions.
+
+        presence_task = self._presence_tasks.pop(kiosk_id, None)
+        command_task = self._command_tasks.pop(kiosk_id, None)
+
+        await self._cancel_task(presence_task)
+        await self._cancel_task(command_task)
+        await self._close_pubsub(kiosk_id)
+
+        logger.info("Hardware client disconnected: kiosk_id=%s", kiosk_id)
 
     async def _presence_heartbeat(self, kiosk_id: str, websocket: WebSocket) -> None:
         try:
@@ -191,61 +222,71 @@ class ConnectionManager:
             await websocket.close(code=1013, reason="Connection limit reached")
             return False
 
-        # If a connection for this kiosk_id already exists, close it before replacing.
-        existing_websocket = self.active_connections.get(kiosk_id)
-        if existing_websocket is not None and existing_websocket is not websocket:
-            try:
-                await self.disconnect(
-                    kiosk_id,
-                    existing_websocket,
-                    close_websocket=True,
-                )
-                logger.info(
-                    "Closed existing hardware client connection before reconnect: kiosk_id=%s",
-                    kiosk_id,
-                )
-            except Exception:
-                logger.exception(
-                    "Error while closing existing hardware client connection: kiosk_id=%s",
-                    kiosk_id,
-                )
+        async with self._locks[kiosk_id]:
+            # If a connection for this kiosk_id already exists, close it before replacing.
+            existing_websocket = self.active_connections.get(kiosk_id)
+            if existing_websocket is not None and existing_websocket is not websocket:
+                try:
+                    await self._disconnect_unlocked(
+                        kiosk_id,
+                        existing_websocket,
+                        close_websocket=True,
+                    )
+                    logger.info(
+                        "Closed existing hardware client connection before reconnect: kiosk_id=%s",
+                        kiosk_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Error while closing existing hardware client connection: kiosk_id=%s",
+                        kiosk_id,
+                    )
 
-        # Subscribe to the Redis pubsub channel BEFORE accepting the WebSocket.
-        # If this succeeds but websocket.accept() fails below, the pubsub is
-        # registered in self._pubsubs and will be cleaned up by _close_pubsub.
-        try:
+            # Subscribe to the Redis pubsub channel BEFORE accepting the WebSocket.
+            # If this succeeds but websocket.accept() fails below, the pubsub is
+            # registered in self._pubsubs and will be cleaned up by _close_pubsub.
             pubsub = redis_client.pubsub()
-            await pubsub.subscribe(self._command_channel(kiosk_id))
+            try:
+                await pubsub.subscribe(self._command_channel(kiosk_id))
+            except RedisError:
+                logger.exception(
+                    "Connection rejected: unable to subscribe Redis command channel for kiosk_id=%s",
+                    kiosk_id,
+                )
+                try:
+                    close_result = pubsub.close()
+                    if inspect.isawaitable(close_result):
+                        await close_result
+                except Exception:
+                    logger.exception(
+                        "Failed to close Redis pubsub client after subscribe failure for kiosk_id=%s",
+                        kiosk_id,
+                    )
+                await websocket.close(code=1011, reason="Command channel unavailable")
+                return False
             self._pubsubs[kiosk_id] = pubsub
-        except RedisError:
-            logger.exception(
-                "Connection rejected: unable to subscribe Redis command channel for kiosk_id=%s",
-                kiosk_id,
+
+            try:
+                await websocket.accept()
+            except Exception:
+                # accept failed — clean up the pubsub that was registered above.
+                await self._close_pubsub(kiosk_id)
+                raise
+
+            self.active_connections[kiosk_id] = websocket
+            await self._set_presence(kiosk_id)
+
+            self._presence_tasks[kiosk_id] = asyncio.create_task(
+                self._presence_heartbeat(kiosk_id, websocket),
+                name=f"presence-heartbeat-{kiosk_id}",
             )
-            await websocket.close(code=1011, reason="Command channel unavailable")
-            return False
+            self._command_tasks[kiosk_id] = asyncio.create_task(
+                self._forward_commands(kiosk_id, websocket),
+                name=f"command-forwarder-{kiosk_id}",
+            )
 
-        try:
-            await websocket.accept()
-        except Exception:
-            # accept failed — clean up the pubsub that was registered above.
-            await self._close_pubsub(kiosk_id)
-            raise
-
-        self.active_connections[kiosk_id] = websocket
-        await self._set_presence(kiosk_id)
-
-        self._presence_tasks[kiosk_id] = asyncio.create_task(
-            self._presence_heartbeat(kiosk_id, websocket),
-            name=f"presence-heartbeat-{kiosk_id}",
-        )
-        self._command_tasks[kiosk_id] = asyncio.create_task(
-            self._forward_commands(kiosk_id, websocket),
-            name=f"command-forwarder-{kiosk_id}",
-        )
-
-        logger.info("Hardware client connected: kiosk_id=%s", kiosk_id)
-        return True
+            logger.info("Hardware client connected: kiosk_id=%s", kiosk_id)
+            return True
 
     async def disconnect(
         self,
@@ -254,27 +295,12 @@ class ConnectionManager:
         *,
         close_websocket: bool = False,
     ) -> None:
-        if close_websocket:
-            try:
-                await websocket.close()
-            except Exception:  # noqa: S110
-                pass
-
-        # Only disconnect if this exact websocket is still the active one for kiosk_id.
-        if self.active_connections.get(kiosk_id) is not websocket:
-            return
-
-        self.active_connections.pop(kiosk_id, None)
-        # Do not explicitly clear presence here; let the Redis TTL expire to prevent multi-instance race conditions.
-
-        presence_task = self._presence_tasks.pop(kiosk_id, None)
-        command_task = self._command_tasks.pop(kiosk_id, None)
-
-        await self._cancel_task(presence_task)
-        await self._cancel_task(command_task)
-        await self._close_pubsub(kiosk_id)
-
-        logger.info("Hardware client disconnected: kiosk_id=%s", kiosk_id)
+        async with self._locks[kiosk_id]:
+            await self._disconnect_unlocked(
+                kiosk_id,
+                websocket,
+                close_websocket=close_websocket,
+            )
 
     async def is_kiosk_online(self, kiosk_id: str) -> bool:
         if kiosk_id in self.active_connections:
@@ -291,22 +317,6 @@ class ConnectionManager:
 
     async def send_command(self, kiosk_id: str, command: dict) -> bool:
         channel = self._command_channel(kiosk_id)
-
-        websocket = self.active_connections.get(kiosk_id)
-        if websocket:
-            try:
-                await asyncio.wait_for(
-                    websocket.send_json(command),
-                    timeout=COMMAND_SEND_TIMEOUT_SECONDS,
-                )
-                return True
-            except Exception:
-                logger.debug(
-                    "Local websocket send failed; falling back to Redis for kiosk_id=%s",
-                    kiosk_id,
-                    exc_info=True,
-                )
-                await self.disconnect(kiosk_id, websocket, close_websocket=True)
 
         try:
             payload = json.dumps(command, separators=(",", ":"), default=str)
