@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -206,7 +207,7 @@ async def checkout(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-) -> LoanPublicResponse:
+) -> LoanPublicResponse | JSONResponse:
     """
     Begin a checkout by scanning an asset's Aztec barcode.
 
@@ -235,7 +236,24 @@ async def checkout(
     await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
-        # --- 0. Enforce concurrent loan cap (max 2 active loans) ---
+        # --- 0. Hardware Pre-flight Check (BEFORE lock/transaction work) ---
+        if isinstance(db, AsyncSession):
+            preflight_kiosk_result = await db.execute(
+                select(Locker.kiosk_id)
+                .join(Asset, Asset.locker_id == Locker.locker_id)
+                .where(Asset.aztec_code == payload.aztec_code)
+                .limit(1)
+            )
+            preflight_kiosk_id = preflight_kiosk_result.scalar_one_or_none()
+            if preflight_kiosk_id is not None and not await manager.is_kiosk_online(
+                str(preflight_kiosk_id)
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="The Vision Box for this locker is currently offline. Cannot checkout.",
+                )
+
+        # --- 1. Enforce concurrent loan cap (max 2 active loans) ---
         active_statuses = (
             LoanStatus.ACTIVE,
             LoanStatus.RESERVED,
@@ -257,7 +275,7 @@ async def checkout(
                 detail="Maximum of 2 active loans reached.",
             )
 
-        # --- 1. Lock the asset row (NOWAIT: fail fast on contention) ---
+        # --- 2. Lock the asset row (NOWAIT: fail fast on contention) ---
         try:
             result = await db.execute(
                 select(Asset)
@@ -277,7 +295,7 @@ async def checkout(
 
         asset = result.scalar_one_or_none()
 
-        # --- 2. Validate asset ---
+        # --- 3. Validate asset ---
         if asset is None or asset.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -298,7 +316,7 @@ async def checkout(
 
         checkout_locker_id: UUID = asset.locker_id
 
-        # --- 3. Lock the locker row so we can safely mutate its status ---
+        # --- 4. Lock the locker row so we can safely mutate its status ---
         try:
             locker_result = await db.execute(
                 select(Locker)
@@ -322,14 +340,7 @@ async def checkout(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Locker not found.",
             )
-
-        # --- 3b. Hardware Pre-flight Check ---
         kiosk_id_str = str(locker.kiosk_id)
-        if not await manager.is_kiosk_online(kiosk_id_str):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="The Vision Box for this locker is currently offline. Cannot checkout.",
-            )
 
         # --- 5. Create loan record ---
         loan = Loan(
@@ -370,44 +381,53 @@ async def checkout(
         )
 
         # --- 6. Commit DB state BEFORE sending hardware command ---
-        # This ensures the loan record is durable. If the hardware command
-        # fails after commit, the DB is consistent and the RESERVED loan will
-        # be cleaned up by the timeout worker.
         await db.commit()
         db_committed = True
         await db.refresh(loan)
 
-        # --- 7. Trigger Hardware to open the door ---
-        command_ok = await manager.send_command(
-            kiosk_id_str,
-            {
-                "action": "open_slot",
-                "locker_id": locker.logical_number,
-                "loan_id": str(loan.loan_id),
-                "evaluation_type": "CHECKOUT",
-            },
-        )
-        if not command_ok:
-            # DB is committed (loan is RESERVED); hardware failed.
-            # The timeout worker will eventually clean this up.
-            # Log the inconsistency so ops can detect it.
-            logger.warning(
-                "Hardware command failed after DB commit for checkout loan=%s.",
+        # --- 7. Trigger Hardware to open the door (isolated post-commit path) ---
+        try:
+            command_ok = await manager.send_command(
+                kiosk_id_str,
+                {
+                    "action": "open_slot",
+                    "locker_id": locker.logical_number,
+                    "loan_id": str(loan.loan_id),
+                    "evaluation_type": "CHECKOUT",
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Hardware command raised after checkout commit for loan=%s.",
                 loan.loan_id,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_207_MULTI_STATUS,
+                content=LoanPublicResponse.model_validate(loan).model_dump(mode="json"),
+            )
+
+        if not command_ok:
+            logger.error(
+                "Hardware command failed after checkout commit for loan=%s.",
+                loan.loan_id,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_207_MULTI_STATUS,
+                content=LoanPublicResponse.model_validate(loan).model_dump(mode="json"),
             )
 
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
-        # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         if not db_committed:
             await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
-        try:
-            await db.rollback()
-        except Exception:
-            logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key, current_user.user_id)
+        if not db_committed:
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Failed to rollback DB during error handling.")
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
 
@@ -723,7 +743,7 @@ async def return_initiate(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
-) -> LoanPublicResponse:
+) -> LoanPublicResponse | JSONResponse:
     """
     Initiate the return process for an active loan.
 
@@ -749,6 +769,13 @@ async def return_initiate(
     await check_token_rate_limit(request, str(current_user.user_id))
     await guard_idempotency(idempotency_key, current_user.user_id)
 
+    kiosk_id_str = str(payload.kiosk_id)
+    if not await manager.is_kiosk_online(kiosk_id_str):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The chosen Vision Box is currently offline. Cannot return here.",
+        )
+
     try:
         # --- 0. Enforce concurrent loan cap ---
         active_statuses = (
@@ -772,7 +799,7 @@ async def return_initiate(
                 detail="Maximum of 2 active loans reached.",
             )
 
-        # --- 1. Validate that the kiosk exists (BEFORE hardware check) ---
+        # --- 1. Validate that the kiosk exists ---
         kiosk_result = await db.execute(
             select(Kiosk).where(Kiosk.kiosk_id == payload.kiosk_id)
         )
@@ -783,15 +810,7 @@ async def return_initiate(
                 detail="Kiosk not found.",
             )
 
-        # --- 0b. Hardware Pre-flight Check ---
-        kiosk_id_str = str(payload.kiosk_id)
-        if not await manager.is_kiosk_online(kiosk_id_str):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="The chosen Vision Box is currently offline. Cannot return here.",
-            )
-
-        # --- 1. Resolve asset from the scanned aztec_code ---
+        # --- 2. Resolve asset from the scanned aztec_code ---
         asset_result = await db.execute(
             select(Asset).where(Asset.aztec_code == payload.aztec_code)
         )
@@ -802,7 +821,7 @@ async def return_initiate(
                 detail="Asset not found.",
             )
 
-        # --- 1a. Find the active loan for this asset ---
+        # --- 3. Find the active loan for this asset ---
         loan_result = await db.execute(
             select(Loan).where(
                 Loan.asset_id == asset.asset_id,
@@ -828,7 +847,7 @@ async def return_initiate(
                 detail="Loan is not active and cannot be returned.",
             )
 
-        # --- 1b. Lock the loan row and enforce atomic state transition ---
+        # --- 4. Lock the loan row and enforce atomic state transition ---
         try:
             locked_loan_result = await db.execute(
                 select(Loan)
@@ -858,7 +877,7 @@ async def return_initiate(
             )
         loan = locked_loan
 
-        # --- 2. Find and lock a free locker at this kiosk (SKIP LOCKED) ---
+        # --- 5. Find and lock a free locker at this kiosk (SKIP LOCKED) ---
         locker_result = await db.execute(
             select(Locker)
             .where(
@@ -877,7 +896,7 @@ async def return_initiate(
                 detail="No available lockers at this kiosk. Please try again shortly.",
             )
 
-        # --- 3. Reserve the locker and update the loan ---
+        # --- 6. Reserve the locker and update the loan ---
         try:
             LoanStateMachine.apply_transition(
                 loan,
@@ -905,42 +924,52 @@ async def return_initiate(
             user_id=current_user.user_id,
         )
 
-        # --- 4. Commit DB state BEFORE sending hardware command ---
-        # This ensures the loan record is durable. If the hardware command
-        # fails after commit, the DB is consistent and the RETURNING loan will
-        # be cleaned up by the timeout worker.
+        # --- 7. Commit DB state BEFORE sending hardware command ---
         await db.commit()
         db_committed = True
         await db.refresh(loan)
 
-        # --- 5. Trigger Hardware to open the door ---
-        command_ok = await manager.send_command(
-            kiosk_id_str,
-            {
-                "action": "open_slot",
-                "locker_id": locker.logical_number,
-                "loan_id": str(loan.loan_id),
-                "evaluation_type": "RETURN",
-            },
-        )
-        if not command_ok:
-            # DB is committed (loan is RETURNING); hardware failed.
-            # The timeout worker will eventually clean this up.
-            logger.warning(
-                "Hardware command failed after DB commit for return loan=%s.",
+        # --- 8. Trigger Hardware to open the door (isolated post-commit path) ---
+        try:
+            command_ok = await manager.send_command(
+                kiosk_id_str,
+                {
+                    "action": "open_slot",
+                    "locker_id": locker.logical_number,
+                    "loan_id": str(loan.loan_id),
+                    "evaluation_type": "RETURN",
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Hardware command raised after return-initiate commit for loan=%s.",
                 loan.loan_id,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_207_MULTI_STATUS,
+                content=LoanPublicResponse.model_validate(loan).model_dump(mode="json"),
+            )
+
+        if not command_ok:
+            logger.error(
+                "Hardware command failed after return-initiate commit for loan=%s.",
+                loan.loan_id,
+            )
+            return JSONResponse(
+                status_code=status.HTTP_207_MULTI_STATUS,
+                content=LoanPublicResponse.model_validate(loan).model_dump(mode="json"),
             )
 
         return LoanPublicResponse.model_validate(loan)
     except HTTPException:
-        # Re-raise HTTPExceptions directly so FastAPI formats them correctly
         if not db_committed:
             await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
-        try:
-            await db.rollback()
-        except Exception:
-            logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key, current_user.user_id)
+        if not db_committed:
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Failed to rollback DB during error handling.")
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
