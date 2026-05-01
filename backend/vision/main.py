@@ -232,6 +232,8 @@ def detect(
             detail="Detection model is not available",
         )
 
+    image: Image.Image | None = None
+    results = None
     try:
         Image.MAX_IMAGE_PIXELS = int(os.getenv("PIL_MAX_PIXELS", 100_000_000))
         image = Image.open(BytesIO(image_data))
@@ -275,6 +277,18 @@ def detect(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
         )
+    finally:
+        if image is not None:
+            image.close()
+        # Explicitly delete large tensors to avoid memory leaks
+        # on exception paths where logger.exception holds strong refs
+        results = None
+        image = None
+        image_data = None
+
+        import gc
+
+        gc.collect()
 
 
 @app.post("/segment", response_model=SegmentResponse, tags=["Predictions"])
@@ -291,6 +305,8 @@ def segment(
             detail="Segmentation model is not available",
         )
 
+    image: Image.Image | None = None
+    results = None
     try:
         Image.MAX_IMAGE_PIXELS = int(os.getenv("PIL_MAX_PIXELS", 100_000_000))
         image = Image.open(BytesIO(image_data))
@@ -324,6 +340,18 @@ def segment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
         )
+    finally:
+        if image is not None:
+            image.close()
+        # Explicitly delete large tensors to avoid memory leaks
+        # on exception paths where logger.exception holds strong refs
+        results = None
+        image = None
+        image_data = None
+
+        import gc
+
+        gc.collect()
 
 
 def _download_via_ip(
@@ -335,22 +363,30 @@ def _download_via_ip(
     timeout: int = 60,
 ) -> http.client.HTTPResponse:
     """Download an HTTPS resource by connecting to a resolved IP while preserving SNI/Host."""
-    sock = socket.create_connection((ip, port), timeout=timeout)
-    ctx = ssl.create_default_context()
-    ssock = ctx.wrap_socket(sock, server_hostname=hostname)
+    sock = None
+    ssock = None
+    try:
+        sock = socket.create_connection((ip, port), timeout=timeout)
+        ctx = ssl.create_default_context()
+        ssock = ctx.wrap_socket(sock, server_hostname=hostname)
 
-    request_lines = [f"GET {path_with_query} HTTP/1.1", f"Host: {hostname}"]
-    for k, v in headers.items():
-        request_lines.append(f"{k}: {v}")
-    request_lines.append("Connection: close")
-    request_lines.append("")
-    request_lines.append("")
-    req = "\r\n".join(request_lines)
-    ssock.sendall(req.encode("utf-8"))
+        request_lines = [f"GET {path_with_query} HTTP/1.1", f"Host: {hostname}"]
+        for k, v in headers.items():
+            request_lines.append(f"{k}: {v}")
+        request_lines.append("Connection: close")
+        request_lines.append("")
+        request_lines.append("")
+        req = "\r\n".join(request_lines)
+        ssock.sendall(req.encode("utf-8"))
 
-    resp = http.client.HTTPResponse(ssock)
-    resp.begin()
-    return resp
+        resp = http.client.HTTPResponse(ssock)
+        resp.begin()
+        return resp
+    finally:
+        if ssock is not None:
+            ssock.close()
+        elif sock is not None:
+            sock.close()
 
 
 def _update_single_model(url: str, model_path: str):
