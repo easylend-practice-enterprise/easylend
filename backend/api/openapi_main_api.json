@@ -2355,12 +2355,12 @@
       }
     },
     "/api/v1/update-model": {
-      "post": {
+      "patch": {
         "tags": [
           "vision"
         ],
         "summary": "Update Model",
-        "operationId": "update_model_api_v1_update_model_post",
+        "operationId": "update_model_api_v1_update_model_patch",
         "parameters": [
           {
             "name": "X-Device-Token",
@@ -3963,8 +3963,9 @@
           },
           "pin": {
             "type": "string",
-            "maxLength": 32,
-            "minLength": 4,
+            "maxLength": 6,
+            "minLength": 6,
+            "pattern": "^\\d{6}$",
             "title": "Pin"
           }
         },
@@ -4198,8 +4199,9 @@
           },
           "pin": {
             "type": "string",
-            "maxLength": 32,
-            "minLength": 4,
+            "maxLength": 6,
+            "minLength": 6,
+            "pattern": "^\\d{6}$",
             "title": "Pin"
           },
           "accepted_privacy_policy": {
@@ -4427,8 +4429,9 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 32,
-                "minLength": 4
+                "maxLength": 6,
+                "minLength": 6,
+                "pattern": "^\\d{6}$"
               },
               {
                 "type": "null"

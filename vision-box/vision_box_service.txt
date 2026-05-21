@@ -1,0 +1,29 @@
+sudo nano /etc/systemd/system/vision_box.service
+
+---
+
+[Unit]
+Description=EasyLend Vision Box Edge Client Service
+After=network.target
+
+[Service]
+Type=simple
+User=easylend
+WorkingDirectory=/home/easylend/hardware
+ExecStart=/home/easylend/hardware/.venv/bin/python3 vision_box.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+
+---
+
+sudo systemctl daemon-reload
+sudo systemctl enable vision_box.service
+sudo systemctl start vision_box.service
+
+---
+
+sudo journalctl -u vision_box.service -f
