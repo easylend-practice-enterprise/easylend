@@ -230,6 +230,7 @@ async def test_return_hardware_offline_fallback(
     )
 
     # 4. Assertions
+    # 207 Multi-Status expected when DB succeeds but hardware command fails immediately
     assert response.status_code == 207
     data = response.json()
     assert data["loan_status"] == LoanStatus.RETURNING

@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.core.audit import log_audit_event
+from app.core.config import settings
 from app.core.db_utils import is_lock_not_available_error
 from app.core.idempotency import guard_idempotency, release_idempotency_key
 from app.core.rate_limit import check_token_rate_limit
@@ -253,7 +254,7 @@ async def checkout(
                     detail="The Vision Box for this locker is currently offline. Cannot checkout.",
                 )
 
-        # --- 1. Enforce concurrent loan cap (max 2 active loans) ---
+        # --- 1. Enforce concurrent loan cap (configurable quota) ---
         active_statuses = (
             LoanStatus.ACTIVE,
             LoanStatus.RESERVED,
@@ -263,16 +264,22 @@ async def checkout(
             LoanStatus.PENDING_INSPECTION,
         )
         active_loans_result = await db.execute(
-            select(func.count())
-            .select_from(Loan)
+            select(Loan)
             .where(Loan.user_id == current_user.user_id)
             .where(Loan.loan_status.in_(active_statuses))
         )
-        active_loans_count = active_loans_result.scalar_one_or_none()
-        if isinstance(active_loans_count, int) and active_loans_count >= 2:
+        active_loans = active_loans_result.scalars().all()
+
+        if len(active_loans) >= settings.LOAN_MAX_CONCURRENT_PER_USER:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Maximum of 2 active loans reached.",
+                detail=f"Maximum of {settings.LOAN_MAX_CONCURRENT_PER_USER} active loans reached.",
+            )
+
+        if any(loan.loan_status == LoanStatus.OVERDUE for loan in active_loans):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You have overdue items and cannot borrow more until they are returned.",
             )
 
         # --- 2. Lock the asset row (NOWAIT: fail fast on contention) ---
@@ -401,6 +408,8 @@ async def checkout(
                 "Hardware command raised after checkout commit for loan=%s.",
                 loan.loan_id,
             )
+            # Use 207 Multi-Status to indicate DB success but HW failure.
+            # This allows the kiosk to provide immediate feedback.
             return JSONResponse(
                 status_code=status.HTTP_207_MULTI_STATUS,
                 content=LoanPublicResponse.model_validate(loan).model_dump(mode="json"),
@@ -459,15 +468,10 @@ async def report_damage(
     db_committed = False
     locker: Locker | None = None
 
-    if not idempotency_key:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Idempotency-Key header is required",
-        )
-
     # Step 1 — rate limit before idempotency guard to avoid stale key locks.
     await check_token_rate_limit(request, str(current_user.user_id))
-    await guard_idempotency(idempotency_key, current_user.user_id)
+    if idempotency_key:
+        await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
         # Step 2 — lock loan.
@@ -682,7 +686,7 @@ async def report_damage(
         db_committed = True
         await db.refresh(loan)
     except HTTPException:
-        if not db_committed:
+        if not db_committed and idempotency_key:
             await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
     except Exception:
@@ -690,7 +694,8 @@ async def report_damage(
             await db.rollback()
         except Exception:
             logger.exception("Failed to rollback DB during error handling.")
-        await release_idempotency_key(idempotency_key, current_user.user_id)
+        if not db_committed and idempotency_key:
+            await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
     # Step 10 — hardware sync after commit; failures are logged but do not rollback.
@@ -777,7 +782,7 @@ async def return_initiate(
         )
 
     try:
-        # --- 0. Enforce concurrent loan cap ---
+        # --- 0. Enforce concurrent loan cap (configurable quota) ---
         active_statuses = (
             LoanStatus.ACTIVE,
             LoanStatus.RESERVED,
@@ -787,16 +792,16 @@ async def return_initiate(
             LoanStatus.PENDING_INSPECTION,
         )
         active_loans_result = await db.execute(
-            select(func.count())
-            .select_from(Loan)
+            select(Loan)
             .where(Loan.user_id == current_user.user_id)
             .where(Loan.loan_status.in_(active_statuses))
         )
-        active_loans_count = active_loans_result.scalar_one_or_none()
-        if isinstance(active_loans_count, int) and active_loans_count >= 2:
+        active_loans = active_loans_result.scalars().all()
+
+        if len(active_loans) >= settings.LOAN_MAX_CONCURRENT_PER_USER:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Maximum of 2 active loans reached.",
+                detail=f"Maximum of {settings.LOAN_MAX_CONCURRENT_PER_USER} active loans reached.",
             )
 
         # --- 1. Validate that the kiosk exists ---
@@ -825,7 +830,9 @@ async def return_initiate(
         loan_result = await db.execute(
             select(Loan).where(
                 Loan.asset_id == asset.asset_id,
-                Loan.loan_status.in_((LoanStatus.ACTIVE, LoanStatus.RESERVED)),
+                Loan.loan_status.in_(
+                    (LoanStatus.ACTIVE, LoanStatus.RESERVED, LoanStatus.OVERDUE)
+                ),
             )
         )
         loan = loan_result.scalar_one_or_none()
@@ -841,10 +848,10 @@ async def return_initiate(
                 detail="You do not have permission to return this loan.",
             )
 
-        if loan.loan_status != LoanStatus.ACTIVE:
+        if loan.loan_status not in (LoanStatus.ACTIVE, LoanStatus.OVERDUE):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Loan is not active and cannot be returned.",
+                detail="Loan is not in a returnable state.",
             )
 
         # --- 4. Lock the loan row and enforce atomic state transition ---
@@ -853,7 +860,7 @@ async def return_initiate(
                 select(Loan)
                 .where(
                     Loan.loan_id == loan.loan_id,
-                    Loan.loan_status == LoanStatus.ACTIVE,
+                    Loan.loan_status.in_((LoanStatus.ACTIVE, LoanStatus.OVERDUE)),
                     Loan.return_locker_id.is_(None),
                 )
                 .with_for_update(nowait=True)

@@ -62,13 +62,13 @@ async def test_checkout_hardware_offline_fallback(
     )
     integration_db_session.add(kiosk)
 
-    # Locker - Start as AVAILABLE for checkout
+    # Locker - Seed as OCCUPIED as it contains the asset
     locker_id = uuid.uuid4()
     locker = Locker(
         locker_id=locker_id,
         kiosk_id=kiosk_id,
         logical_number=101,
-        locker_status=LockerStatus.AVAILABLE,
+        locker_status=LockerStatus.OCCUPIED,
     )
     integration_db_session.add(locker)
 
@@ -109,6 +109,7 @@ async def test_checkout_hardware_offline_fallback(
     )
 
     # 5. Assertions
+    # HTTP 207 Multi-Status is returned if DB succeeds but HW fails immediately
     assert response.status_code == 207
     data = response.json()
     assert data["loan_status"] == LoanStatus.RESERVED
@@ -133,10 +134,7 @@ async def test_checkout_hardware_offline_fallback(
     ).scalar_one()
 
     assert asset_db.asset_status == AssetStatus.BORROWED
-    # Per State Machine: (None, RESERVED) leaves locker status unchanged (unless specified)
-    # Actually, LoanStateMachine.apply_transition says:
-    # (None, LoanStatus.RESERVED): asset_status=AssetStatus.BORROWED, locker_status remains unchanged or is None
-    # Let's check what happened in previous run. It failed because it expected OCCUPIED but got AVAILABLE.
-    # If we seed as AVAILABLE and transition to RESERVED, locker stays AVAILABLE until pickup (ACTIVE).
-    assert locker_db.locker_status == LockerStatus.AVAILABLE
+    # Per State Machine: (None, RESERVED) leaves locker status unchanged.
+    # Since we seeded as OCCUPIED, it must remain OCCUPIED until the user picks up the item (ACTIVE).
+    assert locker_db.locker_status == LockerStatus.OCCUPIED
     assert loan_db.loan_status == LoanStatus.RESERVED

@@ -68,6 +68,7 @@ __pycache__/
 datasets/
 runs/
 *_openvino_model/
+*.zip
 
 .claude/
 CLAUDE.md

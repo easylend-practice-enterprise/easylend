@@ -257,6 +257,12 @@ class Settings(BaseSettings):
         description="Distributed lock TTL in seconds for overdue worker execution.",
     )
 
+    LOAN_MAX_CONCURRENT_PER_USER: int = Field(
+        default=2,
+        ge=1,
+        description="Maximum number of active/overdue/reserved loans a user can have.",
+    )
+
     # Absolute path to the upload directory. Defaults to ./uploads relative to
     # the app root (i.e. one level above the api/ directory). Can be overridden
     # via the UPLOAD_DIR environment variable.

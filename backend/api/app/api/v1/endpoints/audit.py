@@ -90,11 +90,28 @@ async def verify_audit_chain(
     logs = result.scalars().all()
 
     # An empty audit table is considered a valid (empty) chain by design.
-    # It cannot have been tampered with and has no records to protect yet.
     if not logs:
         return AuditVerifyResponse(is_valid=True, tampered_record_id=None)
 
-    running_hash = audit_core._GENESIS_AUDIT_HASH
+    # To support batch verification, we must determine the expected 'previous_hash'
+    # for the first record in this batch.
+    if skip == 0:
+        running_hash = audit_core._GENESIS_AUDIT_HASH
+    else:
+        # Fetch the current_hash of the record immediately preceding this batch.
+        prev_record_result = await db.execute(
+            select(AuditLog.current_hash)
+            .order_by(AuditLog.created_at.asc(), AuditLog.audit_id.asc())
+            .offset(skip - 1)
+            .limit(1)
+        )
+        running_hash = prev_record_result.scalar_one_or_none()
+        if running_hash is None:
+            # If skip > 0 but no predecessor exists, the batch boundary is illegal.
+            return AuditVerifyResponse(
+                is_valid=False, tampered_record_id=logs[0].audit_id
+            )
+
     for log in logs:
         # Check continuity
         if log.previous_hash != running_hash:
