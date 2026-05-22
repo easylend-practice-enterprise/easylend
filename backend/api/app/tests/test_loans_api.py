@@ -26,6 +26,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 
 import app.api.v1.endpoints.loans as loans_endpoints
+import app.db.redis as redis_mod
 from app.core.websockets import manager
 from app.db.models import UserStatus
 from app.tests.conftest import (
@@ -88,7 +89,7 @@ def mock_idempotency_redis(monkeypatch):
             self._keys.add(key)
             return True
 
-    monkeypatch.setattr(loans_endpoints, "redis_client", _FakeRedis())
+    monkeypatch.setattr(redis_mod, "redis_client", _FakeRedis())
 
 
 # ---------------------------------------------------------------------------
