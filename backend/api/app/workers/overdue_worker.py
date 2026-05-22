@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
+from app.core.config import settings
 from app.core.redis_utils import acquire_distributed_lock
 from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import AsyncSessionLocal
@@ -14,11 +15,11 @@ from app.db.models import Loan, LoanStatus
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INTERVAL_HOURS = 1
-BATCH_SIZE = 100
+DEFAULT_INTERVAL_HOURS = settings.OVERDUE_WORKER_INTERVAL_HOURS
+BATCH_SIZE = settings.OVERDUE_WORKER_BATCH_SIZE
 # Distributed lock TTL must be strictly shorter than the run interval to ensure
 # the lock is released before the next expected run.
-DISTRIBUTED_LOCK_TTL_SECONDS = 3500
+DISTRIBUTED_LOCK_TTL_SECONDS = settings.OVERDUE_WORKER_LOCK_TTL_SECONDS
 
 
 async def _process_single_loan(

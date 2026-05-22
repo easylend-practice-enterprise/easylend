@@ -1,18 +1,45 @@
 name: easylend-production
 
-x-backend-env: &backend-env
+# ==========================================
+# SHARED CONFIG
+# ==========================================
+
+x-core-env: &core-env
   DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
   ENVIRONMENT: prod
+  TZ: Europe/Brussels
+
+x-api-secrets: &api-secrets
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+  DOCS_USERNAME: ${DOCS_USERNAME}
+  DOCS_PASSWORD: ${DOCS_PASSWORD}
   VISION_SERVICE_URL: ${VISION_SERVICE_URL}
   VISION_API_KEY: ${VISION_API_KEY}
   VISION_BOX_API_KEY: ${VISION_BOX_API_KEY}
   SIMULATION_API_KEY: ${SIMULATION_API_KEY}
-  DOCS_USERNAME: ${DOCS_USERNAME}
-  DOCS_PASSWORD: ${DOCS_PASSWORD}
+  LOAN_MAX_CONCURRENT_PER_USER: ${LOAN_MAX_CONCURRENT_PER_USER:-2}
+
+# ==========================================
+# SERVICES
+# ==========================================
 
 services:
+  migrator:
+    image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
+    container_name: easylend_migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *core-env
+    command: alembic upgrade head
+    networks:
+      - backend-net
+    restart: on-failure:5
+    mem_limit: 512m
+
   api:
     image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
     container_name: easylend_api
@@ -20,14 +47,14 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     volumes:
       - ./uploads:/app/uploads
     environment:
-      <<: *backend-env
+      <<: [ *core-env, *api-secrets ]
     mem_limit: 4g
     networks:
       - backend-net
@@ -37,16 +64,21 @@ services:
   timeout_worker:
     image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
     container_name: easylend_timeout_worker
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     environment:
-      <<: *backend-env
+      <<: [ *core-env, *api-secrets ]
     command: python -m app.workers.loan_timeout_worker
     mem_limit: 512m
+    healthcheck:
+      test: [ "CMD-SHELL", "ps -ef | grep loan_timeout_worker | grep -v grep || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - backend-net
     labels:
@@ -55,16 +87,21 @@ services:
   overdue_worker:
     image: ghcr.io/easylend-practice-enterprise/easylend-backend:latest
     container_name: easylend_overdue_worker
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     environment:
-      <<: *backend-env
+      <<: [ *core-env, *api-secrets ]
     command: python -m app.workers.overdue_worker
     mem_limit: 512m
+    healthcheck:
+      test: [ "CMD-SHELL", "ps -ef | grep overdue_worker | grep -v grep || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - backend-net
     labels:
@@ -84,9 +121,7 @@ services:
       - pg_data:/var/lib/postgresql/data
     shm_size: 256mb
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5

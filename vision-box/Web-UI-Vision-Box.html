@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision Box</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel: #111111;
+      --border: #222222;
+      --accent: #e8ff47;
+      --accent2: #ff6b35;
+      --text: #f0f0f0;
+      --muted: #555;
+      --open: #4fffb0;
+      --closed: #ff4466;
+      --led-on: #fffbe6;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    /* ── HEADER ── */
+    header {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 48px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 20px;
+    }
+
+    header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--accent);
+    }
+
+    header span {
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    /* ── LIVE DOT ── */
+    .live {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 2px;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--open);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.3;
+      }
+    }
+
+    /* ── CARDS ── */
+    .dashboard {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--accent);
+    }
+
+    .card-label {
+      font-size: 0.6rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── SLOT CARD ── */
+    .slot-status {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .status-indicator {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid var(--closed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      transition: all 0.3s ease;
+    }
+
+    .status-indicator.open {
+      border-color: var(--open);
+      box-shadow: 0 0 20px rgba(79, 255, 176, 0.3);
+    }
+
+    .status-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .status-text strong {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 800;
+      transition: color 0.3s;
+    }
+
+    .status-text strong.open {
+      color: var(--open);
+    }
+
+    .status-text strong.closed {
+      color: var(--closed);
+    }
+
+    .status-text small {
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 1px;
+    }
+
+    .slot-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 14px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: var(--border);
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn.open-btn {
+      border-color: var(--open);
+      color: var(--open);
+    }
+
+    .btn.open-btn:hover {
+      background: rgba(79, 255, 176, 0.08);
+    }
+
+    .btn.close-btn {
+      border-color: var(--closed);
+      color: var(--closed);
+    }
+
+    .btn.close-btn:hover {
+      background: rgba(255, 68, 102, 0.08);
+    }
+
+    /* ── MICROSWITCH CARD ── */
+    .switch-display {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .switch-pill {
+      padding: 8px 18px;
+      border-radius: 100px;
+      font-size: 0.7rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      font-weight: 700;
+      background: #1a1a1a;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all 0.2s;
+    }
+
+    .switch-pill.actief {
+      background: rgba(232, 255, 71, 0.08);
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 12px rgba(232, 255, 71, 0.15);
+    }
+
+    .switch-desc {
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── LED CARD ── */
+    .led-card::before {
+      background: var(--accent2);
+    }
+
+    .led-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .led-label-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .led-label-group span {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .led-label-group small {
+      font-size: 0.65rem;
+      color: var(--muted);
+    }
+
+    /* Toggle switch */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 2px;
+      cursor: pointer;
+    }
+
+    .toggle {
+      width: 44px;
+      height: 24px;
+      background: var(--border);
+      border-radius: 12px;
+      position: relative;
+      transition: background 0.2s;
+      cursor: pointer;
+      border: none;
+      outline: none;
+    }
+
+    .toggle.aan {
+      background: var(--accent2);
+    }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+
+    .toggle.aan::after {
+      transform: translateX(20px);
+    }
+
+    /* Slider */
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .slider-row label {
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      min-width: 70px;
+    }
+
+    input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent2);
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(255, 107, 53, 0.4);
+    }
+
+    .slider-val {
+      font-size: 0.75rem;
+      color: var(--accent2);
+      min-width: 36px;
+      text-align: right;
+    }
+
+    /* LED preview */
+    .led-preview {
+      margin-top: 20px;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      transition: all 0.3s;
+      overflow: hidden;
+    }
+
+    .led-preview-inner {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #fff8e1, #ffffff);
+      border-radius: 2px;
+      transition: width 0.3s, box-shadow 0.3s;
+    }
+
+    .led-preview-inner.aan {
+      box-shadow: 0 0 12px rgba(255, 255, 220, 0.8);
+    }
+
+    /* ── LOG ── */
+    .log-card::before {
+      background: var(--muted);
+    }
+
+    .log-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    .log-list li {
+      font-size: 0.65rem;
+      color: var(--muted);
+      padding: 6px 10px;
+      background: #0f0f0f;
+      border-left: 2px solid var(--border);
+      letter-spacing: 1px;
+    }
+
+    .log-list li span {
+      color: var(--accent);
+      margin-right: 8px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <h1>VISION BOX</h1>
+    <span>controller v1</span>
+    <div class="live">
+      <div class="live-dot"></div>
+      LIVE
+    </div>
+  </header>
+
+  <div class="dashboard">
+
+    <!-- SLOT -->
+    <div class="card" id="slot-card">
+      <div class="card-label">Slot — Solenoid</div>
+      <div class="slot-status">
+        <div class="status-indicator" id="slot-indicator">🔒</div>
+        <div class="status-text">
+          <strong class="closed" id="slot-text">GESLOTEN</strong>
+          <small id="slot-sub">solenoid inactief</small>
+        </div>
+      </div>
+      <div class="slot-btns">
+        <button class="btn open-btn" onclick="slotOpen()">▶ Open</button>
+        <button class="btn close-btn" onclick="slotSluit()">■ Sluiten</button>
+      </div>
+    </div>
+
+    <!-- MICROSWITCH -->
+    <div class="card">
+      <div class="card-label">Microswitch — Deurstatus</div>
+      <div class="switch-display">
+        <div class="switch-pill" id="switch-pill">INACTIEF</div>
+        <div class="switch-desc" id="switch-desc">Wacht op signaal...</div>
+      </div>
+    </div>
+
+    <!-- LED -->
+    <div class="card led-card">
+      <div class="card-label">LED Strip — WS2812B</div>
+      <div class="led-top">
+        <div class="led-label-group">
+          <span id="led-status-text">Uit</span>
+          <small>wit licht</small>
+        </div>
+        <div class="toggle-wrap" onclick="ledToggle()">
+          AAN
+          <button class="toggle" id="led-toggle" aria-label="LED aan/uit"></button>
+        </div>
+      </div>
+      <div class="slider-row">
+        <label>Helderheid</label>
+        <input type="range" id="slider" min="0" max="100" value="50" oninput="sliderUpdate(this.value)"
+          onchange="ledVerstuur()">
+        <span class="slider-val" id="slider-val">50%</span>
+      </div>
+      <div class="led-preview">
+        <div class="led-preview-inner" id="led-preview-inner"></div>
+      </div>
+    </div>
+
+    <!-- LOG -->
+    <div class="card log-card">
+      <div class="card-label">Activiteit log</div>
+      <ul class="log-list" id="log"></ul>
+    </div>
+
+  </div>
+
+  <script>
+    // ── STATE ──
+    let ledAan = false;
+    let helderheid = 0.5;
+
+    // ── LOG ──
+    function log(msg) {
+      const li = document.createElement('li');
+      const now = new Date().toLocaleTimeString('nl-BE', { hour12: false });
+      li.innerHTML = `<span>${now}</span>${msg}`;
+      const lijst = document.getElementById('log');
+      lijst.prepend(li);
+      if (lijst.children.length > 20) lijst.lastChild.remove();
+    }
+
+    // ── SLOT ──
+    async function slotOpen() {
+      await fetch('/slot/open', { method: 'POST' });
+      updateSlotUI(true);
+      log('Slot geopend');
+    }
+
+    async function slotSluit() {
+      await fetch('/slot/close', { method: 'POST' });
+      updateSlotUI(false);
+      log('Slot gesloten');
+    }
+
+    function updateSlotUI(open) {
+      const indicator = document.getElementById('slot-indicator');
+      const text = document.getElementById('slot-text');
+      const sub = document.getElementById('slot-sub');
+      indicator.textContent = open ? '🔓' : '🔒';
+      indicator.className = 'status-indicator' + (open ? ' open' : '');
+      text.textContent = open ? 'OPEN' : 'GESLOTEN';
+      text.className = open ? 'open' : 'closed';
+      sub.textContent = open ? 'solenoid actief' : 'solenoid inactief';
+    }
+
+    // ── MICROSWITCH ──
+    function updateSwitchUI(actief) {
+      const pill = document.getElementById('switch-pill');
+      const desc = document.getElementById('switch-desc');
+      pill.textContent = actief ? 'ACTIEF' : 'INACTIEF';
+      pill.className = 'switch-pill' + (actief ? ' actief' : '');
+      desc.textContent = actief ? 'Schakelaar ingedrukt' : 'Geen signaal gedetecteerd';
+    }
+
+    // ── LED ──
+    function ledToggle() {
+      ledAan = !ledAan;
+      updateLedUI();
+      ledVerstuur();
+      log(`LED ${ledAan ? 'ingeschakeld' : 'uitgeschakeld'} — ${Math.round(helderheid * 100)}%`);
+    }
+
+    function sliderUpdate(val) {
+      helderheid = val / 100;
+      document.getElementById('slider-val').textContent = val + '%';
+      updateLedPreview();
+    }
+
+    function updateLedUI() {
+      const toggle = document.getElementById('led-toggle');
+      const text = document.getElementById('led-status-text');
+      toggle.className = 'toggle' + (ledAan ? ' aan' : '');
+      text.textContent = ledAan ? 'Aan' : 'Uit';
+      updateLedPreview();
+    }
+
+    function updateLedPreview() {
+      const inner = document.getElementById('led-preview-inner');
+      if (ledAan) {
+        inner.style.width = (helderheid * 100) + '%';
+        inner.className = 'led-preview-inner aan';
+      } else {
+        inner.style.width = '0%';
+        inner.className = 'led-preview-inner';
+      }
+    }
+
+    async function ledVerstuur() {
+      await fetch('/led', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aan: ledAan, helderheid })
+      });
+    }
+
+    // ── SSE LIVE UPDATES ──
+    const evtSource = new EventSource('/events');
+    evtSource.onmessage = (e) => {
+      const data = e.data;
+      if (data.startsWith('slot:')) {
+        updateSlotUI(data === 'slot:open');
+      } else if (data.startsWith('switch:')) {
+        updateSwitchUI(data === 'switch:aan');
+        log(`Microswitch → ${data === 'switch:aan' ? 'ACTIEF' : 'INACTIEF'}`);
+      } else if (data.startsWith('led:')) {
+        const parts = data.split(':');
+        ledAan = parts[1] === 'aan';
+        helderheid = parseFloat(parts[2]);
+        document.getElementById('slider').value = Math.round(helderheid * 100);
+        document.getElementById('slider-val').textContent = Math.round(helderheid * 100) + '%';
+        updateLedUI();
+      }
+    };
+
+    // ── INIT: haal huidige state op ──
+    fetch('/state').then(r => r.json()).then(s => {
+      updateSlotUI(s.slot_open);
+      updateSwitchUI(s.microswitch);
+      ledAan = s.led_aan;
+      helderheid = s.helderheid;
+      document.getElementById('slider').value = Math.round(helderheid * 100);
+      document.getElementById('slider-val').textContent = Math.round(helderheid * 100) + '%';
+      updateLedUI();
+      log('Verbonden met Vision Box');
+    });
+  </script>
+</body>
+
+</html>

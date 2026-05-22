@@ -1,24 +1,104 @@
 name: easylend-local
 
+# ==========================================
+# SHARED CONFIG (Local)
+# ==========================================
+
+x-build-config: &build-config
+  context: ./api
+  dockerfile: Dockerfile
+
+x-core-env: &core-env
+  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+  ENVIRONMENT: dev
+  TZ: Europe/Brussels
+
+x-api-secrets: &api-secrets
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+  CORS_ORIGINS: ${CORS_ORIGINS}
+  DOCS_USERNAME: ${DOCS_USERNAME}
+  DOCS_PASSWORD: ${DOCS_PASSWORD}
+  VISION_SERVICE_URL: ${VISION_SERVICE_URL}
+  VISION_API_KEY: ${VISION_API_KEY}
+  VISION_BOX_API_KEY: ${VISION_BOX_API_KEY}
+  SIMULATION_API_KEY: ${SIMULATION_API_KEY}
+
+# ==========================================
+# SERVICES
+# ==========================================
+
 services:
+  migrator:
+    build: *build-config
+    container_name: easylend_migrator_local
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *core-env
+    command: alembic upgrade head
+    networks:
+      - backend-net
+    restart: on-failure:5
+
   api:
-    build:
-      context: ./api
-      dockerfile: Dockerfile
+    build: *build-config
     container_name: easylend_api_local
     restart: unless-stopped
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    volumes:
+      - ./uploads:/app/uploads
+      # Optional: Uncomment the following line if you want live code reloading for FastAPI without rebuilding
+      # - ./api/app:/app/app
+    environment:
+      <<: [ *core-env, *api-secrets ]
+    networks:
+      - backend-net
+
+  timeout_worker:
+    build: *build-config
+    container_name: easylend_timeout_worker_local
+    restart: on-failure:5
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
       redis:
         condition: service_started
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - ENVIRONMENT=dev
+      <<: *core-env
+    command: python -m app.workers.loan_timeout_worker
+    healthcheck:
+      test: [ "CMD-SHELL", "ps -ef | grep loan_timeout_worker | grep -v grep || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend-net
+
+  overdue_worker:
+    build: *build-config
+    container_name: easylend_overdue_worker_local
+    restart: on-failure:5
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    environment:
+      <<: *core-env
+    command: python -m app.workers.overdue_worker
+    healthcheck:
+      test: [ "CMD-SHELL", "ps -ef | grep overdue_worker | grep -v grep || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - backend-net
 
@@ -27,7 +107,7 @@ services:
     container_name: postgres_local
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      - "5432:5432" # Open voor locale DB tools
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -36,9 +116,7 @@ services:
       - pg_data_local:/var/lib/postgresql/data
     shm_size: 256mb
     healthcheck:
-      test:
-        - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -48,11 +126,11 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:latest
+    container_name: pgadmin_local
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    container_name: pgadmin_local
-    restart: unless-stopped
     ports:
       - "48050:80"
     environment:
@@ -69,7 +147,7 @@ services:
     restart: unless-stopped
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
     ports:
-      - "6379:6379"
+      - "6379:6379" # Open for local development
     volumes:
       - redis_data_local:/data
     networks:

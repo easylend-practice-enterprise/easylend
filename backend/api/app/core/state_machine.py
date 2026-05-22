@@ -54,8 +54,11 @@ class LoanStateMachine:
             asset_status=AssetStatus.PENDING_INSPECTION,
             locker_status=LockerStatus.MAINTENANCE,
         ),
-        # Return initiation
         (LoanStatus.ACTIVE, LoanStatus.RETURNING): LoanTransitionOutcome(
+            loan_status=LoanStatus.RETURNING,
+            locker_status=LockerStatus.OCCUPIED,
+        ),
+        (LoanStatus.OVERDUE, LoanStatus.RETURNING): LoanTransitionOutcome(
             loan_status=LoanStatus.RETURNING,
             locker_status=LockerStatus.OCCUPIED,
         ),

@@ -131,7 +131,7 @@ async def test_e2e_checkout_happy_path(client_with_overrides, monkeypatch):
         student,  # 2. POST /auth/pin -> _get_active_user_by_nfc (Step 1)
         student,  # 3. POST /auth/pin -> lock user row by user_id (Step 2)
         student,  # 4. POST /loans/checkout -> get_current_user
-        0,  # 5. POST /loans/checkout -> count active loans
+        [],  # 5. POST /loans/checkout -> get active loans (quota check)
         asset,  # 6. POST /loans/checkout -> lock asset FOR UPDATE
         locker,  # 7. POST /loans/checkout -> lock locker FOR UPDATE
         student,  # 8. GET /loans/{loan_id}/status -> get_current_user

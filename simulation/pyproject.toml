@@ -5,6 +5,7 @@ description = "Hardware simulation client for Vision Box"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "httpx>=0.28.1",
     "python-dotenv>=1.2.2",
     "websockets>=16.0",
 ]

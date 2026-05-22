@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import HTTPException, Request, status
 from redis.exceptions import RedisError
 
+from app.core.config import settings
 from app.db.redis import redis_client
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,11 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-_IP_LIMIT = 500  # requests per window — Layer 2: public endpoints
-_IP_WINDOW_SECONDS = 60  # 1-minute window
+_IP_LIMIT = settings.RATE_LIMIT_IP_LIMIT
+_IP_WINDOW_SECONDS = settings.RATE_LIMIT_IP_WINDOW_SECONDS
 
-_TOKEN_LIMIT = 60  # requests per window — Layer 3: authenticated endpoints
-_TOKEN_WINDOW_SECONDS = 60  # 1-minute window
+_TOKEN_LIMIT = settings.RATE_LIMIT_TOKEN_LIMIT
+_TOKEN_WINDOW_SECONDS = settings.RATE_LIMIT_TOKEN_WINDOW_SECONDS
 
 
 # ---------------------------------------------------------------------------

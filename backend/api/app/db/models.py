@@ -146,7 +146,7 @@ class Locker(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     kiosk_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("kiosks.kiosk_id"), nullable=False
+        ForeignKey("kiosks.kiosk_id"), nullable=False, index=True
     )
 
     logical_number: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -186,7 +186,9 @@ class Asset(Base):
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    aztec_code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    aztec_code: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False, index=True
+    )
     asset_status: Mapped[AssetStatus] = mapped_column(
         Enum(AssetStatus), default=AssetStatus.AVAILABLE
     )
@@ -209,7 +211,7 @@ class Loan(Base):
         ForeignKey("users.user_id"), nullable=False
     )
     asset_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("assets.asset_id"), nullable=False
+        ForeignKey("assets.asset_id"), nullable=False, index=True
     )
     checkout_locker_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("lockers.locker_id"), nullable=False

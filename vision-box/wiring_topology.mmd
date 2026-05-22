@@ -1,0 +1,97 @@
+%%{init: {'flowchart': {'curve': 'basis'}}}%%
+flowchart TB
+    %% STYLES
+    classDef core fill:#f97316,stroke:#c2410c,stroke-width:3px,color:#000;
+    classDef power fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#000;
+    classDef io fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#000;
+    classDef drive fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#000;
+    classDef rail fill:#f8fafc,stroke:#475569,stroke-width:2px,color:#000;
+
+    %% POWER DISTRIBUTION
+    subgraph PWR["Power Distribution"]
+        direction LR
+
+        PSU["12V 10A DIN Rail PSU"]:::power
+        V12["12V Rail"]:::rail
+        BUCK["12V -> 5V Step-Down"]:::power
+        V5["5V Rail"]:::rail
+        GND["Common GND"]:::rail
+
+        PSU --> V12
+        V12 --> BUCK
+        BUCK --> V5
+        PSU --> GND
+    end
+
+    %% CONTROLLER
+    subgraph CORE["Raspberry Pi Core"]
+        direction TB
+        RPI["Raspberry Pi (Main Controller)"]:::core
+
+        GPIO_LOCK["GPIO Digital OUT<br/>(Lock trigger)"]:::io
+        GPIO_LED["GPIO PWM OUT<br/>(LED dimming / color logic)"]:::io
+        GPIO_SW["GPIO Digital IN<br/>(Microswitch feedback)"]:::io
+
+        RPI --> GPIO_LOCK
+        RPI --> GPIO_LED
+        GPIO_SW --> RPI
+    end
+
+    %% HARDWARE
+    subgraph HW["Locker Hardware (12V Side)"]
+        direction LR
+
+        subgraph LOCK["Lock Circuit"]
+            direction TB
+            SOL["12V Solenoid Lock"]:::drive
+            DIODE["Flyback Diode<br/>(across solenoid coil)"]:::drive
+            MOS_LOCK["MOSFET Board #1<br/>(Solenoid driver)"]:::drive
+            SW["Microswitch<br/>(door/lock state feedback)"]:::drive
+
+            SOL --- DIODE
+            SOL -.mechanical state.-> SW
+        end
+
+        subgraph LIGHT["LED Circuit"]
+            direction TB
+            LED["12V LED Strip"]:::drive
+            MOS_LED["MOSFET Board #2<br/>(PWM LED switching)"]:::drive
+        end
+    end
+
+    %% POWER PATHS
+    V5 -->|"5V supply"| RPI
+
+    V12 -->|"12V +"| SOL
+    SOL --> MOS_LOCK
+    MOS_LOCK --> GND
+
+    V12 -->|"12V +"| LED
+    LED --> MOS_LED
+    MOS_LED --> GND
+
+    %% GPIO CONTROL
+    GPIO_LOCK -->|"Lock pulse"| MOS_LOCK
+    GPIO_LED -->|"PWM signal"| MOS_LED
+    SW -->|"state feedback"| GPIO_SW
+
+    %% GROUND REFERENCE
+    GND --- RPI
+
+    %% LINE COLORS
+    linkStyle default stroke:#64748b,stroke-width:2px;
+
+    %% POWER RAILS (RED)
+    linkStyle 0,1,2,3,7,10 stroke:#dc2626,stroke-width:2px;
+
+    %% GPIO / SIGNALS (BLUE)
+    linkStyle 4,5,6,12,13,14 stroke:#2563eb,stroke-width:2px;
+
+    %% HARDWARE CIRCUITS (GREEN)
+    linkStyle 8,9,11 stroke:#16a34a,stroke-width:2px;
+
+    %% MECHANICAL RELATION (TEAL DASHED)
+    linkStyle 15 stroke:#0f766e,stroke-width:2px,stroke-dasharray: 6 4;
+
+    %% GROUND REFERENCE (GRAY DASHED)
+    linkStyle 16 stroke:#334155,stroke-width:2px,stroke-dasharray: 6 4;

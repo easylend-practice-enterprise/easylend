@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Brute-force constants (architecture spec: 5 attempts, 15-minute lockout)
-_MAX_ATTEMPTS = 5
-_LOCKOUT_MINUTES = 15
+_MAX_ATTEMPTS = settings.AUTH_MAX_LOGIN_ATTEMPTS
+_LOCKOUT_MINUTES = settings.AUTH_LOCKOUT_MINUTES
 # Compute the exact TTL in seconds from the days setting
 _REFRESH_TOKEN_TTL_SECONDS = int(
     timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS).total_seconds()

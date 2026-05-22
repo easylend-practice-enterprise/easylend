@@ -1,32 +1,42 @@
-# EasyLend API (FastAPI)
+# 🛠️ EasyLend: Core API (Operational Guide)
 
-## Run The Correct Dev Server
+> **Note:** For high-level architecture, business logic, and system-wide design decisions, please refer to the **[Global Documentation Index](../../docs/INDEX.md)**.
 
-Use this command from `backend/api`:
+This directory contains the FastAPI-based core backend for EasyLend.
+
+## Development Setup
+
+We use [uv](https://docs.astral.sh/uv/) for Python package management.
 
 ```bash
+# Sync dependencies and create venv
+uv sync
+
+# Run the API server with hot-reload
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir .
 ```
 
-Important:
+## Database Management
 
-- Do not run `uvicorn main:app` for the API service.
-- `main:app` is used by the Vision service in `backend/vision/main.py` and does not expose `/api/v1/catalog`.
+Migrations are handled via Alembic.
+```bash
+# Apply migrations to head
+uv run alembic upgrade head
 
-## Quick Verification
+# Generate a new migration
+uv run alembic revision --autogenerate -m "description"
+```
 
-After startup:
+## Testing & Quality
 
-- Open `http://127.0.0.1:8000/docs` and verify the API title is `EasyLend API`.
-- Check that `GET /api/v1/catalog` appears under tag `catalog`.
+```bash
+# Run integration tests (requires Docker)
+uv run pytest app/tests/integration/
 
-If you do not see those routes, you are likely running a different service/module target.
+# Run unit tests
+uv run pytest app/tests/
 
-## Localhost Caveat (Windows + Docker/WSL)
-
-On some Windows setups, `localhost` resolves to IPv6 (`::1`) and can hit a different listener than your local uvicorn process.
-
-- `127.0.0.1:8000` -> your API uvicorn process (contains `/api/v1/catalog`)
-- `localhost:8000` or `[::1]:8000` -> may hit Docker/WSL relay (can show a different OpenAPI)
-
-If Swagger looks inconsistent, always verify against `http://127.0.0.1:8000/openapi.json`.
+# Lint and Format
+uv run ruff check . --fix
+uv run ruff format .
+```

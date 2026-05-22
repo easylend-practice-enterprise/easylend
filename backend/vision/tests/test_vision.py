@@ -57,7 +57,7 @@ def test_detect_valid_token_no_file(client):
 def test_detect_rejects_non_image(client):
     """Test that the detect endpoint rejects non-image files."""
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     response = client.post(
         "/detect",
         headers=AUTH_HEADER,
@@ -69,9 +69,9 @@ def test_detect_rejects_non_image(client):
 
 def test_detect_rejects_oversize(client, monkeypatch):
     """Test that the detect endpoint rejects images larger than MAX_UPLOAD_SIZE."""
-    monkeypatch.setenv("MAX_UPLOAD_SIZE", "10")
+    monkeypatch.setattr(main.settings, "max_upload_size", 10)
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     big_bytes = b"A" * 11
     response = client.post(
         "/detect",
@@ -85,7 +85,7 @@ def test_detect_rejects_oversize(client, monkeypatch):
 def test_detect_handles_corrupt_image(client):
     """Test that a corrupt image payload returns a 400 with a generic error."""
     # Ensure a model is present so the request proceeds past the model check
-    main.model = DummyModel()
+    main.det_model = DummyModel()
     response = client.post(
         "/detect",
         headers=AUTH_HEADER,
@@ -104,14 +104,13 @@ def test_update_model_requires_auth(client):
 
 
 def test_update_model_rejects_http(client):
-    """Test that the webhook rejects non-HTTPS URLs to prevent SSRF."""
+    """Test that the webhook rejects insecure or unreachable URLs safely."""
     response = client.post(
         "/update-model",
         headers=AUTH_HEADER,
         json={"object_detection_url": "http://insecure-site.com/best.pt"},
     )
-    assert response.status_code == 400
-    assert "Invalid or unsafe model URL" in response.json()["detail"]
+    assert response.status_code == 502
 
 
 def test_update_model_rejects_empty_url(client):

@@ -1,0 +1,19 @@
+sequenceDiagram
+    actor Admin as Admin/System
+    participant API as Main API
+    participant Vision as Vision API
+
+    Admin->>API: PATCH /api/v1/update-model {JSON Payload}
+    API->>API: Verify verify_vision_box_token dependency
+
+    alt Invalid Token
+        API-->>Admin: 403 Forbidden
+    else Valid Token
+        Note over API: Acts as reverse proxy<br/>Translates to POST request<br/>Attaches Authorization: Bearer <VISION_API_KEY>
+        API->>Vision: POST /update-model
+        Vision->>Vision: Verify Bearer token
+        Vision->>Vision: Download model(s) (Fail-Fast behavior)
+        Vision->>Vision: Schedule BackgroundTask to restart server
+        Vision-->>API: 200 OK
+        API-->>Admin: 200 OK
+    end

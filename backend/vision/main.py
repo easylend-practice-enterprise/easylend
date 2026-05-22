@@ -22,20 +22,20 @@ from fastapi import (
 )
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from PIL import Image
-from pydantic import BaseModel
-from ultralytics import YOLO
+from pydantic import BaseModel, ConfigDict
+from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
+
+from config import Settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global model variable
-model: YOLO | None = None
+settings = Settings()
 
-
-def _env_flag(name: str) -> bool:
-    """Interpret common truthy env-var values."""
-    return os.getenv(name, "").lower() in {"1", "true", "yes", "on"}
+# Global model variables
+det_model: YOLO | None = None
+seg_model: YOLO | None = None
 
 
 def is_safe_url(url: str) -> bool:
@@ -47,7 +47,7 @@ def is_safe_url(url: str) -> bool:
     try:
         addr_info = socket.getaddrinfo(
             parsed.hostname,
-            parsed.port or 443,
+            parsed.port or settings.https_default_port,
             proto=socket.IPPROTO_TCP,
         )
     except socket.gaierror:
@@ -62,43 +62,55 @@ def is_safe_url(url: str) -> bool:
     return True
 
 
-# Lifespan event manager
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    """Load or export the YOLO model in OpenVINO format."""
-    global model
-
-    if _env_flag("SKIP_MODEL_LOADING"):
-        logger.info("Skipping model loading/export due to SKIP_MODEL_LOADING flag")
-        model = None
-        yield
-        logger.info("Shutting down...")
-        return
-
-    model_path = os.getenv("MODEL_PATH", "models/best.pt")
-    openvino_dir = model_path.replace(".pt", "_openvino_model")
+def _load_model(model_path: str, model_type: str) -> YOLO | None:
+    """Helper function to load a YOLO model and export to OpenVINO if needed."""
+    if not model_path:
+        return None
+    openvino_dir = model_path.replace(
+        settings.model_file_extension, settings.openvino_export_suffix
+    )
 
     try:
         if not os.path.exists(model_path) and not os.path.exists(openvino_dir):
             logger.warning(
-                f"No model found at {model_path}. Service starting in degraded mode. "
+                f"No {model_type} model found at {model_path}. Service starting in degraded mode. "
                 "Call /update-model endpoint to download a model."
             )
-            model = None
-        else:
-            if not os.path.exists(openvino_dir):
-                logger.info(
-                    "Exporting model to OpenVINO format for CPU acceleration..."
-                )
-                temp_model = YOLO(model_path)
-                temp_model.export(format="openvino")
+            return None
 
-            logger.info("Loading OpenVINO optimized model...")
-            model = YOLO(openvino_dir)
-            logger.info("Model loaded successfully")
+        if not os.path.exists(openvino_dir):
+            logger.info(
+                f"Exporting {model_type} model to OpenVINO format for CPU acceleration..."
+            )
+            temp_model = YOLO(model_path)
+            temp_model.export(format="openvino")
+
+        logger.info(f"Loading OpenVINO optimized {model_type} model...")
+        logger.info(f"Initializing YOLO26 {model_type} model wrapper...")
+        model = YOLO(openvino_dir)
+        logger.info(f"YOLO26 {model_type} model loaded successfully")
+        return model
     except Exception:
-        logger.exception("Failed to load model")
-        model = None
+        logger.exception(f"Failed to load {model_type} model")
+        return None
+
+
+# Lifespan event manager
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Load or export the YOLO models in OpenVINO format."""
+    global det_model, seg_model
+
+    if settings.skip_model_loading:
+        logger.info("Skipping model loading/export due to SKIP_MODEL_LOADING flag")
+        det_model = None
+        seg_model = None
+        yield
+        logger.info("Shutting down...")
+        return
+
+    det_model = _load_model(settings.detection_model_path, "Detection")
+    seg_model = _load_model(settings.segmentation_model_path, "Segmentation")
 
     yield
 
@@ -107,9 +119,9 @@ async def lifespan(_app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="EasyLend Vision API",
-    description="AI Vision Service for object detection and segmentation",
-    version="1.0.0",
+    title=settings.app_title,
+    description=settings.app_description,
+    version=settings.app_version,
     lifespan=lifespan,
 )
 
@@ -119,11 +131,13 @@ security = HTTPBearer()
 
 # Pydantic schemas aligned with Main API expectations
 class Detection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     class_name: str
     confidence: float
 
 
 class DetectResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: str
     count: int
     detections: list[Detection]
@@ -131,11 +145,13 @@ class DetectResponse(BaseModel):
 
 
 class SegmentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     status: str
     has_damage_detected: bool
 
 
 class ModelUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     object_detection_url: str | None = None
     segmentation_url: str | None = None
 
@@ -143,7 +159,7 @@ class ModelUpdateRequest(BaseModel):
 # Security dependency
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """Verify the Bearer token provided in the Authorization header."""
-    expected_token = os.getenv("VISION_API_KEY")
+    expected_token = settings.vision_api_key
     if not expected_token:
         logger.error("VISION_API_KEY environment variable is not set")
         raise HTTPException(
@@ -161,8 +177,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
 
 
 def restart_server():
-    """Wait 2 seconds and restart the server."""
-    time.sleep(2)
+    """Wait before restarting the server."""
+    time.sleep(settings.restart_delay_seconds)
     os._exit(0)
 
 
@@ -171,15 +187,18 @@ def restart_server():
 async def health_check():
     """Health check endpoint"""
     return {
-        "status": "healthy" if model is not None else "unhealthy",
-        "model_loaded": model is not None,
+        "status": "healthy"
+        if (det_model is not None and seg_model is not None)
+        else "degraded",
+        "det_model_loaded": det_model is not None,
+        "seg_model_loaded": seg_model is not None,
     }
 
 
 def _validate_image(file: UploadFile) -> bytes:
     """Shared helper to validate and read the uploaded image."""
-    allowed = {"image/jpeg", "image/png", "image/webp"}
-    max_size = int(os.getenv("MAX_UPLOAD_SIZE", 10 * 1024 * 1024))
+    allowed = set(settings.allowed_image_content_types)
+    max_size = settings.max_upload_size
 
     if not file.content_type or file.content_type not in allowed:
         raise HTTPException(
@@ -202,26 +221,31 @@ def detect(
     token: str = Depends(verify_token),  # noqa: ARG001
 ) -> DetectResponse:
     """Run object detection on the provided image."""
-    if model is None:
+    # Validate first so invalid files get 400 instead of 503 when degraded
+    image_data = _validate_image(file)
+
+    if det_model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model is not available",
+            detail="Detection model is not available",
         )
 
+    image: Image.Image | None = None
+    results = None
     try:
-        image_data = _validate_image(file)
-
-        Image.MAX_IMAGE_PIXELS = int(os.getenv("PIL_MAX_PIXELS", 100_000_000))
+        Image.MAX_IMAGE_PIXELS = settings.pil_max_pixels
         image = Image.open(BytesIO(image_data))
         width, height = image.size
-        if width * height > int(os.getenv("MAX_IMAGE_PIXELS", 50_000_000)):
+        if width * height > settings.max_image_pixels:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Image has too many pixels",
             )
 
         logger.info(f"Running detection on image: {file.filename}")
-        results = model.predict(source=image, imgsz=640)
+        results = det_model.predict(
+            source=image, imgsz=settings.model_inference_image_size
+        )
 
         detections: list[Detection] = []
         if results and len(results) > 0:
@@ -253,6 +277,18 @@ def detect(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
         )
+    finally:
+        if image is not None:
+            image.close()
+        # Explicitly delete large tensors to avoid memory leaks
+        # on exception paths where logger.exception holds strong refs
+        results = None
+        image = None
+        image_data = None
+
+        import gc
+
+        gc.collect()
 
 
 @app.post("/segment", response_model=SegmentResponse, tags=["Predictions"])
@@ -261,12 +297,37 @@ def segment(
     token: str = Depends(verify_token),  # noqa: ARG001
 ) -> SegmentResponse:
     """Run segmentation (damage detection) on the provided image."""
-    try:
-        _validate_image(file)
-        logger.info(f"Running segmentation on image: {file.filename}")
+    image_data = _validate_image(file)
 
-        # TODO: Placeholder for actual segmentation logic
+    if seg_model is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Segmentation model is not available",
+        )
+
+    image: Image.Image | None = None
+    results = None
+    try:
+        Image.MAX_IMAGE_PIXELS = settings.pil_max_pixels
+        image = Image.open(BytesIO(image_data))
+        width, height = image.size
+        if width * height > settings.max_image_pixels:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Image has too many pixels",
+            )
+
+        logger.info(f"Running segmentation on image: {file.filename}")
+        results = seg_model.predict(
+            source=image, imgsz=settings.model_inference_image_size
+        )
+
         has_damage = False
+        if results and len(results) > 0:
+            result = results[0]
+            masks = getattr(result, "masks", None)
+            if masks is not None and len(masks) > 0:  # type: ignore
+                has_damage = True
 
         return SegmentResponse(
             status="success",
@@ -281,6 +342,18 @@ def segment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error processing image",
         )
+    finally:
+        if image is not None:
+            image.close()
+        # Explicitly delete large tensors to avoid memory leaks
+        # on exception paths where logger.exception holds strong refs
+        results = None
+        image = None
+        image_data = None
+
+        import gc
+
+        gc.collect()
 
 
 def _download_via_ip(
@@ -289,93 +362,96 @@ def _download_via_ip(
     port: int,
     path_with_query: str,
     headers: dict,
-    timeout: int = 60,
+    timeout: int = settings.model_download_timeout_seconds,
 ) -> http.client.HTTPResponse:
     """Download an HTTPS resource by connecting to a resolved IP while preserving SNI/Host."""
-    sock = socket.create_connection((ip, port), timeout=timeout)
-    ctx = ssl.create_default_context()
-    ssock = ctx.wrap_socket(sock, server_hostname=hostname)
+    sock = None
+    ssock = None
+    try:
+        sock = socket.create_connection((ip, port), timeout=timeout)
+        ctx = ssl.create_default_context()
+        ssock = ctx.wrap_socket(sock, server_hostname=hostname)
 
-    request_lines = [f"GET {path_with_query} HTTP/1.1", f"Host: {hostname}"]
-    for k, v in headers.items():
-        request_lines.append(f"{k}: {v}")
-    request_lines.append("Connection: close")
-    request_lines.append("")
-    request_lines.append("")
-    req = "\r\n".join(request_lines)
-    ssock.sendall(req.encode("utf-8"))
+        request_lines = [f"GET {path_with_query} HTTP/1.1", f"Host: {hostname}"]
+        for k, v in headers.items():
+            request_lines.append(f"{k}: {v}")
+        request_lines.append("Connection: close")
+        request_lines.append("")
+        request_lines.append("")
+        req = "\r\n".join(request_lines)
+        ssock.sendall(req.encode("utf-8"))
 
-    resp = http.client.HTTPResponse(ssock)
-    resp.begin()
-    return resp
+        resp = http.client.HTTPResponse(ssock)
+        resp.begin()
+        return resp
+    finally:
+        if ssock is not None:
+            ssock.close()
+        elif sock is not None:
+            sock.close()
 
 
-@app.post("/update-model", tags=["Management"])
-def update_model(
-    payload: ModelUpdateRequest,
-    background_tasks: BackgroundTasks,
-    _: str = Depends(verify_token),
-):
-    """Update the AI model from a secure HTTPS URL."""
-    target_url = payload.object_detection_url or payload.segmentation_url
+def _model_size_error_detail() -> str:
+    max_mb = settings.max_model_download_size_bytes // (1024 * 1024)
+    return f"Model download exceeds maximum allowed size of {max_mb}MB."
 
-    if not target_url or not is_safe_url(target_url):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or unsafe model URL.",
-        )
 
-    parsed_url = urlparse(target_url)
+def _update_single_model(url: str, model_path: str):
+    """Helper function to download, backup, and update a single model file."""
+    parsed_url = urlparse(url)
     hostname = parsed_url.hostname
     if not hostname:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or unsafe model URL.",
         )
-
-    port = parsed_url.port or 443
+    port = parsed_url.port or settings.https_default_port
     path_with_query = parsed_url.path or "/"
     if parsed_url.query:
         path_with_query = f"{path_with_query}?{parsed_url.query}"
 
     logger.info(f"Downloading new model from: {hostname}")
-    model_path = os.getenv("MODEL_PATH", "models/best.pt")
-    backup_path = f"{model_path}.backup"
-    openvino_dir = model_path.replace(".pt", "_openvino_model")
+    backup_path = f"{model_path}{settings.backup_suffix}"
+    openvino_dir = model_path.replace(
+        settings.model_file_extension, settings.openvino_export_suffix
+    )
 
+    # Resolve once — no TOCTOU window. Skip non-global IPs; prefer IPv4.
+    addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    chosen_ip: str | None = None
+    for info in addr_info:
+        candidate = str(info[4][0])
+        ip_obj = ipaddress.ip_address(candidate)
+        if not ip_obj.is_global:
+            continue
+        if chosen_ip is None or ip_obj.version == 4:
+            chosen_ip = candidate
+        if ip_obj.version == 4:
+            break
+
+    if not chosen_ip:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No global IP address found for model host.",
+        )
+    chosen_ip = str(chosen_ip)
+
+    temp_path = f"{model_path}{settings.temp_suffix}"
     try:
-        if os.path.exists(model_path):
-            logger.info("Creating backup of the current model...")
-            shutil.copy2(model_path, backup_path)
+        try:
+            if os.path.exists(model_path):
+                logger.info(f"Creating backup of the current model at {model_path}...")
+                shutil.copy2(model_path, backup_path)
+        except OSError:
+            pass  # No backup needed if model_path doesn't exist yet
 
-        addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
-        chosen_ip = None
-        for info in addr_info:
-            candidate = info[4][0]
-            ip_obj = ipaddress.ip_address(candidate)
-            if not ip_obj.is_global:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid or unsafe model URL.",
-                )
-            if chosen_ip is None or ip_obj.version == 4:
-                chosen_ip = candidate
-
-        if not chosen_ip:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to resolve model host",
-            )
-        chosen_ip = str(chosen_ip)
-
-        temp_path = f"{model_path}.tmp"
         resp = _download_via_ip(
             hostname,
             chosen_ip,
             port,
             path_with_query,
-            headers={"User-Agent": "EasyLend-Vision-Bot"},
-            timeout=60,
+            headers={"User-Agent": settings.model_download_user_agent},
+            timeout=settings.model_download_timeout_seconds,
         )
 
         try:
@@ -392,14 +468,38 @@ def update_model(
                     detail="Model download failed: Received HTML",
                 )
 
+            content_length_header = resp.getheader("Content-Length")
+            if content_length_header:
+                try:
+                    content_length = int(content_length_header)
+                except ValueError:
+                    content_length = None
+                if (
+                    content_length is not None
+                    and content_length > settings.max_model_download_size_bytes
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=_model_size_error_detail(),
+                    )
+
             total = 0
             with open(temp_path, "wb") as out_file:
                 while True:
-                    chunk = resp.read(8192)
+                    chunk = resp.read(settings.model_download_chunk_size_bytes)
                     if not chunk:
                         break
-                    out_file.write(chunk)
                     total += len(chunk)
+                    if total > settings.max_model_download_size_bytes:
+                        try:
+                            os.remove(temp_path)
+                        except OSError:
+                            pass
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=_model_size_error_detail(),
+                        )
+                    out_file.write(chunk)
 
             if total == 0:
                 raise HTTPException(
@@ -416,21 +516,64 @@ def update_model(
 
         if os.path.exists(openvino_dir):
             shutil.rmtree(openvino_dir)
-
-        logger.info("New model downloaded. Scheduled restart in 2 seconds...")
-        background_tasks.add_task(restart_server)
-
-        return {"detail": "Model updated. Service will restart in 2 seconds."}
-
     except HTTPException:
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
         raise
-    except Exception:
+    except Exception as e:
         if os.path.exists(backup_path):
             shutil.copy2(backup_path, model_path)
         logger.exception("Error updating model. Backup restored.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Update failed, backup restored",
+        ) from e
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
+@app.post("/update-model", tags=["Management"])
+def update_model(
+    payload: ModelUpdateRequest,
+    background_tasks: BackgroundTasks,
+    _: str = Depends(verify_token),
+):
+    """Update the AI models from secure HTTPS URLs."""
+    if payload.object_detection_url is None and payload.segmentation_url is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Must provide at least one model URL to update.",
         )
+
+    if payload.object_detection_url is not None:
+        try:
+            _update_single_model(
+                payload.object_detection_url, settings.detection_model_path
+            )
+        except HTTPException as exc:
+            raise exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Detection model update failed.",
+            ) from exc
+
+    if payload.segmentation_url is not None:
+        _update_single_model(payload.segmentation_url, settings.segmentation_model_path)
+
+    logger.info(
+        "New model(s) downloaded. Scheduled restart in %s seconds...",
+        settings.restart_delay_seconds,
+    )
+    background_tasks.add_task(restart_server)
+
+    return {
+        "message": (
+            "Model update received successfully. Service will restart in "
+            f"{settings.restart_delay_seconds} seconds."
+        )
+    }

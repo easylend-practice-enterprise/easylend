@@ -58,9 +58,6 @@ def _is_lock_not_available_error(exc: OperationalError) -> bool:
     return "database is locked" in message or "lock not available" in message
 
 
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024
-
-
 class VisionAIServiceError(Exception):
     """Raised to represent a non-200 or otherwise problematic response from the Vision AI upstream."""
 
@@ -145,8 +142,8 @@ async def analyze_image(
             detail="Uploaded file must be a JPEG/PNG/WebP image.",
         )
 
-    image_data = await file.read(MAX_UPLOAD_SIZE + 1)
-    if len(image_data) > MAX_UPLOAD_SIZE:
+    image_data = await file.read(settings.VISION_MAX_UPLOAD_SIZE_BYTES + 1)
+    if len(image_data) > settings.VISION_MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Image too large.",
@@ -235,7 +232,9 @@ async def analyze_image(
     failure_error_summary = ""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.VISION_API_TIMEOUT_SECONDS
+        ) as client:
             detect_req = client.post(
                 f"{settings.VISION_SERVICE_URL.rstrip('/')}/detect",
                 headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
@@ -555,18 +554,24 @@ async def analyze_image(
                 detail=str(exc),
             ) from exc
 
+        photo_url_for_db = validated_data.photo_url
+        image_storage_error: str | None = None
         try:
             async with aiofiles.open(file_path, "wb") as buffer:
                 await buffer.write(image_data)
-        except OSError as exc:
-            logger.error(f"Failed to save image to disk: {str(file_path)}")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Storage service is temporarily unavailable.",
-            ) from exc
+        except Exception as exc:
+            image_storage_error = str(exc)
+            photo_url_for_db = f"storage_error://{unique_filename}"
+            logger.error(
+                "Failed to save evaluation image for loan_id=%s at %s; committing state transition without artifact.",
+                loan.loan_id,
+                str(file_path),
+                exc_info=exc,
+            )
 
         # Phase A: Database transaction — point of no return for the commit.
-        # If this succeeds, the DB is durable and the photo URL is valid.
+        # If this succeeds, the DB is durable and the photo URL metadata is saved
+        # (either a real path or a storage_error sentinel).
         # If this fails, rollback is safe and we may delete the photo.
         try:
             await log_audit_event(
@@ -578,28 +583,30 @@ async def analyze_image(
                     "locker_id": str(locker.locker_id),
                     "evaluation_type": evaluation_type.value,
                     "has_damage_detected": has_damage,
-                    "photo_url": validated_data.photo_url,
+                    "photo_url": photo_url_for_db,
                 },
             )
+
+            detected_objects = {
+                "locker_empty": locker_empty,
+                "detections": [d.model_dump() for d in validated_data.detections]
+                if validated_data.detections
+                else [],
+            }
+            if image_storage_error is not None:
+                detected_objects["image_storage_error"] = image_storage_error
 
             db.add(
                 AIEvaluation(
                     loan_id=loan.loan_id,
                     evaluation_type=evaluation_type,
-                    photo_url=validated_data.photo_url,
+                    photo_url=photo_url_for_db,
                     ai_confidence=validated_data.detections[0].confidence
                     if validated_data.detections
                     else 0.0,
                     has_damage_detected=has_damage,
                     model_version="yolo26-dual-model",
-                    detected_objects={
-                        "locker_empty": locker_empty,
-                        "detections": [
-                            d.model_dump() for d in validated_data.detections
-                        ]
-                        if validated_data.detections
-                        else [],
-                    },
+                    detected_objects=detected_objects,
                 )
             )
 
@@ -638,7 +645,12 @@ async def analyze_image(
                 locker.locker_id,
             )
 
-    return {"detail": "Evaluation processed successfully."}
+    response_payload = {"detail": "Evaluation processed successfully."}
+    if image_storage_error is None:
+        response_payload["image_path"] = photo_url_for_db
+    else:
+        response_payload["image_path"] = "storage_write_failed"
+    return response_payload
 
 
 @webhook_router.patch("/update-model", response_model=ModelUpdateResponse)
@@ -664,7 +676,9 @@ async def update_model(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.VISION_API_TIMEOUT_SECONDS
+        ) as client:
             response = await client.post(
                 f"{settings.VISION_SERVICE_URL.rstrip('/')}/update-model",
                 json=payload.model_dump(),

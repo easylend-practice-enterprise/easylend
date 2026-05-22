@@ -12,12 +12,10 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from redis.exceptions import RedisError
 
+from app.core.config import settings
 from app.db.redis import redis_client
 
 logger = logging.getLogger(__name__)
-
-_IDEMPOTENCY_TTL_SECONDS = 86400  # 24 hours
-_MAX_IDEMPOTENCY_KEY_LENGTH = 256
 
 
 async def guard_idempotency(idempotency_key: str, user_id: UUID) -> None:
@@ -26,17 +24,17 @@ async def guard_idempotency(idempotency_key: str, user_id: UUID) -> None:
 
     Raises HTTPException 400 if the key exceeds the length limit.
     Raises HTTPException 409 if the key already exists (duplicate request).
-    The key expires after _IDEMPOTENCY_TTL_SECONDS to prevent unbounded growth.
+    The key expires after settings.IDEMPOTENCY_TTL_SECONDS to prevent unbounded growth.
     """
-    if len(idempotency_key) > _MAX_IDEMPOTENCY_KEY_LENGTH:
+    if len(idempotency_key) > settings.IDEMPOTENCY_MAX_KEY_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Idempotency-Key must not exceed {_MAX_IDEMPOTENCY_KEY_LENGTH} characters.",
+            detail=f"Idempotency-Key must not exceed {settings.IDEMPOTENCY_MAX_KEY_LENGTH} characters.",
         )
     redis_key = f"idempotency:{user_id}:{idempotency_key}"
     try:
         was_set = await redis_client.set(
-            redis_key, "processing", ex=_IDEMPOTENCY_TTL_SECONDS, nx=True
+            redis_key, "processing", ex=settings.IDEMPOTENCY_TTL_SECONDS, nx=True
         )
     except (TimeoutError, RedisError) as exc:
         logger.warning(

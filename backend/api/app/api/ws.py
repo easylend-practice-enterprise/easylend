@@ -2,13 +2,13 @@ import json
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, Header, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Header, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.websockets import manager
-from app.db.database import get_db
+from app.db.database import AsyncSessionLocal
 from app.db.models import Kiosk
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,6 @@ async def visionbox_websocket_endpoint(
     websocket: WebSocket,
     kiosk_id: str,
     x_device_token: str | None = Header(default=None, alias="X-Device-Token"),
-    db: AsyncSession = Depends(get_db),
 ) -> None:
     if not x_device_token:
         logger.warning(
@@ -53,7 +52,9 @@ async def visionbox_websocket_endpoint(
         return
 
     # Enforce that the kiosk_id is a known kiosk in the DB (prevents kiosk impersonation).
-    if not await _verify_kiosk_exists(db, kiosk_id):
+    async with AsyncSessionLocal() as db:
+        kiosk_exists = await _verify_kiosk_exists(db, kiosk_id)
+    if not kiosk_exists:
         logger.warning(
             "Connection rejected: kiosk_id=%s is not registered in the database.",
             kiosk_id,

@@ -1,18 +1,11 @@
-import asyncio
 import hashlib
 import json
-import logging
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.engine import Result
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db_utils import is_lock_not_available_error
 from app.db.models import AuditLog
-
-logger = logging.getLogger(__name__)
 
 _GENESIS_AUDIT_HASH = "0" * 64
 
@@ -29,43 +22,17 @@ async def log_audit_event(
     payload: dict | None,
     user_id: UUID | None = None,
 ) -> AuditLog:
-    """Write an audit log entry with hash-chain integrity.
+    """Write an audit log entry without locking the previous row.
 
-    Uses `FOR UPDATE NOWAIT` to acquire a lock on the most-recent audit row
-    without blocking concurrent writers. If the lock is already held, the call
-    is retried with exponential backoff up to 5 times; if contention persists,
-    the error is propagated so callers can handle it.
+    The chain head is read without `FOR UPDATE`, then we append a new row.
+    This keeps audit logging off the global lock contention path for
+    high-concurrency business transactions.
     """
-    # Retry up to 5 times with exponential backoff to handle transient lock contention.
-    # Base delay 50ms, doubles each retry: 50ms → 100ms → 200ms → 400ms → 800ms.
-    MAX_ATTEMPTS = 5
-    BASE_DELAY = 0.05
-    last_audit_result: Result | None = None
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            last_audit_result = await db.execute(
-                select(AuditLog)
-                .order_by(AuditLog.created_at.desc(), AuditLog.audit_id.desc())
-                .limit(1)
-                .with_for_update(nowait=True)
-            )
-            break
-        except OperationalError as exc:
-            if attempt < MAX_ATTEMPTS - 1 and is_lock_not_available_error(exc):
-                delay = BASE_DELAY * (2**attempt)
-                logger.warning(
-                    "Audit log lock contention (attempt %d/%d), retrying in %.3fs.",
-                    attempt + 1,
-                    MAX_ATTEMPTS,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-                continue
-            # Non-lock OperationalError or last attempt exhausted — propagate immediately
-            raise
-
-    if last_audit_result is None:
-        raise RuntimeError("Audit log result cannot be None")
+    last_audit_result = await db.execute(
+        select(AuditLog)
+        .order_by(AuditLog.created_at.desc(), AuditLog.audit_id.desc())
+        .limit(1)
+    )
     last_audit = last_audit_result.scalar_one_or_none()
     # Normalise None payload to empty dict — ensures the stored value and
     # the hash computation are always consistent (null != {} in JSON).

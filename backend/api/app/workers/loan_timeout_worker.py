@@ -7,6 +7,7 @@ from sqlalchemy import case, or_, select
 from sqlalchemy.exc import OperationalError
 
 from app.core.audit import log_audit_event
+from app.core.config import settings
 from app.core.redis_utils import acquire_distributed_lock
 from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
 from app.db.database import AsyncSessionLocal
@@ -14,13 +15,13 @@ from app.db.models import Asset, AssetStatus, Loan, LoanStatus, Locker, LockerSt
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT_MINUTES = 3
-DEFAULT_INTERVAL_SECONDS = 60
-BATCH_SIZE = 100
+DEFAULT_TIMEOUT_MINUTES = settings.LOAN_TIMEOUT_WORKER_TIMEOUT_MINUTES
+DEFAULT_INTERVAL_SECONDS = settings.LOAN_TIMEOUT_WORKER_INTERVAL_SECONDS
+BATCH_SIZE = settings.LOAN_TIMEOUT_WORKER_BATCH_SIZE
 # Distributed lock TTL must be strictly shorter than the run interval (60s).
 # A crashed holder will release the lock after 55s, allowing the next scheduled
 # run to proceed without waiting for a full interval.
-DISTRIBUTED_LOCK_TTL_SECONDS = 55
+DISTRIBUTED_LOCK_TTL_SECONDS = settings.LOAN_TIMEOUT_WORKER_LOCK_TTL_SECONDS
 
 
 async def _process_single_timed_out_loan(

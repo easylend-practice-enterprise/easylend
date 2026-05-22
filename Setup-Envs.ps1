@@ -21,8 +21,8 @@ $EnvMappings = @(
         Name         = "Docker Root"
         Target       = "backend/.env"
         AllowedKeys  = @(
-            "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", 
-            "REDIS_PASSWORD", "PGADMIN_DEFAULT_EMAIL", "PGADMIN_DEFAULT_PASSWORD", 
+            "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB",
+            "REDIS_PASSWORD", "PGADMIN_DEFAULT_EMAIL", "PGADMIN_DEFAULT_PASSWORD",
             "SQLBAK_TOKEN", "GHCR_USERNAME", "GHCR_PAT", "NTFY_WEBHOOK_URL"
         )
         RequiredKeys = @(
@@ -36,11 +36,12 @@ $EnvMappings = @(
             "ENVIRONMENT", "JWT_SECRET_KEY", "DATABASE_URL", "REDIS_URL",
             "VISION_BOX_API_KEY", "SIMULATION_API_KEY",
             "VISION_SERVICE_URL", "SIMULATION_SERVICE_URL", "VISION_API_KEY",
-            "DOCS_USERNAME", "DOCS_PASSWORD"
+            "DOCS_USERNAME", "DOCS_PASSWORD", "CORS_ORIGINS"
         )
         RequiredKeys = @(
             "ENVIRONMENT", "JWT_SECRET_KEY", "DATABASE_URL", "REDIS_URL",
-            "VISION_BOX_API_KEY", "SIMULATION_API_KEY", "VISION_API_KEY"
+            "VISION_BOX_API_KEY", "SIMULATION_API_KEY", "VISION_API_KEY",
+            "CORS_ORIGINS"
         )
     },
     @{
@@ -75,7 +76,7 @@ foreach ($mapping in $EnvMappings) {
     }
 
     Write-Host "Syncing keys for $($mapping.Name)..."
-    
+
     # Read existing target keys
     $existingKeys = @{}
     Get-Content -Path $tgtPath | Where-Object { $_ -match '^[^#]+=' } | ForEach-Object {

@@ -1,0 +1,119 @@
+%%{init: {'flowchart': {'curve': 'basis'}}}%%
+flowchart TB
+    %% STYLES
+    classDef core fill:#f97316,stroke:#c2410c,stroke-width:3px,color:#000;
+    classDef power fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#000;
+    classDef io fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#000;
+    classDef drive fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#000;
+    classDef backend fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#000;
+    classDef state fill:#fef9c3,stroke:#ca8a04,stroke-width:2px,color:#000;
+    classDef bus fill:#f1f5f9,stroke:#475569,stroke-width:1px,color:#000;
+
+    %% POWER
+    subgraph PWR["Power Layer"]
+        direction LR
+        PSU["12V 10A DIN Rail PSU"]:::power
+        BUCK["12V -> 5V Step-Down Converter"]:::power
+        PSU --> BUCK
+    end
+
+    %% CORE
+    subgraph CORE["Vision Box Core"]
+        direction TB
+        RPI["Raspberry Pi (Main Controller)"]:::core
+
+        GPIO_OUT["GPIO Digital OUT<br/>(Lock trigger)"]:::io
+        GPIO_PWM["GPIO PWM OUT<br/>(LED dimming / color logic)"]:::io
+        GPIO_IN["GPIO Digital IN<br/>(Microswitch feedback)"]:::io
+
+        CAM["Camera Capture + Local Validation<br/>(retry loop before upload)"]:::io
+        EDGE_LOGIC["Edge Workflow<br/>open_slot -> wait close -> capture -> upload"]:::io
+
+        RPI --> GPIO_OUT
+        RPI --> GPIO_PWM
+        GPIO_IN --> RPI
+        CAM --> RPI
+        RPI --> EDGE_LOGIC
+    end
+
+    %% HARDWARE
+    subgraph HW["Locker Hardware"]
+        direction LR
+
+        subgraph LOCKER["Locking System"]
+            direction TB
+            MOS_LOCK["MOSFET Board #1<br/>(Solenoid driver)"]:::drive
+            SOL["12V Solenoid Lock"]:::drive
+            DIODE["Flyback Diode<br/>(across solenoid coil)"]:::drive
+            SW["Microswitch<br/>(door/lock state feedback)"]:::drive
+
+            MOS_LOCK --> SOL
+            SOL --- DIODE
+            SOL -.mechanical state.-> SW
+        end
+
+        subgraph LIGHT["Lighting System"]
+            direction TB
+            MOS_LED["MOSFET Board #2<br/>(PWM LED switching)"]:::drive
+            LED["12V LED Strip"]:::drive
+
+            MOS_LED --> LED
+        end
+    end
+
+    %% NETWORK
+    subgraph NET["Communication Channels"]
+        direction LR
+        WS["WSS Channel<br/>open_slot / set_led / slot_closed"]:::bus
+        HTTP["HTTP Channel<br/>POST /vision/analyze"]:::bus
+    end
+
+    %% BACKEND
+    subgraph CLOUD["Backend / Domain Layer"]
+        direction TB
+        API["FastAPI API + WebSocket"]:::backend
+        ANALYZE["POST /api/v1/vision/analyze"]:::backend
+        FSM["LoanStateMachine"]:::state
+        STATUS["Key outcomes<br/>RESERVED, ACTIVE, RETURNING,<br/>COMPLETED, FRAUD_SUSPECTED,<br/>PENDING_INSPECTION"]:::state
+
+        API --> ANALYZE --> FSM --> STATUS
+    end
+
+    %% CONTROL FLOW
+    GPIO_OUT -->|"Lock pulse"| MOS_LOCK
+    GPIO_PWM -->|"PWM signal"| MOS_LED
+    SW -->|"state feedback"| GPIO_IN
+
+    %% NETWORK FLOW
+    EDGE_LOGIC <-->|events + commands| WS
+    WS <-->|WebSocket bridge| API
+
+    CAM -->|"image + loan_id + evaluation_type"| HTTP
+    HTTP -->|"analyze request"| ANALYZE
+
+    %% POWER FLOW
+    BUCK -->|"5V supply"| RPI
+    PSU -->|"12V"| MOS_LOCK
+    PSU -->|"12V"| MOS_LED
+
+    %% GROUND
+    RPI ---|"Common GND"| MOS_LOCK
+    RPI ---|"Common GND"| MOS_LED
+
+    %% LINE COLORS
+    linkStyle default stroke:#64748b,stroke-width:2px;
+
+    %% POWER (RED)
+    linkStyle 0,1,17,18,19 stroke:#dc2626,stroke-width:2px;
+
+    %% GPIO / IO (BLUE)
+    linkStyle 2,3,4,5,13,14,15 stroke:#2563eb,stroke-width:2px;
+
+    %% HARDWARE (GREEN)
+    linkStyle 6,7,8,9 stroke:#16a34a,stroke-width:2px;
+
+    %% NETWORK / BACKEND (PURPLE)
+    linkStyle 10,11,12,16 stroke:#7c3aed,stroke-width:2px;
+
+    %% GROUND / REFERENCE (DASHED GRAY)
+    linkStyle 20,21 stroke:#334155,stroke-width:2px,stroke-dasharray: 6 4;
