@@ -5,5 +5,9 @@ __pycache__/
 *.pyd
 *.pt
 *.onnx
+*.zip
+*.backup
 datasets/
 runs/
+models/
+!models/.gitkeep

@@ -47,10 +47,6 @@ sequenceDiagram
 
 ## 5. Vision
 
-...
-
-## 4. Vision
-
 - `POST /vision/analyze`: AI inference trigger after door closure.
 - `PATCH /update-model`: Atomic YOLO weight update.
 

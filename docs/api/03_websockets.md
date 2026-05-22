@@ -7,7 +7,7 @@ Edge clients connect to the API via persistent sockets to receive real-time comm
 - **URL:** `ws://<host>/ws/visionbox/{kiosk_id}`
 - **Auth:** Requires `X-Device-Token` header.
 
-## Server-to-Client commands
+## Server-to-client commands
 
 ### 1. open_slot
 
@@ -36,7 +36,7 @@ Signals status via LED color.
 }
 ```
 
-## Client-to-Server events
+## Client-to-server events
 
 ### 1. slot_closed
 

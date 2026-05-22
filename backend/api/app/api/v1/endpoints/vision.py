@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
-from app.api.deps import verify_vision_box_token
+from app.api.deps import verify_vision_api_token, verify_vision_box_token
 from app.core.audit import log_audit_event
 from app.core.config import settings
 from app.core.state_machine import InvalidLoanTransitionError, LoanStateMachine
@@ -656,7 +656,7 @@ async def analyze_image(
 @webhook_router.patch("/update-model", response_model=ModelUpdateResponse)
 async def update_model(
     payload: ModelUpdateRequest,
-    _: None = Depends(verify_vision_box_token),
+    _: None = Depends(verify_vision_api_token),
 ) -> ModelUpdateResponse:
     safe_detect_url = (
         payload.object_detection_url.split("?")[0]
@@ -707,3 +707,61 @@ async def update_model(
         ) from exc
 
     return ModelUpdateResponse(message="Model update received successfully.")
+
+
+@webhook_router.post("/upload-model")
+async def upload_model_proxy(
+    file: UploadFile = File(...),
+    model_type: str = Form(...),  # "detection" or "segmentation"
+    _: None = Depends(verify_vision_api_token),
+):
+    """
+    Proxy a local .pt model file upload to the Vision AI microservice.
+    Uses the Vision Box token for authentication.
+    """
+    if not file.filename or not file.filename.endswith(".pt"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .pt (PyTorch) files are allowed.",
+        )
+
+    if model_type not in ("detection", "segmentation"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid model_type. Must be 'detection' or 'segmentation'.",
+        )
+
+    try:
+        content = await file.read()
+        async with httpx.AsyncClient(
+            timeout=settings.VISION_API_TIMEOUT_SECONDS * 2
+        ) as client:
+            # We must use files= for multipart/form-data proxy
+            response = await client.post(
+                f"{settings.VISION_SERVICE_URL.rstrip('/')}/upload-model",
+                headers={"Authorization": f"Bearer {settings.VISION_API_KEY}"},
+                data={"model_type": model_type},
+                files={"file": (file.filename, content, file.content_type)},
+            )
+
+        if response.status_code != 200:
+            logger.error(
+                "Vision microservice returned %s for model-upload: %s",
+                response.status_code,
+                response.text[:500],
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Vision microservice rejected the model upload.",
+            )
+
+    except httpx.RequestError as exc:
+        logger.error("Failed to forward model-upload: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to communicate with Vision microservice.",
+        ) from exc
+
+    return ModelUpdateResponse(
+        message=f"{model_type.capitalize()} model upload successful."
+    )

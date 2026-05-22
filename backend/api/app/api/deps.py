@@ -117,6 +117,12 @@ async def verify_vision_box_token(
     _verify_device_token(settings.VISION_BOX_API_KEY, x_device_token)
 
 
+async def verify_vision_api_token(
+    x_device_token: str | None = Header(None, alias="X-Device-Token"),
+) -> None:
+    _verify_device_token(settings.VISION_API_KEY, x_device_token)
+
+
 async def verify_simulation_token(
     x_device_token: str | None = Header(None, alias="X-Device-Token"),
 ) -> None:

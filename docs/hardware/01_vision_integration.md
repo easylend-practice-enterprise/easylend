@@ -18,10 +18,30 @@ Ensures slow AI calls do not hold database locks:
 
 ## Model updates
 
-Administrators can trigger atomic updates of the YOLO weights using a reverse-proxied request.
+Administrators can trigger atomic updates of the YOLO weights using a reverse-proxied request. The system supports two modes of delivery:
 
-- **Required format:** The endpoint strictly expects standard PyTorch (`.pt`) files via secure HTTPS URLs.
-- **OpenVINO pipeline:** Direct uploads of pre-compiled OpenVINO directories via the API are not supported. Instead, upon receiving a new `.pt` file, the service automatically exports it to the optimized OpenVINO format before loading it into memory. This ensures maximum CPU acceleration on the host hardware without requiring administrators to manually compile models.
+- **Local file upload:** Pushing a `.pt` file from a local machine directly to the Vision service.
+- **Remote URL pull:** Instructing the Vision service to download a `.pt` file from a secure HTTPS URL.
+
+### Deployment utility
+
+A Python utility is provided at `backend/api/scripts/deploy_models.py` to manage these updates.
+
+**Usage:**
+
+1. Navigate to the `backend/api` directory.
+2. Execute the utility using `uv`, providing either a local path or a URL:
+
+   ```bash
+   # Local upload
+   uv run python scripts/deploy_models.py --detection ./my-model.pt
+
+   # Remote pull
+   uv run python scripts/deploy_models.py --segmentation https://example.com/seg.pt
+   ```
+
+- **Authentication:** The utility uses the `VISION_API_KEY` (sent as `X-Device-Token`) to authenticate with the Main API.
+- **Internal security:** The Main API uses that same `VISION_API_KEY` (Authorization Bearer) to securely proxy the request to the Vision microservice.- **Automation:** Upon receiving a new `.pt` file, the Vision service automatically clears old OpenVINO exports and restarts to load the new weights.
 
 ## Advanced workflow: pre-converted models
 

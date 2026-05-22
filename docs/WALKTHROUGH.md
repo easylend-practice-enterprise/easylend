@@ -44,7 +44,7 @@ The student initiates a return at a kiosk.
 - **Verification:** The vision box captures a photo. The AI verifies the item's presence and inspects for damage.
 - **Details:** [State management](./architecture/02_state_machine.md) and [Database schema](./database/01_schema.md)
 
-## 🛑 Exceptions
+## Exceptions
 
 Logic for non-standard flows:
 

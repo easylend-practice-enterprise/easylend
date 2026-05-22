@@ -68,8 +68,18 @@ __pycache__/
 datasets/
 runs/
 *_openvino_model/
-*.zip
+
 
 .claude/
 CLAUDE.md
 AGENTS.md
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pt
+*.onnx
+datasets/
+runs/

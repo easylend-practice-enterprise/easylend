@@ -16,6 +16,7 @@ from fastapi import (
     Depends,
     FastAPI,
     File,
+    Form,
     HTTPException,
     UploadFile,
     status,
@@ -575,5 +576,79 @@ def update_model(
         "message": (
             "Model update received successfully. Service will restart in "
             f"{settings.restart_delay_seconds} seconds."
+        )
+    }
+
+
+@app.post("/upload-model", tags=["Management"])
+async def upload_model(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    model_type: str = Form(...),  # "detection" or "segmentation"
+    _: str = Depends(verify_token),
+):
+    """Directly upload a YOLO .pt model file."""
+    if not file.filename or not file.filename.endswith(".pt"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .pt (PyTorch) files are allowed.",
+        )
+
+    if model_type == "detection":
+        target_path = settings.detection_model_path
+    elif model_type == "segmentation":
+        target_path = settings.segmentation_model_path
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid model_type. Must be 'detection' or 'segmentation'.",
+        )
+
+    # 1. Save uploaded file to temporary location
+    temp_path = f"{target_path}.upload.tmp"
+    try:
+        content = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        # 2. Swap into place
+        if os.path.exists(target_path):
+            backup_path = f"{target_path}.backup"
+            shutil.copy2(target_path, backup_path)
+
+        os.replace(temp_path, target_path)
+
+        # 3. Clear old OpenVINO export
+        openvino_dir = target_path.replace(
+            settings.model_file_extension, settings.openvino_export_suffix
+        )
+        if os.path.exists(openvino_dir):
+            shutil.rmtree(openvino_dir)
+
+    except Exception as exc:
+        logger.exception("Model upload failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Upload failed: {exc}",
+        ) from exc
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+    # 4. Trigger restart
+    logger.info(
+        "New %s model uploaded. Scheduled restart in %s seconds...",
+        model_type,
+        settings.restart_delay_seconds,
+    )
+    background_tasks.add_task(restart_server)
+
+    return {
+        "message": (
+            f"{model_type.capitalize()} model uploaded successfully. "
+            f"Service will restart in {settings.restart_delay_seconds} seconds."
         )
     }

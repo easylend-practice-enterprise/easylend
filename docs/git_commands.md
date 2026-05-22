@@ -1,4 +1,4 @@
-# Frequently Used Git Commands in This Repo
+# Frequently used git commands in this repo
 
 | **#** | **command** | **definition** |
 | --- | --- | --- |

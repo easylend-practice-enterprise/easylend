@@ -7,6 +7,9 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - VISION_API_KEY=local-dev-kiosk-key-123
-      - SKIP_MODEL_LOADING=1
+      - VISION_API_KEY=${VISION_API_KEY:-local-dev-kiosk-key-123}
+      - SKIP_MODEL_LOADING=${SKIP_MODEL_LOADING:-1}
+      - MODEL_PATH=models/best.pt
+    shm_size: 2gb
+    mem_limit: 8g
     restart: unless-stopped
