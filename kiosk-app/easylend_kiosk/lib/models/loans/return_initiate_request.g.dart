@@ -9,13 +9,13 @@ part of 'return_initiate_request.dart';
 ReturnInitiateRequest _$ReturnInitiateRequestFromJson(
   Map<String, dynamic> json,
 ) => ReturnInitiateRequest(
-  loanId: json['loan_id'] as String,
+  aztecCode: json['aztec_code'] as String,
   kioskId: json['kiosk_id'] as String,
 );
 
 Map<String, dynamic> _$ReturnInitiateRequestToJson(
   ReturnInitiateRequest instance,
 ) => <String, dynamic>{
-  'loan_id': instance.loanId,
+  'aztec_code': instance.aztecCode,
   'kiosk_id': instance.kioskId,
 };

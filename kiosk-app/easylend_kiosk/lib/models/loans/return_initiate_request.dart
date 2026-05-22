@@ -4,14 +4,14 @@ part 'return_initiate_request.g.dart';
 
 @JsonSerializable()
 class ReturnInitiateRequest {
-  @JsonKey(name: 'loan_id')
-  final String loanId;
+  @JsonKey(name: 'aztec_code')
+  final String aztecCode;
 
   @JsonKey(name: 'kiosk_id')
   final String kioskId;
 
   ReturnInitiateRequest({
-    required this.loanId,
+    required this.aztecCode,
     required this.kioskId,
   });
 

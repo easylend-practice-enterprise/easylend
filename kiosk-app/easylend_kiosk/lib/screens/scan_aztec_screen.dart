@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import '../theme.dart';
 import '../services/api/api_service.dart';
 import '../models/loans/checkout_request.dart';
+import '../core/app_exceptions.dart';
 
 class ScanAztecScreen extends ConsumerStatefulWidget {
   const ScanAztecScreen({super.key});
@@ -160,8 +161,6 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
     await _stopImageStream();
     if (!mounted) return;
 
-    debugPrint('Aztec code detected: $value');
-
     if (kDebugMode) {
       await _showDebugDialog(value);
     } else {
@@ -257,7 +256,9 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
         builder: (_) => AlertDialog(
           backgroundColor: AppColors.surface,
           title: const Text('Checkout Failed'),
-          content: Text('Error: ${e.toString()}'),
+          content: Text(
+                e is AppException ? e.message : 'An unexpected error occurred during scanning.',
+              ),
           actions: [
             ElevatedButton(
               onPressed: () {
