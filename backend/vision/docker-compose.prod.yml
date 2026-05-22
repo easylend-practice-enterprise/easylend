@@ -5,13 +5,14 @@ services:
     image: ghcr.io/easylend-practice-enterprise/easylend-vision:latest
     container_name: easylend_vision_api
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - vision_models:/app/models
     environment:
       - MODEL_PATH=models/best.pt
       - VISION_API_KEY=${VISION_API_KEY}
     mem_limit: 8g
+    shm_size: 2gb
     restart: unless-stopped
     labels:
       - "com.centurylinklabs.watchtower.scope=vision"

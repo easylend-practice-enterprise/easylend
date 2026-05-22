@@ -12,13 +12,14 @@ x-core-env: &core-env
 
 x-api-secrets: &api-secrets
   JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-  CORS_ORIGINS: ${CORS_ORIGINS}
+  CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
   DOCS_USERNAME: ${DOCS_USERNAME}
   DOCS_PASSWORD: ${DOCS_PASSWORD}
   VISION_SERVICE_URL: ${VISION_SERVICE_URL}
   VISION_API_KEY: ${VISION_API_KEY}
   VISION_BOX_API_KEY: ${VISION_BOX_API_KEY}
   SIMULATION_API_KEY: ${SIMULATION_API_KEY}
+  LOAN_MAX_CONCURRENT_PER_USER: ${LOAN_MAX_CONCURRENT_PER_USER:-2}
 
 # ==========================================
 # SERVICES
@@ -70,7 +71,7 @@ services:
       redis:
         condition: service_started
     environment:
-      <<: *core-env
+      <<: [ *core-env, *api-secrets ]
     command: python -m app.workers.loan_timeout_worker
     mem_limit: 512m
     healthcheck:
@@ -93,7 +94,7 @@ services:
       redis:
         condition: service_started
     environment:
-      <<: *core-env
+      <<: [ *core-env, *api-secrets ]
     command: python -m app.workers.overdue_worker
     mem_limit: 512m
     healthcheck:

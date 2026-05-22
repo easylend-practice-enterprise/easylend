@@ -22,25 +22,25 @@ flowchart TD
     subgraph Proxmox ["Proxmox VE Server (Hypervisor)"]
         direction TB
 
-        subgraph VM1 ["VM 1: Core Backend"]
-            API["FastAPI REST & WSS<br/>(Docker Container)"]:::container
+        subgraph VM1 ["VM 1: Core Backend (10.0.2.147)"]
+            API["FastAPI REST & WSS (Port 8000)"]:::container
             DB[("PostgreSQL 17")]:::db
             REDIS[("Redis Cache")]:::db
         end
 
-        subgraph VM2 ["VM 2: AI Microservice"]
-            YOLO["YOLO26 Medium<br/>(Inference Engine)"]:::container
+        subgraph VM2 ["VM 2: AI Microservice (10.0.2.146)"]
+            YOLO["YOLO26 Medium (Port 8001)"]:::container
         end
     end
 
     %% Connections
-    K <-->|"HTTPS / REST (JWT)"| API
-    V <-->|"HTTP POST (Image) & WSS"| API
-    S <-->|"HTTP / WSS"| API
+    K <-->|"HTTPS / WSS (Port 8000)"| API
+    V <-->|"WSS (Port 8000) & POST Image"| API
+    S <-->|"HTTP / WSS (Port 8000)"| API
 
     API <-->|"Read / Write"| DB
-    API <-->|"Pub / Sub + Token Whitelist"| REDIS
-    API <-->|"POST Image / Get JSON"| YOLO
+    API <-->|"Pub / Sub"| REDIS
+    API <-->|"POST Image (Port 8001)"| YOLO
 ```
 
 ## Logical Topology

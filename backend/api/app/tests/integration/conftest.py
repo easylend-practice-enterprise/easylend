@@ -12,6 +12,7 @@ from testcontainers.redis import RedisContainer
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import Base
+from app.main import app
 
 
 @pytest.fixture(scope="session")
@@ -28,13 +29,16 @@ def redis_container():
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def override_settings(postgres_container, redis_container):
+    # Retrieve dynamic connection URLs
     db_url = postgres_container.get_connection_url().replace("psycopg2", "asyncpg")
     redis_host = redis_container.get_container_host_ip()
     redis_port = redis_container.get_exposed_port(6379)
     redis_url = f"redis://{redis_host}:{redis_port}/0"
 
+    # Override Pydantic settings
     settings.DATABASE_URL = db_url
     settings.REDIS_URL = redis_url
+
     yield
 
 
@@ -44,16 +48,31 @@ async def integration_engine(override_settings):
     engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
 
     # FORCED DEEP HOT-SWAP:
-    # Some modules might have already imported engine/AsyncSessionLocal.
-    # We patch the module directly.
+    # 1. Patch the source of truth
     import app.db.database as db_mod
 
-    db_mod.engine = engine
-    db_mod.AsyncSessionLocal = async_sessionmaker(
+    session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
+    db_mod.engine = engine
+    db_mod.AsyncSessionLocal = session_factory
+
+    # 2. Patch all modules that already imported AsyncSessionLocal by name
+    # this is critical for running all tests in one process
+    import app.api.v1.endpoints.vision as vision_mod
+
+    vision_mod.AsyncSessionLocal = session_factory
+
+    import app.workers.loan_timeout_worker as timeout_mod
+
+    timeout_mod.AsyncSessionLocal = session_factory
+
+    import app.workers.overdue_worker as overdue_mod
+
+    overdue_mod.AsyncSessionLocal = session_factory
 
     async with engine.begin() as conn:
+        # Re-create the schema to ensure it matches models.py exactly
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
@@ -69,9 +88,8 @@ async def reset_integration_state(integration_engine):
         table_result = await conn.execute(
             text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
         )
-        table_names = [
-            name for name in table_result.scalars().all() if name != "alembic_version"
-        ]
+        table_names = list(table_result.scalars().all())
+        table_names = [name for name in table_names if name != "alembic_version"]
         if table_names:
             quoted_names = ", ".join(f'"{name}"' for name in table_names)
             await conn.execute(
@@ -81,29 +99,12 @@ async def reset_integration_state(integration_engine):
 
 @pytest_asyncio.fixture
 async def integration_db_session(integration_engine):
-    import app.db.database as db_mod
+    # Use the hot-swapped sessionmaker
+    from app.db.database import AsyncSessionLocal
 
-    async with db_mod.AsyncSessionLocal() as session:
+    async with AsyncSessionLocal() as session:
         yield session
-        # Ensure cleanup
         await session.rollback()
-        await session.close()
-
-
-@pytest_asyncio.fixture
-async def async_client(integration_db_session):
-    # Import app inside fixture to ensure settings are overridden first
-    from app.main import app
-
-    def _get_db_override():
-        yield integration_db_session
-
-    app.dependency_overrides[get_db] = _get_db_override
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
-    app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture
@@ -116,8 +117,22 @@ async def integration_redis_client(override_settings):
     await client.aclose()
 
 
+@pytest_asyncio.fixture
+async def async_client(integration_db_session):
+    def _get_db_override():
+        yield integration_db_session
+
+    app.dependency_overrides[get_db] = _get_db_override
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        yield ac
+    app.dependency_overrides.clear()
+
+
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def patch_redis_client_references(integration_redis_client):
+
     module_names = (
         "app.db.redis",
         "app.core.rate_limit",
@@ -134,6 +149,8 @@ async def patch_redis_client_references(integration_redis_client):
                 setattr(module, "redis_client", integration_redis_client)
         except ImportError:
             continue
+
     yield
+
     for module, original in originals:
         setattr(module, "redis_client", original)
