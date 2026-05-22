@@ -74,15 +74,6 @@ services:
       <<: [*core-env, *api-secrets]
     command: python -m app.workers.loan_timeout_worker
     mem_limit: 512m
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "ps -ef | grep loan_timeout_worker | grep -v grep || exit 1",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - backend-net
     labels:
@@ -101,12 +92,6 @@ services:
       <<: [*core-env, *api-secrets]
     command: python -m app.workers.overdue_worker
     mem_limit: 512m
-    healthcheck:
-      test:
-        ["CMD-SHELL", "ps -ef | grep overdue_worker | grep -v grep || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     networks:
       - backend-net
     labels:
