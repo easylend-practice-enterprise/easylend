@@ -123,8 +123,8 @@ class Settings(BaseSettings):
         description="Shared device token for hardware simulator clients.",
     )
 
-    CORS_ORIGINS: str = Field(
-        default="http://localhost:3000",
+    CORS_ORIGINS: str | list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000"],
         description="Allowed CORS origins (JSON array or comma-separated env value).",
     )
     CORS_MAX_AGE_SECONDS: int = Field(
