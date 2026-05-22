@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.135.1",
+    "gunicorn>=23.0.0",
     "opencv-python-headless>=4.13.0.92; sys_platform == 'linux'",
     "opencv-python>=4.13.0.92; sys_platform != 'linux'",
     "openvino>=2026.0.0",
