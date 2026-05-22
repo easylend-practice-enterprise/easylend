@@ -2,7 +2,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'loan_response.g.dart';
 
-/// Loan status values from the API
 class LoanStatus {
   static const String reserved = 'RESERVED';
   static const String active = 'ACTIVE';
@@ -14,7 +13,6 @@ class LoanStatus {
   static const String pendingInspection = 'PENDING_INSPECTION';
 }
 
-/// Public loan response (non-admin) - no user_id
 @JsonSerializable()
 class LoanPublicResponse {
   @JsonKey(name: 'loan_id')
@@ -68,7 +66,6 @@ class LoanPublicResponse {
   bool get isPendingInspection => loanStatus == LoanStatus.pendingInspection;
 }
 
-/// Admin loan response - includes user_id
 @JsonSerializable()
 class LoanResponse {
   @JsonKey(name: 'loan_id')

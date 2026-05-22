@@ -13,27 +13,30 @@ class KioskApiService {
   late final Dio _dio;
   late final FlutterSecureStorage _storage;
 
-  KioskApiService({
-    Dio? dio,
-    FlutterSecureStorage? storage,
-  }) {
-    _storage = storage ?? FlutterSecureStorage(
-      aOptions: AndroidOptions(encryptedSharedPreferences: true),
-      iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-    );
+  KioskApiService({Dio? dio, FlutterSecureStorage? storage}) {
+    _storage =
+        storage ??
+        FlutterSecureStorage(
+          aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          iOptions: IOSOptions(
+            accessibility: KeychainAccessibility.first_unlock,
+          ),
+        );
 
     if (dio != null) {
       _dio = dio;
     } else {
-      _dio = Dio(BaseOptions(
-        baseUrl: AppConfig.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ));
+      _dio = Dio(
+        BaseOptions(
+          baseUrl: AppConfig.baseUrl,
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 30),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        ),
+      );
       _dio.interceptors.add(_AuthInterceptor(_dio, _storage));
     }
   }
@@ -46,21 +49,23 @@ class KioskApiService {
     try {
       final response = await _dio.post(
         '/auth/pin',
-        data: {
-          'nfc_tag_id': nfcTagId,
-          'pin': pin,
-        },
+        data: {'nfc_tag_id': nfcTagId, 'pin': pin},
       );
 
       final tokenResponse = TokenResponse.fromJson(response.data);
-      await _storage.write(key: StorageKeys.accessToken, value: tokenResponse.accessToken);
-      await _storage.write(key: StorageKeys.refreshToken, value: tokenResponse.refreshToken);
+      await _storage.write(
+        key: StorageKeys.accessToken,
+        value: tokenResponse.accessToken,
+      );
+      await _storage.write(
+        key: StorageKeys.refreshToken,
+        value: tokenResponse.refreshToken,
+      );
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  /// Fetches available assets with pagination.
   Future<List<Asset>> fetchAvailableAssets() async {
     try {
       final token = await _getAccessToken();
@@ -84,10 +89,12 @@ class KioskApiService {
       final response = await _dio.post(
         '/loans/checkout',
         data: CheckoutRequest(aztecCode: aztecCode).toJson(),
-        options: Options(headers: {
-          'Authorization': 'Bearer $token',
-          'Idempotency-Key': idempotencyKey,
-        }),
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Idempotency-Key': idempotencyKey,
+          },
+        ),
       );
       if (response.statusCode != 202) {
         throw AppException('Checkout failed. Please try again.');
@@ -110,11 +117,16 @@ class KioskApiService {
       final idempotencyKey = DateTime.now().millisecondsSinceEpoch.toString();
       final response = await _dio.post(
         '/loans/return/initiate',
-        data: ReturnInitiateRequest(aztecCode: aztecCode, kioskId: kioskId).toJson(),
-        options: Options(headers: {
-          'Authorization': 'Bearer $token',
-          'Idempotency-Key': idempotencyKey,
-        }),
+        data: ReturnInitiateRequest(
+          aztecCode: aztecCode,
+          kioskId: kioskId,
+        ).toJson(),
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Idempotency-Key': idempotencyKey,
+          },
+        ),
       );
       if (response.statusCode != 202) {
         throw AppException('Return initiation failed. Please try again.');
@@ -125,21 +137,16 @@ class KioskApiService {
   }
 
   Future<void> logout() async {
-  final refreshToken = await _storage.read(key: StorageKeys.refreshToken);
-  if (refreshToken != null) {
-    try {
-      await _dio.post(
-        '/auth/logout',
-        data: {'refresh_token': refreshToken},
-      );
-    } catch (_) {
-      // Ignore logout errors - we clear tokens anyway
+    final refreshToken = await _storage.read(key: StorageKeys.refreshToken);
+    if (refreshToken != null) {
+      try {
+        await _dio.post('/auth/logout', data: {'refresh_token': refreshToken});
+      } catch (_) {}
     }
+    await _storage.deleteAll();
   }
-  await _storage.deleteAll();
-}
 
-AppException _handleDioError(DioException e) {
+  AppException _handleDioError(DioException e) {
     final statusCode = e.response?.statusCode;
 
     if (e.type == DioExceptionType.connectionTimeout ||
@@ -154,7 +161,6 @@ AppException _handleDioError(DioException e) {
         return AppException.serverError();
       }
       if (statusCode == 400 || statusCode == 404 || statusCode == 409) {
-        // Try to extract backend error message
         final data = e.response?.data;
         if (data is Map && data.containsKey('detail')) {
           return AppException(data['detail'].toString(), code: statusCode);
@@ -179,10 +185,10 @@ class TokenResponse {
   });
 
   factory TokenResponse.fromJson(Map<String, dynamic> json) => TokenResponse(
-        accessToken: json['access_token'] as String,
-        refreshToken: json['refresh_token'] as String,
-        tokenType: json['token_type'] as String? ?? 'Bearer',
-      );
+    accessToken: json['access_token'] as String,
+    refreshToken: json['refresh_token'] as String,
+    tokenType: json['token_type'] as String? ?? 'Bearer',
+  );
 }
 
 class _AuthInterceptor extends Interceptor {
@@ -192,7 +198,10 @@ class _AuthInterceptor extends Interceptor {
   _AuthInterceptor(this._dio, this._storage);
 
   @override
-  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
     if (err.response?.statusCode != 401) {
       handler.next(err);
       return;
@@ -205,15 +214,17 @@ class _AuthInterceptor extends Interceptor {
         return;
       }
 
-      final refreshDio = Dio(BaseOptions(
-        baseUrl: AppConfig.baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      ));
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: AppConfig.baseUrl,
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 30),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        ),
+      );
 
       final response = await refreshDio.post(
         '/auth/refresh',
@@ -221,8 +232,14 @@ class _AuthInterceptor extends Interceptor {
       );
 
       final tokenResponse = TokenResponse.fromJson(response.data);
-      await _storage.write(key: StorageKeys.accessToken, value: tokenResponse.accessToken);
-      await _storage.write(key: StorageKeys.refreshToken, value: tokenResponse.refreshToken);
+      await _storage.write(
+        key: StorageKeys.accessToken,
+        value: tokenResponse.accessToken,
+      );
+      await _storage.write(
+        key: StorageKeys.refreshToken,
+        value: tokenResponse.refreshToken,
+      );
 
       final opts = err.requestOptions;
       opts.headers['Authorization'] = 'Bearer ${tokenResponse.accessToken}';

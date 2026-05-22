@@ -35,7 +35,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
-    // Start NFC listening when screen loads
     _startNfcListening();
   }
 
@@ -91,7 +90,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       return;
     }
 
-    // Navigate to PIN entry screen only after the backend validates the badge.
     context.go('/pin/${Uri.encodeComponent(tag)}');
   }
 
@@ -279,7 +277,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Title at top
             Align(
               alignment: Alignment.topCenter,
               child: Padding(
@@ -315,7 +312,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
             ),
-            // Logo badge
             Center(
               child: AnimatedBuilder(
                 animation: _pulseAnimation,
@@ -355,7 +351,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 },
               ),
             ),
-            // Prompt and cancel button below logo
             Align(
               alignment: const Alignment(0, 0.4),
               child: Padding(
@@ -390,7 +385,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 ),
               ),
             ),
-            // Login button at bottom
             Align(
               alignment: Alignment.bottomCenter,
               child: Padding(

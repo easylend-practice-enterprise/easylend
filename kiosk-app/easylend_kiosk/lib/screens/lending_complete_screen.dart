@@ -11,11 +11,11 @@ class LendingCompleteScreen extends ConsumerStatefulWidget {
   const LendingCompleteScreen({super.key, this.loanId});
 
   @override
-  ConsumerState<LendingCompleteScreen> createState() => _LendingCompleteScreenState();
+  ConsumerState<LendingCompleteScreen> createState() =>
+      _LendingCompleteScreenState();
 }
 
 class _LendingCompleteScreenState extends ConsumerState<LendingCompleteScreen> {
-  // 5 hour grace period
   late Duration _remainingTime;
   late Duration _totalTime;
   Timer? _timer;
@@ -52,7 +52,6 @@ class _LendingCompleteScreenState extends ConsumerState<LendingCompleteScreen> {
   String _pad(int n) => n.toString().padLeft(2, '0');
 
   void _onReportDamage() {
-    // Damage report flow pending implementation
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -85,12 +84,7 @@ class _LendingCompleteScreenState extends ConsumerState<LendingCompleteScreen> {
         backgroundColor: AppColors.background,
         centerTitle: true,
         title: const Text('Lending Complete'),
-        actions: [
-          TextButton(
-            onPressed: _onDone,
-            child: const Text('Done'),
-          ),
-        ],
+        actions: [TextButton(onPressed: _onDone, child: const Text('Done'))],
       ),
       body: SafeArea(
         child: Column(

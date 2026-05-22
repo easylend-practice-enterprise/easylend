@@ -17,8 +17,6 @@ class ApiClient {
 
   ApiClient(this._dio);
 
-  // Auth endpoints
-
   Future<void> nfcLogin(NfcLoginRequest request) async {
     await _dio.post('/api/v1/auth/nfc', data: request.toJson());
   }
@@ -43,14 +41,10 @@ class ApiClient {
     await _dio.post('/api/v1/auth/logout', data: request.toJson());
   }
 
-  // User endpoints
-
   Future<User> getMe() async {
     final response = await _dio.get('/api/v1/users/me');
     return User.fromJson(response.data);
   }
-
-  // Catalog endpoints
 
   Future<List<CatalogUserView>> getCatalog({
     int skip = 0,
@@ -65,8 +59,6 @@ class ApiClient {
         .map((e) => CatalogUserView.fromJson(e as Map<String, dynamic>))
         .toList();
   }
-
-  // Loan endpoints
 
   Future<PaginatedLoansResponse> getLoans({
     int skip = 0,
@@ -114,8 +106,6 @@ class ApiClient {
     return LoanPublicResponse.fromJson(response.data);
   }
 
-  /// Checks backend connectivity. Returns duration on success, throws on failure.
-  /// Only available in debug builds.
   Future<Duration> ping() async {
     if (!kDebugMode) {
       throw UnsupportedError('ping() is only available in debug builds.');

@@ -19,15 +19,10 @@ class KioskService {
     );
   }
 
-  /// Request kiosk mode and hide the system UI.
-  ///
-  /// On a managed Android device, this can become a proper lock-task kiosk.
-  /// Without device-owner provisioning, Android may fall back to screen pinning.
   Future<void> startKioskMode() async {
     if (_isKioskActive && _isManagedKiosk) return;
 
     try {
-      // Start lock-task / screen-pinning kiosk mode
       final didStartKioskMode = await km.startKioskMode();
       if (!didStartKioskMode) {
         await _restoreSystemUi();
@@ -37,7 +32,6 @@ class KioskService {
         return;
       }
 
-      // Hide system UI bars (status bar, navigation bar)
       await SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.immersiveSticky,
         overlays: [],
@@ -61,14 +55,12 @@ class KioskService {
     }
   }
 
-  /// Stop kiosk mode and restore normal system UI.
   Future<void> stopKioskMode() async {
     if (!_isKioskActive) return;
 
     try {
       final didStopKioskMode = await km.stopKioskMode();
 
-      // Restore system UI
       await _restoreSystemUi();
 
       _isKioskActive = false;

@@ -7,11 +7,8 @@ import '../../models/auth/refresh_token_request.dart';
 import 'api_client.dart';
 import '../local/secure_storage_service.dart';
 
-// Base URL - in production this would come from environment config
-const _baseUrl = 'http://10.0.2.2:8000'; // Android emulator localhost
+const _baseUrl = 'http://10.0.2.2:8000';
 
-// Single-flight lock: ensures only one token refresh runs at a time
-// so concurrent 401s all wait for the same refresh rather than racing.
 Future<bool>? _refreshInFlight;
 
 final dioProvider = Provider<Dio>((ref) {
@@ -27,9 +24,7 @@ final dioProvider = Provider<Dio>((ref) {
     ),
   );
 
-  // Auth interceptor for attaching tokens
   dio.interceptors.add(AuthInterceptor(ref));
-  // Log interceptor for debugging - only in debug mode to avoid leaking sensitive data
   if (kDebugMode) {
     dio.interceptors.add(
       LogInterceptor(requestBody: true, responseBody: true, error: true),
@@ -66,15 +61,12 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Never try token refresh for auth endpoints. Wrong PINs should surface
-    // directly to the caller instead of entering the refresh flow.
     final path = err.requestOptions.path;
     if (path.contains('/auth/')) {
       return handler.next(err);
     }
 
     if (err.response?.statusCode == 401) {
-      // Single-flight: if a refresh is already in flight, await it instead of racing
       if (_refreshInFlight != null) {
         final refreshed = await _refreshInFlight!;
         if (refreshed) {
@@ -92,7 +84,6 @@ class AuthInterceptor extends Interceptor {
         return handler.next(err);
       }
 
-      // No refresh in flight: start one and hold onto it for concurrent 401s
       final refreshFuture = _ref.read(authServiceProvider).refreshToken();
       _refreshInFlight = refreshFuture;
 
@@ -100,7 +91,6 @@ class AuthInterceptor extends Interceptor {
       _refreshInFlight = null;
 
       if (refreshed) {
-        // Retry the original request
         final opts = err.requestOptions;
         final storage = _ref.read(secureStorageProvider);
         final token = await storage.getAccessToken();
@@ -118,7 +108,6 @@ class AuthInterceptor extends Interceptor {
   }
 }
 
-/// Auth state
 class AuthState {
   final User? user;
   final bool isAuthenticated;
@@ -149,7 +138,6 @@ class AuthState {
   static const unauthenticated = AuthState();
 }
 
-/// Auth service for login/logout/refresh operations
 class AuthService {
   final Ref _ref;
 
@@ -186,7 +174,6 @@ class AuthService {
         await _client.logout(RefreshTokenRequest(refreshToken: refreshToken));
       }
     } catch (_) {
-      // Ignore logout errors - we clear tokens anyway
     } finally {
       await _storage.clearAll();
     }

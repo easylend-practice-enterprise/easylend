@@ -91,7 +91,6 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
           child: Column(
             children: [
               const Spacer(),
-              // PIN display
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(6, (index) {
@@ -125,7 +124,6 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Error message
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 16),
@@ -138,7 +136,6 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
 
               const Spacer(),
 
-              // Numeric keypad
               _buildKeypad(),
 
               const SizedBox(height: 24),
@@ -174,13 +171,7 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
 
               const SizedBox(height: 16),
 
-              // Help text
-              TextButton(
-                onPressed: () {
-                  // Help dialog pending implementation
-                },
-                child: const Text('Need help?'),
-              ),
+              TextButton(onPressed: () {}, child: const Text('Need help?')),
             ],
           ),
         ),

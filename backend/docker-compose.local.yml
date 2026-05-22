@@ -16,7 +16,7 @@ x-core-env: &core-env
 
 x-api-secrets: &api-secrets
   JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-  CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+  CORS_ORIGINS: ${CORS_ORIGINS:-'["http://localhost:3000"]'}
   DOCS_USERNAME: ${DOCS_USERNAME}
   DOCS_PASSWORD: ${DOCS_PASSWORD}
   VISION_SERVICE_URL: ${VISION_SERVICE_URL}

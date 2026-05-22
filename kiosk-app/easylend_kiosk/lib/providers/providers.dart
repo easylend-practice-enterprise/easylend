@@ -13,10 +13,6 @@ import '../models/api/error_response.dart';
 import '../services/api/api_service.dart';
 import '../services/local/secure_storage_service.dart';
 
-// ============================================================================
-// Auth State
-// ============================================================================
-
 class AuthNotifier extends StateNotifier<AuthState> {
   final Ref _ref;
 
@@ -43,8 +39,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
     try {
       final client = _ref.read(apiClientProvider);
-      // NFC login just validates the badge - response indicates success
-      // The actual auth happens with PIN
       await client.nfcLogin(NfcLoginRequest(nfcTagId: nfcTagId));
       state = state.copyWith(isLoading: false);
       return true;
@@ -73,7 +67,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
         refreshToken: response.refreshToken,
       );
 
-      // Fetch user profile
       final user = await client.getMe();
       await storage.saveUser(jsonEncode(user.toJson()));
 
@@ -89,29 +82,21 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
-    // Clear auth state immediately for responsive UI
     state = AuthState.unauthenticated;
 
-    // Then clear server-side session (ignore errors - we cleared locally)
     try {
       await _ref.read(authServiceProvider).logout();
-    } catch (_) {
-      // Ignore logout errors - local state already cleared
-    }
+    } catch (_) {}
   }
 
-  /// Debug login - bypasses NFC/PIN and logs in directly.
-  /// ONLY works in debug mode.
   Future<bool> debugLogin(String username, String password) async {
     assert(kDebugMode, 'debugLogin should only be called in debug mode');
 
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      // Simulate network delay
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // For debug, we create a mock user based on credentials
       final isAdmin = username == 'admin';
       final user = User(
         userId: isAdmin ? '1' : '2',
@@ -177,24 +162,12 @@ final isAdminProvider = Provider<bool>((ref) {
   return user?.isAdmin ?? false;
 });
 
-// ============================================================================
-// Catalog
-// ============================================================================
-
 final catalogProvider = FutureProvider<List<CatalogUserView>>((ref) async {
   final client = ref.watch(apiClientProvider);
   final response = await client.getCatalog();
   return response;
 });
 
-// ============================================================================
-// Loan Polling with Exponential Backoff
-// ============================================================================
-
-/// Polling interval strategy:
-/// - 0-10s: poll every 2 seconds
-/// - 10-30s: poll every 5 seconds
-/// - 30-45s: poll every 10 seconds
 int _getPollingInterval(Duration elapsed) {
   if (elapsed.inSeconds <= 10) return 2;
   if (elapsed.inSeconds <= 30) return 5;
@@ -245,7 +218,6 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
 
   Future<void> startPolling() async {
     _startTime = DateTime.now();
-    // Reset error state so retry clears previous error UI
     state = state.copyWith(hasError: false, error: null, isComplete: false);
     await _poll();
   }
@@ -260,7 +232,6 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
 
       state = state.copyWith(currentStatus: response.loanStatus);
 
-      // Check if we're in a terminal state
       if (response.loanStatus == LoanStatus.completed ||
           response.loanStatus == LoanStatus.fraudSuspected ||
           response.loanStatus == LoanStatus.disputed ||
@@ -269,10 +240,8 @@ class LoanPollingNotifier extends StateNotifier<LoanPollingState> {
         return;
       }
 
-      // Schedule next poll
       if (_startTime != null) {
         final elapsed = DateTime.now().difference(_startTime!);
-        // Max 45 seconds of polling
         if (elapsed.inSeconds > 45) {
           state = state.copyWith(isComplete: true);
           return;
@@ -296,7 +265,3 @@ final loanPollingProvider =
     StateNotifierProvider.family<LoanPollingNotifier, LoanPollingState, String>(
       (ref, loanId) => LoanPollingNotifier(ref, loanId),
     );
-
-// ============================================================================
-// Checkout & Return
-// ============================================================================
