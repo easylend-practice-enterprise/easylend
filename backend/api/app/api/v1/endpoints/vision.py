@@ -717,7 +717,7 @@ async def upload_model_proxy(
 ):
     """
     Proxy a local .pt model file upload to the Vision AI microservice.
-    Uses the Vision Box token for authentication.
+    Uses the Vision API key for authentication.
     """
     if not file.filename or not file.filename.endswith(".pt"):
         raise HTTPException(

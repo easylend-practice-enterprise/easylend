@@ -1085,7 +1085,7 @@ def test_update_model_accepts_dual_model_urls(monkeypatch, client_with_overrides
     with client_with_overrides(_QueuedSession()) as client:
         response = client.patch(
             "/api/v1/update-model",
-            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            headers={"X-Device-Token": vision_endpoints.settings.VISION_API_KEY},
             json={
                 "object_detection_url": "https://models.example.com/object.pt",
                 "segmentation_url": "https://models.example.com/segmentation.pt",
@@ -1129,7 +1129,7 @@ def test_update_model_accepts_single_model_url(monkeypatch, client_with_override
     with client_with_overrides(_QueuedSession()) as client:
         response = client.patch(
             "/api/v1/update-model",
-            headers={"X-Device-Token": vision_endpoints.settings.VISION_BOX_API_KEY},
+            headers={"X-Device-Token": vision_endpoints.settings.VISION_API_KEY},
             json={"object_detection_url": "https://models.example.com/object.pt"},
         )
 

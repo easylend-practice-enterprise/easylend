@@ -4,9 +4,23 @@ import os
 import sys
 
 import httpx
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Import settings to securely retrieve API keys and ports
-from app.core.config import settings
+# --- 1. Minimal Config Loader ---
+# Resolve .env path relative to this script's directory (../../.env)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENV_PATH = os.path.join(BASE_DIR, ".env")
+
+
+class ScriptSettings(BaseSettings):
+    VISION_API_KEY: str = "local-dev-vision-api-key-123"
+
+    model_config = SettingsConfigDict(
+        env_file=ENV_PATH, env_file_encoding="utf-8", extra="ignore"
+    )
+
+
+settings = ScriptSettings()
 
 
 async def deploy_model_action(
@@ -17,10 +31,9 @@ async def deploy_model_action(
         "X-Device-Token": settings.VISION_API_KEY,
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             if is_upload:
-                # 1. Local File Upload (POST)
                 if not os.path.exists(path_or_url):
                     print(f"Error: local file not found at {path_or_url}")
                     return False
@@ -42,7 +55,6 @@ async def deploy_model_action(
                         files=files,
                     )
             else:
-                # 2. Remote URL Pull (PATCH)
                 print(f"Triggering {model_type} pull: {path_or_url}...")
                 payload = {f"{model_type}_url": path_or_url}
                 response = await client.patch(
@@ -54,8 +66,8 @@ async def deploy_model_action(
             if response.status_code == 200:
                 print(f"  - {model_type.capitalize()} update accepted.")
                 return True
-            elif response.status_code == 403:
-                print(f"  - Auth error: VISION_BOX_API_KEY rejected by {api_url}.")
+            elif response.status_code == 401:
+                print(f"  - Auth error: VISION_API_KEY rejected by {api_url}.")
             else:
                 print(f"  - Failed (Status {response.status_code}): {response.text}")
 
@@ -75,14 +87,12 @@ async def run_deployment(args):
     print(f"Starting deployment to {api_url}...")
     print("--------------------------------------------------")
 
-    # Handle Detection
     if args.detection:
         total_requested += 1
         is_url = args.detection.startswith(("http://", "https://"))
         if await deploy_model_action(args.detection, "detection", api_url, not is_url):
             success_count += 1
 
-    # Handle Segmentation
     if args.segmentation:
         total_requested += 1
         is_url = args.segmentation.startswith(("http://", "https://"))
@@ -97,7 +107,6 @@ async def run_deployment(args):
             print(
                 f"Deployment complete. {success_count}/{total_requested} models accepted."
             )
-            print("Vision service will restart automatically after processing.")
         else:
             print(
                 f"Deployment partial/failed. {success_count}/{total_requested} models accepted."
@@ -111,30 +120,23 @@ async def run_deployment(args):
 def main():
     parser = argparse.ArgumentParser(description="EasyLend model deployment utility")
     parser.add_argument(
-        "-d",
-        "--detection",
-        type=str,
-        help="Local path or HTTPS URL for the Detection model (.pt)",
+        "-d", "--detection", type=str, help="Local path or URL for Detection (.pt)"
     )
     parser.add_argument(
         "-s",
         "--segmentation",
         type=str,
-        help="Local path or HTTPS URL for the Segmentation model (.pt)",
+        help="Local path or URL for Segmentation (.pt)",
     )
     parser.add_argument(
-        "--api-url",
-        type=str,
-        default="http://127.0.0.1:8000",
-        help="Main API base URL (default: http://127.0.0.1:8000)",
+        "--api-url", type=str, default="http://127.0.0.1:8000", help="Main API base URL"
     )
 
     args = parser.parse_args()
-
     try:
         asyncio.run(run_deployment(args))
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user.")
+        print("\nOperation cancelled.")
         sys.exit(0)
 
 

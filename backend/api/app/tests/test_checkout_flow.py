@@ -179,9 +179,10 @@ async def test_e2e_checkout_happy_path(client_with_overrides, monkeypatch):
         )
 
         # 5. AI Webhook
+        # Uses the Vision API Key for administrative model updates
         webhook_response = client.patch(
             "/api/v1/update-model",
-            headers={"X-Device-Token": settings.VISION_BOX_API_KEY},
+            headers={"X-Device-Token": settings.VISION_API_KEY},
             json={
                 "object_detection_url": "https://models.example.com/object.pt",
                 "segmentation_url": "https://models.example.com/segmentation.pt",
