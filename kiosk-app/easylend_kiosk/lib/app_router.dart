@@ -18,15 +18,14 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/login',
     redirect: (context, state) {
-      final loggingIn = state.matchedLocation == '/login' ||
+      final loggingIn =
+          state.matchedLocation == '/login' ||
           state.matchedLocation.startsWith('/pin/');
 
-      // If not authenticated and not on login/pin screen, redirect to login
       if (!isAuthenticated && !loggingIn) {
         return '/login';
       }
 
-      // If authenticated and on login screen, redirect to catalog
       if (isAuthenticated && loggingIn) {
         return '/catalog';
       }
@@ -34,7 +33,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      // Login flow (public)
       GoRoute(
         path: '/login',
         name: 'login',
@@ -49,7 +47,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
 
-      // Main app flow (requires auth)
       GoRoute(
         path: '/catalog',
         name: 'catalog',
@@ -59,7 +56,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/scan',
         name: 'scan',
         builder: (context, state) {
-          // In the future, pass assetId from catalog selection
           return const ScanAztecScreen();
         },
       ),
@@ -75,11 +71,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/lending-complete',
         name: 'lending-complete',
         builder: (context, state) {
-          // Pass loan data via extra
           final extra = state.extra as Map<String, dynamic>?;
-          return LendingCompleteScreen(
-            loanId: extra?['loanId'] as String?,
-          );
+          return LendingCompleteScreen(loanId: extra?['loanId'] as String?);
         },
       ),
 

@@ -55,7 +55,9 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
         _cameraDescription!,
         ResolutionPreset.low,
         enableAudio: false,
-        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await _controller!.initialize();
@@ -92,11 +94,9 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
     if (!mounted) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
 
-    // Throttle: only process every 3rd frame
     _frameCount++;
     if (_frameCount % 3 != 0) return;
 
-    // Throttle: minimum 200ms between scans
     if (_lastScanTime != null) {
       final elapsed = DateTime.now().difference(_lastScanTime!).inMilliseconds;
       if (elapsed < 200) return;
@@ -137,7 +137,9 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
     );
     if (rotation == null) return null;
 
-    final inputImageFormat = Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
+    final inputImageFormat = Platform.isAndroid
+        ? InputImageFormat.nv21
+        : InputImageFormat.bgra8888;
     final Uint8List bytes = image.planes[0].bytes;
 
     return InputImage.fromBytes(
@@ -147,11 +149,13 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
         imageRotation: rotation,
         inputImageFormat: inputImageFormat,
         planeData: image.planes
-            .map((plane) => InputImagePlaneMetadata(
-                  bytesPerRow: plane.bytesPerRow,
-                  width: plane.width,
-                  height: plane.height,
-                ))
+            .map(
+              (plane) => InputImagePlaneMetadata(
+                bytesPerRow: plane.bytesPerRow,
+                width: plane.width,
+                height: plane.height,
+              ),
+            )
             .toList(),
       ),
     );
@@ -215,7 +219,10 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
               Navigator.of(context).pop();
               _resumeScanning();
             },
-            child: Text('Continue Scanning', style: TextStyle(color: AppColors.text)),
+            child: Text(
+              'Continue Scanning',
+              style: TextStyle(color: AppColors.text),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -245,20 +252,20 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
 
       if (!mounted) return;
 
-      // Navigate to return status with the loan ID
       context.go('/return-status/${response.loanId}');
     } catch (e) {
       if (!mounted) return;
 
-      // Show error dialog
       await showDialog(
         context: context,
         builder: (_) => AlertDialog(
           backgroundColor: AppColors.surface,
           title: const Text('Checkout Failed'),
           content: Text(
-                e is AppException ? e.message : 'An unexpected error occurred during scanning.',
-              ),
+            e is AppException
+                ? e.message
+                : 'An unexpected error occurred during scanning.',
+          ),
           actions: [
             ElevatedButton(
               onPressed: () {
@@ -322,9 +329,7 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: CameraPreview(_controller!),
-          ),
+          Positioned.fill(child: CameraPreview(_controller!)),
           Center(
             child: Container(
               width: 300,
@@ -357,7 +362,10 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
               right: 16,
               top: 16,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.accent.withAlpha(200),
                   borderRadius: BorderRadius.circular(16),
@@ -391,7 +399,9 @@ class _ScanAztecScreenState extends ConsumerState<ScanAztecScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    _isProcessing ? 'Processing...' : (_isStreaming ? 'Scanning...' : 'Starting...'),
+                    _isProcessing
+                        ? 'Processing...'
+                        : (_isStreaming ? 'Scanning...' : 'Starting...'),
                     style: const TextStyle(color: Colors.white, fontSize: 12),
                   ),
                 ],

@@ -20,7 +20,6 @@ class _ReturnStatusScreenState extends ConsumerState<ReturnStatusScreen> {
   @override
   void initState() {
     super.initState();
-    // Start polling when the screen loads
     Future.microtask(() {
       ref.read(loanPollingProvider(widget.loanId).notifier).startPolling();
     });
@@ -87,7 +86,6 @@ class _ReturnStatusScreenState extends ConsumerState<ReturnStatusScreen> {
   Widget build(BuildContext context) {
     final pollingState = ref.watch(loanPollingProvider(widget.loanId));
 
-    // Calculate progress based on status
     double progress = 0.0;
     if (pollingState.currentStatus != null) {
       switch (pollingState.currentStatus) {
@@ -149,11 +147,7 @@ class _ReturnStatusScreenState extends ConsumerState<ReturnStatusScreen> {
                     ),
                   ),
                   if (isComplete)
-                    Icon(
-                      statusIcon,
-                      size: 48,
-                      color: statusColor,
-                    )
+                    Icon(statusIcon, size: 48, color: statusColor)
                   else
                     Text(
                       '${(progress * 100).toInt()}%',
@@ -195,7 +189,9 @@ class _ReturnStatusScreenState extends ConsumerState<ReturnStatusScreen> {
                 const SizedBox(height: 32),
                 ElevatedButton(
                   onPressed: () {
-                    ref.read(loanPollingProvider(widget.loanId).notifier).startPolling();
+                    ref
+                        .read(loanPollingProvider(widget.loanId).notifier)
+                        .startPolling();
                   },
                   child: const Text('Retry'),
                 ),

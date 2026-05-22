@@ -1,4 +1,3 @@
-/// Base application exception with user-facing message.
 class AppException implements Exception {
   final String message;
   final int? code;
@@ -8,19 +7,14 @@ class AppException implements Exception {
   @override
   String toString() => message;
 
-  factory AppException.networkError() => const AppException(
-        'No internet connection. Please check the network.',
-      );
+  factory AppException.networkError() =>
+      const AppException('No internet connection. Please check the network.');
 
-  factory AppException.serverError() => const AppException(
-        'Server error. Please try again later.',
-        code: 500,
-      );
+  factory AppException.serverError() =>
+      const AppException('Server error. Please try again later.', code: 500);
 
-  factory AppException.clientError(int statusCode) => AppException(
-        _clientErrorMessage(statusCode),
-        code: statusCode,
-      );
+  factory AppException.clientError(int statusCode) =>
+      AppException(_clientErrorMessage(statusCode), code: statusCode);
 
   static String _clientErrorMessage(int code) {
     switch (code) {

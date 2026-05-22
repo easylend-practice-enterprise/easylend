@@ -1,0 +1,1523 @@
+commit dfed329cf9f91a7b567ba93fd263df6350844790
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Fri May 22 18:26:09 2026 +0000
+
+    feat(kiosk): finalize API, checkout/return flows, and UI/security overhaul (#75)
+    
+    * overdue-fixes
+    
+    * Security & Auth:
+    - Implemented Dio interceptor for transparent 401 JWT refresh and retry.
+    - Upgraded FlutterSecureStorage to use hardware-backed encryption.
+    - Added global 60-second inactivity timer triggering auto-logout.
+    - Plugged PII data leaks in scanning logs and sanitized UI error boundaries.
+    
+    Network & API:
+    - Added Idempotency-Key headers to checkout and return transactions.
+    - Configured dynamic environment routing.
+    - Enabled Android cleartext traffic for internal backend communication.
+    - Implemented basic pagination limits on the asset catalog.
+    
+    UI/UX & Architecture:
+    - Scaled up all typography, padding, and icons for physical kiosk legibility.
+    - Added flutter_launcher_icons and generated Android app icons.
+    - Implemented RefreshIndicator and AutomaticKeepAliveClientMixin.
+    - Fixed asynchronous context crashes across dialogs.
+    
+    Chore:
+    - Purged unused dependencies.
+    - Enforced strict const correctness."
+
+commit f54367c6291b6689b0d8f64bd323800bd1b92b65
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 19:17:36 2026 +0200
+
+    ci/cd api key update
+
+commit 7a844781ceda8da56e0a9ba7215e385b99f9b7f8
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 17:48:25 2026 +0200
+
+    fix: update authentication method from Vision Box token to Vision API key in model upload and tests
+
+commit ec885dc860c5a893a696a99c2d8c13a223c661b7
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 16:46:28 2026 +0200
+
+    Remove obsolete image files and update documentation for vision integration and API endpoints
+    
+    - Deleted unused image files related to laptop damage detection.
+    - Revised section headers in API documentation for clarity.
+    - Enhanced the vision integration documentation with details on model update delivery methods and deployment utility usage.
+
+commit 4380b19c6ade0c70213fd73e2e2bab9bc7767321
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 15:02:07 2026 +0200
+
+    chore: remove healthcheck configuration from loan_timeout_worker and overdue_worker services, rely on docker based process id healthchecks
+
+commit 330243d595c0d82448bd97037a8888e541a9a855
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 14:43:31 2026 +0200
+
+    fix: update redis_client reference in mock_idempotency_redis function
+
+commit 9477515d6c5d581feaf9437a96151a8a0f3ebf21
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 14:21:35 2026 +0200
+
+    Refactor documentation and code for consistency and clarity
+    
+    - Updated comments in backend vision module for improved clarity.
+    - Changed arrow notation in sequence diagrams across multiple documentation files for consistency.
+    - Adjusted formatting in XML files for better readability.
+    - Enhanced implementation plan for kiosk app with clearer polling strategy.
+    - Refined widget test for better readability and conciseness.
+    - Modified HTML labels in vision box UI for consistency in terminology.
+
+commit 52fe1010976b43ce98d2e9e657bbc6edf615aa1f
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 13:52:17 2026 +0200
+
+    Refactor documentation and architecture for EasyLend
+    
+    - Removed outdated security documentation and consolidated security practices into a new section.
+    - Expanded the Zero-Trust architecture documentation with detailed service communication and user verification processes.
+    - Updated user suspension policy to clarify automatic suspension triggers and administrative resolution processes.
+    - Revised audit trail documentation to enhance clarity on cryptographic integrity and verification processes.
+    - Deleted technical debt documentation and created a new, streamlined version to track risks and limitations.
+    - Enhanced database schema documentation with detailed entity relationships and descriptions.
+    - Improved background worker documentation for loan timeout and overdue processes.
+    - Updated sequence diagrams for checkout and return processes to reflect hardware communication improvements.
+    - Enhanced Vision integration documentation with dual-phase analysis and model update workflows.
+    - Expanded quarantine flow documentation to clarify triggering events and administrative resolution steps.
+    - Updated kiosk and simulation README files for clarity on setup and configuration requirements.
+
+commit 3ffda996a22e06fc3e05977a5eb1bdfa7208f4e6
+Author: Jasper Savels <jasper.savels@gmail.com>
+Date:   Fri May 22 12:15:55 2026 +0200
+
+    hotfix: api crashes
+
+commit 4a142c784d2ac485e501a2e6234a1e38b09b4c7d
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Fri May 22 08:05:16 2026 +0000
+
+    docs: Markdownlint violations (#73)
+
+commit 950a8650a702b98159d87e597c874a9a22b182f6
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri May 22 02:50:05 2026 +0200
+
+    Chore/docker v1 test (#72)
+    
+    * chore(docker): implement entrypoint script and enforce ASGI websocket ping timeouts
+    
+    * chore(infra): update docker compose and setup scripts for V1.0
+    
+    * chore(docker): update .env.template and add production docker-compose file
+    
+    * feat: add vision service architecture, deployment configuration, and API contract documentation
+    
+    * Refactor code structure for improved readability and maintainability
+    
+    * Refactor code structure for improved readability and maintainability
+    
+    * chore: update CORS origins format in .env.template and improve test assertion for insecure URLs
+    
+    * chore: enhance image processing and memory management in detect and segment endpoints
+    
+    * chore: refactor websocket handling and improve connection management in ConnectionManager
+    
+    * chore: update checkout and return initiation endpoints to return 207 status on hardware command failure
+    
+    * chore: enhance image analysis error handling and update response payload for storage failures
+    
+    * chore: add database connection pool settings and enforce model size limit for downloads
+    
+    * chore: refactor configuration settings to use environment variables across the application
+    
+    * chore: add testcontainers dependency for PostgreSQL and Redis support
+    
+    * feat: Implement Vision Box camera system with web interface and hardware control
+    
+    - Added camera.py for managing camera operations, including high-resolution capture and autofocus.
+    - Introduced hardware.md for wiring documentation of the Raspberry Pi and connected components.
+    - Created injo.py for FastAPI backend handling solenoid lock and LED control.
+    - Developed runtime_flow.mmd and wiring_topology.mmd for visual representation of system architecture and wiring.
+    - Added test_hw.py for hardware testing interface to control lock and LED brightness.
+    - Implemented vision_box.py for edge processing, including image capture, validation, and backend communication.
+    - Configured vision_box_service.txt for systemd service management to run the Vision Box application on startup.
+    - Included camera_test.jpg as a sample image for testing purposes.
+    
+    * chore: add easylend logo files to the repository
+    
+    * chore: add pytest-asyncio dependency and implement integration tests for checkout and return scenarios
+    
+    * feat(docs): Add background workers documentation and remove outdated architecture audit
+    
+    - Introduced documentation for background workers including Loan Timeout Worker and Overdue Worker.
+    - Removed the comprehensive architecture audit document as it was outdated and replaced by more focused documentation.
+    - Added new documents for Vision AI Integration and Quarantine Flow to enhance clarity on system operations.
+    - Updated kiosk and simulation README files for better operational guidance and setup instructions.
+    
+    * chore: update configuration and dependencies for improved integration and functionality
+    
+    * chore: update CORS_ORIGINS field to support list type with default factory
+
+commit d3681adf7928245422d7fc36e82ea35045462054
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sat Apr 25 18:55:14 2026 +0200
+
+    refactor(core): implement state machine, fix worker bugs, and setup testcontainers infra (#69)
+    
+    * refactor: migrate user status booleans to UserStatus enum
+    
+    * refactor: update user status to enum and enhance audit log action types
+    
+    * refactor: enhance user status management and audit logging
+    
+    * refactor: add DOCS_USERNAME and DOCS_PASSWORD to environment variables in docker-compose
+    
+    * feat(audit): implement Tier 1 audit logs and sync documentation baseline
+    
+    * feat(audit): implement complete Tier 2/3 audit logs and resolve update_user bugs
+    
+    * docs: update README and sequence diagrams for clarity and commit order
+    
+    * docs(architecture): sync audit trail action list to 23 items
+    
+    * fix: resolve edge-cases in audit atomicity, user partial updates, and equipment file structure
+    
+    * feat(arch): scale websockets horizontally via redis pub/sub and fix mock
+    
+    * refactor(domain): implement LoanStateMachine for strict state transition enforcement
+    
+    * feat(arch): resolve vision lock race, finish state machine integration across admin/workers, and sync all documentation
+    
+    * fix(vision): ensure return locker is assigned before evaluation and handle conflict
+    
+    * chore(tests): setup testcontainers infrastructure for integration tests
+    
+    * refactor(tests): update conftest.py to use async test client and add integration DB session fixture
+    
+    * refactor(tests): add filterwarnings to pytest.ini for deprecation warnings
+    
+    * refactor(models): add server default to user status and update rate limit logging
+    
+    * fix(core): address copilot PR review (idempotency leak, null validation, doc drift)
+    
+    * refactor(api): update user status to use enum with server default and improve idempotency handling in endpoints
+    
+    * refactor(api): streamline user status enum creation and improve downgrade handling
+    
+    * fix(core): resolve SRE findings (vision hardware side-effects, users TOCTOU race)"
+    
+    * fix(core): patch redis pubsub zombie leak and vision led silent failure
+    
+    * refactor(api): limit loan and audit log exports to 1000 entries
+    
+    * feat: implement Redis-based idempotency guard and add associated test infrastructure
+    
+    * refactor(api): improve transaction handling and LED command execution in analyze_image
+    
+    * refactor(core): centralize state machine and implement grace-period damage report with deterministic locking
+    
+    * refactor(docker-compose): centralize environment variables for workers and improve service dependencies
+    
+    * docs: synchronize architecture diagrams, roadmaps, and documentation with centralized state machine implementation
+    
+    * refactor(diagrams): centralize state transitions in checkout and return sequences
+    
+    * refactor(docs): update architecture diagrams for consistency and clarity
+    
+    * refactor(roadmap): add phases for least-used algorithm and future enhancements
+    
+    * fix(core): resolve PR review comments on idempotency, enums and WSS payload
+    
+    * fix(core): resolve PR review comments on idempotency, enums and WSS payload
+    
+    * fix(core): resolve final PR comments regarding vision payload, idempotency locks, wss fallback, and update tests
+    
+    * fix(core): address strict PR review comments on idempotency state, websocket cleanup, and naming conventions
+    
+    * refactor(websockets): reorder pubsub subscription logic in connection handling
+    
+    * fix(core): resolve concurrency locks (SKIP LOCKED), test event loops, and worker distributed locking
+    
+    * chore(core): remove redundant docker loops and rely on redis ttl for wss presence
+    
+    * fix(core): return loan data on hardware failure to prevent client dead-ends and fix docs typo
+    
+    * feat(gap-analysis): add comprehensive gap analysis document for project planning and tracking
+    
+    * docs: generate comprehensive API contract detailing auth and idempotency (ELP-68)
+    
+    * docs: synchronize architecture diagrams and workflows with final backend state
+    
+    * fix(core): remove post-commit exceptions in vision flow and sync skip-locked semantics
+    
+    * fix(core): remove post-commit exception in admin force-open to prevent idempotency deadlocks
+    
+    * feat(security): patch idempotency scoping, pin leakage, and enforce concurrent loan caps
+    
+    * fix(core): extend timeout worker to clean up orphaned returning states
+    
+    * fix(core): correct returning timeout timestamp logic to use updated_at
+    
+    * refactor(core): remove flawed app-level ping and explicitly document ASGI dependency
+    
+    * feat(roadmap): add polling timeout feature for Kiosk App to handle phantom disconnects
+    
+    * refactor(loans): update return initiation to use aztec_code for loan resolution
+    
+    * docs(api): rewrite API contract to match V1.0 schema and aztec return flow
+    
+    * feat(security): enforce 6-digit PINs, hash NFC tags, and map model-update to PATCH
+    
+    * test: add end-to-end integration tests for checkout flow
+
+commit 7dbdfad40b1a56df78447303af1e8d087da5d979
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Fri Apr 17 00:17:20 2026 +0200
+
+    feat: Implement Kiosk Mode and Device Admin Receiver (#71)
+    
+    * feat: Implement Kiosk Mode and Device Admin Receiver
+    
+    - Updated AndroidManifest.xml to include kiosk mode configurations and device admin receiver.
+    - Added KioskDeviceAdminReceiver class to handle device admin actions.
+    - Created KioskService to manage kiosk mode activation and deactivation.
+    - Introduced KioskModeWrapper to enable kiosk mode on app start and resume.
+    - Modified MainActivity to configure kiosk policies on start.
+    - Updated app.dart to wrap the app in KioskModeWrapper.
+    - Refactored LoginScreen to streamline NFC detection and debug login handling.
+    - Removed obsolete ML Kit documentation file.
+    - Updated implementation plan and pubspec.yaml to reflect new dependencies and project status.
+    - Added setup-envs.sh script for environment file initialization.
+    
+    * fix(api,kiosk): ELP-37, ELP-39, ELP-40, ELP-48, ELP-47 increase PIN length to 6 digits; fix seed import & auth refresh handling and nfc badge checking before pin auth
+    
+    * refactor: ruff fix
+    
+    * refactor: ruff fix attempt 2
+    
+    * fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix: fix the copilot comments
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit b5396587d6b49782a6e1c7455402a1b113c73304
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Tue Apr 7 16:09:24 2026 +0200
+
+    feat: Implement secure storage service for tokens and user data (#70)
+    
+    * feat: Implement secure storage service for tokens and user data
+    
+    - Added SecureStorageService to handle access and refresh tokens, as well as user data storage using flutter_secure_storage.
+    - Updated AppColors in theme.dart for improved color definitions and consistency.
+    - Registered flutter_secure_storage plugin for Linux and Windows platforms.
+    - Updated pubspec.yaml to include new dependencies for dio, retrofit, json_annotation, flutter_riverpod, go_router, and uuid.
+    - Modified widget tests to use ProviderScope for Riverpod state management.
+    
+    * fix: Update routing and debug features, enhance catalog handling.
+    
+    * fix: Copilot comments
+
+commit 5db7ee2218bbbcbf2d7b18e7b9f77a60cec4e051
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Apr 2 21:48:33 2026 +0200
+
+    Feat/elp 95 GDPR (#68)
+    
+    * fix(db): resolve connection pool leak in background workers
+    
+    * feat(security): update Content Security Policy to allow Swagger UI assets from jsdelivr CDN
+    
+    * feat(users): implement GDPR right to be forgotten (ELP-95)
+    
+    * chore: fix strict pylance typing errors and address copilot review
+    
+    * refactor(users): apply strict architectural fixes from PR review
+    
+    * fix(docs): resolve strict pylance typing for docs basic auth credentials
+    
+    * feat(docs): enhance API documentation endpoints with Swagger UI and ReDoc
+    
+    * chore(devops): add swagger docs credentials to env sync script
+    
+    * fix(security): enforce strong docs credentials and complete GDPR audit exports
+    
+    * feat(gdpr): add privacy policy consent field to user schemas and creation logic
+    
+    * feat(gdpr): implement user anonymization and enhance loan response schemas
+    
+    * feat(deps): add pyright for type checking and enhance development dependencies
+    
+    * fix(gdpr): resolve Copilot PR review, secure audit hash chain and strict schema validation
+    
+    * fix(pyright): update entry command and improve type checking rules in pyproject.toml
+    
+    * feat(gdpr): enhance user anonymization process with atomic commit for mutations and audit log
+    
+    * feat(gdpr): improve logging for token revocation and simplify audit log assertion in tests
+    
+    * feat(audit): implement exponential backoff for audit log lock contention retries
+    
+    * feat(pre-commit): update pyright entry to use args for project specification
+    
+    * fix: resolve multiple results found crash in user anonymization and fix jsonb postgres astext casting
+    
+    * chore: remove redundant selectinload and fix pyright pre-commit config path
+    
+    * fix: address final code review feedback from Copilot
+    
+    * fix: update anonymization error message and add exponential backoff for db retries
+    
+    * chore: reorganize pre-commit configuration and enhance hooks for improved code quality
+    
+    * chore: update .gitignore to include AGENTS.md and ensure proper formatting
+    
+    * fix: prevent TOCTOU race condition in anonymization with database lock
+    
+    * fix: resolve pydantic schema validation and final review feedback
+    
+    * upgrade to fastapi[standard]
+    
+    * chore: full migration to fastapi CLI across all microservices and dockerfiles
+
+commit 4697d2117fe5237e396411f424f1f792f4e43efb
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 30 22:29:45 2026 +0200
+
+    Feat/elp 12 14 ratelimit and workers (#67)
+    
+    * feat(rate-limiting): implement Redis-backed rate limiter and apply to auth and loan endpoints
+    
+    - Added rate limiting for public endpoints (`POST /api/v1/auth/nfc`, `POST /api/v1/auth/pin`) at 500 req/min per IP.
+    - Implemented token-based rate limiting for authenticated endpoints (`POST /api/v1/loans/checkout`, `POST /api/v1/loans/return/initiate`) at 60 req/min per user.
+    - Introduced `check_ip_rate_limit` and `check_token_rate_limit` functions in `app/core/rate_limit.py`.
+    - Added tests for rate limiting functionality in `app/tests/test_rate_limit.py`.
+    - Updated architecture documentation to reflect new rate limiting features.
+    
+    feat(overdue-worker): add background task for processing overdue loans
+    
+    - Implemented `process_overdue_loans` function to mark ACTIVE loans as OVERDUE based on due date.
+    - Created an overdue worker that runs every hour to process overdue loans and log audit events.
+    - Integrated overdue worker into the application lifespan in `app/main.py`.
+    - Added tests for overdue worker functionality in `app/tests/test_overdue_worker.py`.
+    
+    docs: update backend plan and architecture documentation to reflect completed steps
+    
+    * chore: clean up backend plan overview and ignore CLAUDE.md
+    
+    * fix(security): resolve IP spoofing, TOCTOU limits, and worker transaction boundaries
+    
+    * fix(security): patch 6 critical/high red team findings (WS, OOM, CORS, Locks)
+    
+    * fix(audit): ensure deterministic hash-chaining and prevent silent log drops
+
+commit a42a61ddd82c4938b738e0fad7066708cd810232
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 30 11:35:01 2026 +0200
+
+    feat(core): implement hardware integration, dual-model AI loop, and system-wide hardening (ELP-10)
+    
+    This massive release finalizes the core hardware and transaction flows for the MVP:
+    
+    * Hardware WebSockets: Real-time Vision Box control (slot handling, LED status) via X-Device-Token.
+    * Dual-Model AI: Integrated YOLO detection and segmentation with a highly optimized 2-phase row locking design (NOWAIT) to eliminate database deadlocks.
+    * Admin Quarantine Flow: Complete dashboard logic for reviewing and judging damaged/disputed assets.
+    * Architecture Hardening: "God-Mode" sweep resolving severe N+1 queries, soft-delete cascades, and HTTP exception leaks.
+    * Documentation Sync: Repository-wide overhaul of all Mermaid sequence diagrams, ERDs, and READMEs to reflect the true implementation.
+    * Security: Patched Pygments and Requests for Dependabot alerts.
+    
+    Closes #64 (and completely wraps up Backend Plan Steps 8, 10a, 10b, and 10c).
+
+commit 94f7a80cf9795ff50e714ce441681496fac656cf
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 26 22:08:24 2026 +0100
+
+    fix: resolve ruff UP007 linting error for catalog response typing (#62)
+
+commit 1729ae691df574fb3e6d188d46d7caecf6138665
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 26 20:57:05 2026 +0100
+
+    Feat/elp 26 catalog (#61)
+    
+    * feat(catalog): add catalog endpoint for role-aware asset viewing and implement related schemas
+    
+    * refactor: enforce strict role-based schemas for catalog endpoint
+    
+    * feat(catalog): implement catalog retrieval logic and enhance test coverage
+    
+    * feat(catalog): implement and test GET /api/v1/catalog endpoint
+    
+    * chore: address PR review feedback regarding schema naming and test coverage
+    
+    * feat(tests): enhance test environment setup and improve import order for fixtures
+
+commit 3c1c5633dfcf67a6acb2c0fbe061b5a3b57faea8
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Thu Mar 26 17:30:52 2026 +0100
+
+    fix(vision): ELP-56 correct spelling typo (#60)
+    
+    * fix(vision): ELP-56 correct spelling typo
+    
+    * style(vision): ELP-56 apply ruff formatting fixes
+
+commit 42d189a29a3c3403e89fca653ce66e502aa2a8c1
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 26 15:41:53 2026 +0100
+
+    feat(images): implement image upload and retrieval endpoints with pat… (#54)
+    
+    * feat(images): implement image upload and retrieval endpoints with path traversal protection
+    
+    * feat: integrate WebSocket support for hardware communication and add connection manager
+    
+    * Refactor code structure for improved readability and maintainability
+    
+    * feat: enhance environment setup script with merge functionality and update template files
+    
+    * feat: update environment setup script and template with secure local values and merge functionality
+    
+    * feat: enhance environment setup script with validation for required keys and update documentation
+    
+    * feat: integrate aiofiles for asynchronous file handling and enhance upload directory management
+    
+    * feat: implement hardware integration with security measures and image validation for Vision Box
+    
+    * feat: enhance image and vision endpoints with UUID validation and error handling
+    
+    * feat: enhance vision image analysis with content type validation and improve test setup
+    
+    * fix: update authentication error message for clarity
+    
+    * feat: enhance image handling with admin access control and strict content type validation
+    
+    * feat: implement hardware integration with pre-flight checks and command triggering for Vision Box
+    
+    * feat: implement WebSocket connection acceptance in ConnectionManager and mock hardware manager for tests
+    
+    * test: improve websocket token validation tests with explicit exception handling
+    
+    * docs: update README and architecture documentation for enhanced security and API connection details
+    
+    * feat: enhance image upload validation and admin access control; update docker-compose for uploads and model paths
+    
+    * feat: implement idempotency checks for loan checkout and return processes; update sequence diagram for clarity
+    
+    * feat: add idempotency key handling test for loan return initiation; update backend plan for feature completion
+    
+    * feat: add execution order checklist and testing milestones for hardware integration; refine idempotency tests
+    
+    * feat: implement loan timeout processing and worker; add tests for timeout functionality
+    
+    * feat: implement audit logging for loan timeout processing; refactor timeout worker to utilize new logging functionality
+    
+    * feat: enhance vision analyze endpoint with loan and asset validation; add audit logging and update tests
+    
+    * feat: enhance vision analyze tests with success and failure scenarios; add mocks for upstream responses and audit logging
+    
+    * chore: clean up backend plan and finalize ELP-60 MVP status
+    
+    * fix: address PR review feedback (idempotency locks, timestamps, vision state machine)
+    
+    * fix: address final edge-cases (atomic redis, db query order, timestamps)
+    
+    * feat: enforce idempotency key requirement in checkout and return initiate endpoints; update error messages and add tests
+    
+    * feat: add evaluation type to checkout and return initiate actions
+    
+    * fix: add row lock to timeout worker to prevent race conditions
+    
+    * fix: resolve ws disconnect race and ensure loan uuid is flushed
+
+commit 7a44c3c6105ad57cf1e1989a1fe99945c416e37b
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Tue Mar 24 08:18:38 2026 +0100
+
+    chore: streamline CI/CD workflows by optimizing permissions and enhancing security scan steps (#59)
+    
+    * chore: streamline CI/CD workflows by optimizing permissions and enhancing security scan steps
+    
+    * Add PowerShell script for local Docker build and Grype security scan
+    
+    - Introduced `local_check.ps1` to automate the process of checking if Docker is running, building a Docker image for specified targets ('api' or 'vision'), and performing a Grype security scan on the built image.
+    - The script includes error handling for Docker status and build success.
+
+commit 670e01c602208d6c7322f59cf80d0fe748743fb8
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 23 13:56:51 2026 +0100
+
+    Chore/fix grype and translations (#58)
+    
+    * chore: update comments and ignore noisy warnings in configuration files
+    
+    * chore: update comment in .grype.yaml for clarity
+    
+    * chore: update Docker build context and improve comments in .grype.yaml
+
+commit 8e8302239ba436fa2ec419806cebf132c934b97a
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 23 12:55:35 2026 +0100
+
+    fix(ci): replace compromised trivy scanner with anchore grype v7 (#57)
+    
+    * fix(ci): replace compromised trivy scanner with anchore grype v7
+    
+    * fix(ci): update CI/CD workflows to use Anchore Grype and remove SQLBak references
+    
+    * fix(ci): update Docker build workflows to use Grype for vulnerability scanning and adjust image push logic
+    
+    * fix(ci): update CI workflows to enhance Grype security scans and adjust permissions
+
+commit fdb4a29d35af4993e06dc848070aa06620463ba3
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 23 10:54:58 2026 +0100
+
+    Add runtime uploads directory to .gitignore (#56)
+
+commit 6fd09147cd4a950cb22b55250fca5abed9e8d170
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sun Mar 22 21:56:15 2026 +0100
+
+    Feat/elp 94 vision integration (#53)
+    
+    * feat(dependencies): add httpx to dependencies for improved API handling
+    
+    * feat(vision): add authenticated proxy endpoint to forward images to VM2 AI service
+    
+    * feat(docker): create non-root user for improved security in Dockerfile
+    
+    refactor(config): remove unused API key fields from settings
+    
+    test(vision): add test for handling invalid JSON response from Vision AI service
+    
+    chore(pyproject): update ruff configuration to ignore specific linting warnings
+    
+    * feat(docker): create non-root user for improved security and change ownership of app directory
+    
+    * yolo fix
+    
+    * fix(vision): address PR review comments for security, memory bounds, and docker groups
+    
+    * feat(vision): update router configuration and enhance test cases for vision API
+    
+    * fix: address final PR review comments (secret validation, writable docker homes, accurate 503)
+    
+    * feat(docker): create writable home directory for non-root user in Dockerfiles
+    
+    * feat(vision): handle invalid image uploads and map 400 responses to HTTP exceptions
+
+commit 127ee9071dac0ec36406ca2bf1740939ec70c0a7
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Mar 20 17:37:29 2026 +0100
+
+    feat(vision): ELP-93 Refactor code structure for improved readability and maintainability (#52)
+    
+    * feat(vision): ELP-93 Refactor code structure for improved readability and maintainability
+    
+    * ci(vision): add setup-buildx-action to enable docker caching
+    
+    * chore(vision): update Dockerfile to python 3.12 and use uv for lightning fast builds
+    
+    * fix(vision): aggressively ignore all AI models and datasets to fix 8GB docker context
+    
+    * build(vision): use platform markers to use CPU torch on linux servers and GPU torch locally
+    
+    * ci: change docker cache export to mode=min to prevent buildkit hangs on export
+    
+    * chore(vision): translate to English and adapt tests to use client fixture
+    
+    * chore(lang): translate comments and variable names to English for consistency
+    
+    * fix(vision): add mkdir models to Dockerfile as caught by Copilot to prevent FileNotFoundError
+    
+    * refactor(vision): implement strict ssrf checks, fail-fast auth, and generic error handling
+    
+    * feat(vision): enhance model loading and validation, add strict checks for image uploads
+    
+    * feat(env): add example environment variables for database and Redis configuration
+    fix(ci): change package permissions from write to read
+    chore(vscode): enable use of environment file in Python terminal settings
+    chore(docker): add VISION_BOX_API_KEY and SIMULATION_API_KEY to production environment
+    chore(commands): clean up useful commands for local development
+    chore(dependencies): enforce specific OpenCV version for Linux platform
+    
+    * feat(vision): enhance image upload validation and add local production configurations
+    
+    * feat(vision): create new CI/CD pipeline for Vision AI with linting, testing, and Docker build
+    
+    * docs: update README to enhance orchestration guide and add health checks, environment variables, and troubleshooting tips
+
+commit e80187d3dac863e67bbdabfd7efc8fd3bbfcc055
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Thu Mar 19 22:36:34 2026 +0100
+
+    Refactor kiosk UI theme and implement new screens (#49)
+    
+    * Refactor kiosk UI theme and implement new screens
+    
+    - Updated implementation plan with finalized state management library (`flutter_riverpod`).
+    - Refactored main application entry point to use `AppTheme.dark` and `ScreenSwitcher`.
+    - Created `LoginScreen` for user authentication with NFC badge scanning.
+    - Developed `AssetCatalogScreen` for displaying borrowed items and catalog.
+    - Added `ReturnStatusScreen` to show return processing status.
+    - Implemented `LendingCompleteScreen` to confirm successful lending.
+    - Created `InactivityModal` for session timeout warnings.
+    - Developed `ScanAztecScreen` for scanning Aztec codes using the camera.
+    - Introduced `ScreenSwitcher` to navigate between different screens.
+    - Established a new theme file (`theme.dart`) for consistent styling across the app.
+    - Updated `pubspec.yaml` and `pubspec.lock` to include new dependencies for camera and barcode scanning.
+    
+    * refactor: enhance error handling and improve scanning rectangle styling
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * feat: implement image stream processing for barcode scanning in Aztec screen
+    
+    * Update kiosk-app/easylend_kiosk/lib/screens/scan_aztec_screen.dart
+    
+    Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+    
+    * Update kiosk-app/easylend_kiosk/lib/screens/scan_aztec_screen.dart
+    
+    Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+    
+    * Address remaining kiosk PR review gaps: camera permissions, app entry/test alignment, and scanner/catalog hardening (#51)
+    
+    * Initial plan
+    
+    * fix(kiosk): address PR review feedback for scanner, permissions, and tests
+    
+    Co-authored-by: rentedbroadband <204618553+rentedbroadband@users.noreply.github.com>
+    
+    * fix(scanner): harden stream restart lifecycle checks
+    
+    Co-authored-by: rentedbroadband <204618553+rentedbroadband@users.noreply.github.com>
+    
+    * Update kiosk-app/easylend_kiosk/lib/screens/scan_aztec_screen.dart
+    
+    Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+    
+    ---------
+    
+    Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+    Co-authored-by: rentedbroadband <204618553+rentedbroadband@users.noreply.github.com>
+    Co-authored-by: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+    Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    Co-authored-by: Copilot <198982749+Copilot@users.noreply.github.com>
+    Co-authored-by: rentedbroadband <204618553+rentedbroadband@users.noreply.github.com>
+    Co-authored-by: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+
+commit a757af2555fcbd38632ad352c27b88cc33403247
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 19 21:32:32 2026 +0100
+
+    feat(auth): implement static M2M api tokens for vision box and simulation (#50)
+    
+    * feat(auth): implement static M2M api tokens for vision box and simulation
+    
+    * sec(auth): enforce strict environment validation for M2M dummy secrets
+    
+    * sec(auth): block empty secrets and bypass validation for alembic cli
+
+commit 8478de44533b18ecdf3e852c2a04fef3dc480f67
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 19 02:24:39 2026 +0100
+
+    feat(loans): implement checkout and return flow with concurrency locks (#48)
+    
+    * feat(loans): implement checkout and return flow with concurrency locks
+    
+    * test(loans): sync mock queue with updated lock implementation
+    
+    * fix(loans): address final copilot review comments (enum downgrade, aztec length)
+    
+    * test(loans): add edge-case coverage for lock contention and state changes
+    
+    * fix: finalize copilot reviews on checkout locker validation and alembic downgrade
+    
+    * docs(loans): update openapi responses and refine schema docstrings based on review
+    
+    * fix(loans): refine locker status transitions and validate kiosk existence
+    
+    * fix(loans): refine kiosk existence check and expand 401 test coverage
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit d4ff751e4c6b7cb82e0791cc7606dea2e57d0fe8
+Author: Maxim Huardel <rentedbroadband@tuta.com>
+Date:   Wed Mar 18 21:07:59 2026 +0100
+
+    Restructure README and add implementation plan (#47)
+    
+    * feat(kiosk): restructure README and add implementation plan; create initial app structure and models
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    ---------
+    
+    Co-authored-by: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit 2d8d18d4c9cb1a29b3f9966e27d208fbea3a5ae8
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Wed Mar 18 21:00:26 2026 +0100
+
+    chore: translate entire repository documentation and codebase to english (#46)
+    
+    * chore: translate entire repository documentation and codebase to english
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix: update link to CONTRIBUTING.md in README
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit 5611a1245c9985fcbabef917366008ef6e0d2a71
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Wed Mar 18 19:34:18 2026 +0100
+
+    Feat/elp 26 assets crud (#44)
+    
+    * docs(plan): mark ELP-27 as done and start ELP-26
+    
+    * feat(api): add Pydantic schemas for Category, Kiosk, Locker, and Asset entities
+    
+    * feat(api): implement CRUD API endpoints for equipment categories, kiosks, and lockers.
+    
+    * feat(hardware): implement equipment crud with tests and fix db refresh mock
+    
+    * feat(api/db): define initial database schema with SQLAlchemy models and add a unique constraint for locker logical numbers.
+    
+    * fix: prevent null values in equipment updates
+    
+    * test: update equipment tests to use patch instead of put
+    
+    * test: add missing locker tests and fix docstrings from review
+
+commit 4fa4c2eda738301fecba0a9066a7047621f90b46
+Author: injodp <114516288+injodp@users.noreply.github.com>
+Date:   Wed Mar 18 18:48:29 2026 +0100
+
+    updated ai model scripts (#45)
+
+commit 2f1e71b95a6fb885ad68128a237b4206b3c7aea8
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Tue Mar 17 23:16:09 2026 +0100
+
+    docs(api): add swagger descriptions, python docstrings, and roles endpoint (#43)
+    
+    * docs(api): add swagger descriptions, python docstrings, and roles endpoint
+    
+    * docs(arch): clarify public endpoints and hardware token timeline
+    
+    * test(roles): add rbac and happy path tests for roles endpoint
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * test: refactor shared test helpers into conftest and align role casing
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit 10b9c7c0feddaf9da6c5654f93b599737a5a2491
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Tue Mar 17 21:02:13 2026 +0100
+
+    Feat/elp 27 users crud (#42)
+    
+    * feat(auth): add API tests for logout, refresh token rotation, and Redis failure paths
+    
+    * feat(users): implement user CRUD schemas and authentication dependencies
+    
+    * feat(users): implement user CRUD operations and update backend plan
+    
+    * test(users): add comprehensive RBAC and CRUD api tests
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * refactor: translate all API exception messages to English and fix minor PR feedback
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix(auth): switch to HTTPBearer to fix Swagger UI and catch IntegrityError in user update
+    
+    * fix(rbac): make role check case-insensitive to match seed data
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit cf2ca9311d7e7278d282d6bff9b0290a85cbf719
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 16 19:18:01 2026 +0100
+
+    Feat/elp 24 25 refresh tokens redis (#41)
+    
+    * feat(auth): ELP-24 ELP-25 implement refresh tokens, redis state and logout endpoint
+    
+    * docs: update architecture diagrams and workflows for Redis refresh token logic
+    
+    * fix(auth): prevent refresh token race condition and use dynamic ttl
+    
+    * refactor(auth): rename response model and align refresh sequence diagram with atomic redis logic
+    
+    * fix(auth): enforce strict token types and fix required claims
+    
+    * refactor(auth): enhance refresh token logic with detailed comments for clarity
+    
+    * test(security): add token type validation tests
+    
+    * test(auth): add api integration tests for refresh, logout and lockout flow
+    
+    * test(auth): refactor with conftest fixtures and add NFC endpoint tests
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * feat(auth): handle redis exceptions gracefully and add test coverage
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit dd879362438b864e5916f9b0da8d0b6ff4a987a9
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 16 00:07:40 2026 +0100
+
+    feat(webcam): enhance model discovery and selection for YOLO webcam tester (#40)
+
+commit b8f9551b804f12e736742e0ef498b8c639336819
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sun Mar 15 23:56:36 2026 +0100
+
+    feat(auth): ELP-22 implement jwt generation and login endpoints (#39)
+    
+    * feat(auth): ELP-22 implement jwt generation and login endpoints
+    
+    * Kleine fix om hoofdletters consistent te houden
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Prevent hackers from knowing why auth failed
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * JSON Auth heeft geen WWW header nodig
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * zorgen dat de server niet crasht als er geen jti of role fields worden meegegeven
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix(core): remove hardcoded credentials from config fallbacks
+    
+    * fix(auth): apply PR code review feedback for ELP-22
+    
+    * Reset lockout tries
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix(auth): implement consistent worker secret & dynamic row locking
+    
+    * GEKOLONISEERD
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * feat(docs): ELP-22 Refactor JWT secret handling and update authentication response codes
+    
+    * feat(docker): Add JWT secret key to environment variables for local and production setups
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit 020182dceb4f399f865772a43d6fb02515d998d7
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sun Mar 15 16:57:04 2026 +0100
+
+    docs & db: implement soft delete, pending inspection and cleanup diagrams (#38)
+    
+    * docs & db: implement soft delete, pending inspection and cleanup diagrams
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * docs: fix missing WHERE clauses and correct LEFT JOIN logic in sequence diagrams
+    
+    * of course had copilot geen zin om ruff uit te voeren
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * fix: mermaid rendering and copilot logic fixes
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * docs: add explicit WHERE clauses in return flow to resolve copilot comments
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Update sequence diagram to randomize locker selection during item return
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * Potential fix for pull request finding
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+    
+    * chore: architecture convergence phase 1 - rbac, quarantine logic, pxe v2, overdue worker
+    
+    ---------
+    
+    Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+commit 4a418a2ee6de1798ea870f1abe118d6b5b55f066
+Author: injodp <114516288+injodp@users.noreply.github.com>
+Date:   Thu Mar 12 21:33:26 2026 +0100
+
+    feat: update model references to YOLO26 Medium Segmentation in README and main.py (#37)
+
+commit e3ebab8f67738022efce1d5a72a06ac7445f3dbd
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 12 21:24:09 2026 +0100
+
+    feat(auth): add pydantic schemas for JWT tokens and update backend plan (#35)
+    
+    * feat(auth): add pydantic schemas for JWT tokens and update backend plan
+    
+    * refactor(auth): implement multi-session redis storage and secure token handling
+    
+    * docs: align backend plan with implemented multi-session redis strategy
+    
+    * ci: inject dummy JWT_SECRET_KEY for pytest to pass security checks
+
+commit 14e316780091be92c422ede5cab285b0a832d1b7
+Author: Maxim <rentedbroadband@tuta.com>
+Date:   Thu Mar 12 17:32:18 2026 +0000
+
+    Update CONTRIBUTING.md with Git config advice (#36)
+    
+    Add recommended Git configuration for Linux users.
+
+commit 6b243371368d475a9f2c86680ebc489e6e223840
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 12 17:42:51 2026 +0100
+
+    feat: implement seed script for database initialization and update ba… (#34)
+    
+    * feat: implement seed script for database initialization and update backend plan status
+    
+    * chore: address Copilot review (fail-closed env check, hide secrets, refactor logging/exit)
+    
+    * chore: full compliance with Copilot review (env instructions, get_or_create strictness, user upsert logic)
+    
+    * refactor: apply copilot review for strict user upsert and remove inline comments
+    
+    * refactor: remove redundant environment guard from seed script
+
+commit a9f37c0c9a9e33c83e3cc8ce9f2f355733a790e7
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 12 11:47:12 2026 +0100
+
+    feat: ELP-23 - implement native bcrypt PIN hashing and tests (#33)
+    
+    * feat: ELP-23 - implement native bcrypt PIN hashing and tests
+    
+    * chore: align Dockerfile with uv best practices (caching layers, uv sync, bytecode compilation)
+    
+    * chore: ignore unpatchable upstream uv CVE-2026-31812 (no risk for build tool)
+
+commit ded17c03178e070ac8ab7efb96a4f7287fa9818e
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 12 11:46:05 2026 +0100
+
+    Chore/architecture planning (#32)
+    
+    * docs: uitgebreide update architectuur, workflows, gap analysis en backend plan
+    
+    * docs(vision): toevoeging Intel Xeon specs en OpenVINO INT8 specificaties
+    
+    * chore(api): fix YOLO26 typo in models
+    
+    * docs: verwerk Copilot PR review feedback (typos en links)
+    
+    * docs: fix gap analysis actielijst en andere typos
+    
+    * chore: final workspace and frontend sync before backend coding phase
+    
+    * chore: typo in markdown table
+    
+    * docs: align architecture.md logical topology with REST polling strategy
+    
+    * docs: fix loan_status logic bug in checkout and update mermaid flowchart to polling
+    
+    * docs: remove gap_analysis (moved to YouTrack) and align final workflow logic
+    
+    * docs: full alignment of auth endpoints, reserved state, and removed WSS variables
+    
+    * docs: satisfy Copilot's final demands regarding asset locker_id updates and endpoint specificity
+    
+    * docs: fix massive multi-kiosk concurrency bug in return flow and update pre-commit install method
+    
+    * docs: made some design choices: photo storage & admin dashboard
+    
+    * docs: fix fraud rollback logic to quarantine asset/locker and align polling labels
+    
+    * docs: explicit 15m lockout interval and clean mermaid string quotes
+    
+    * docs: secure image endpoint against path traversal and expose loan_id in return flow
+    
+    * docs: finalize architecture with extreme edge-case handling (race conditions, timeouts, AI crashes)
+
+commit 0bbfdccda05ac4845bcbaca2ef236a1460168232
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 9 23:15:22 2026 +0100
+
+    Feat/elp 14 elp 20/update dockerfile and vscode settings (#31)
+    
+    * ELP-14, ELP-20: Fix Dockerfile and update VSCode settings
+    
+    Ensure correct uv/uvicorn install in backend/api/Dockerfile and adjust Python analysis settings.
+    
+    * fix(docker): update watchtower command interval to 300 seconds
+
+commit f913b5822092c5094e392e3808acc8cd7c73be45
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Mon Mar 9 20:47:13 2026 +0100
+
+    ELP-14, ELP-20: Fix Dockerfile and update VSCode settings (#30)
+    
+    Ensure correct uv/uvicorn install in backend/api/Dockerfile and adjust Python analysis settings.
+
+commit dc634f555ce84b10bec0d814bc0d66beafb95210
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Mar 6 11:49:48 2026 +0100
+
+    fix(docker): update Dockerfile to run migrations before starting the app and improve command clarity (#29)
+
+commit 348595ebe005965450fefc512f49199d9d4c1ddd
+Author: Maxim <rentedbroadband@tuta.com>
+Date:   Fri Mar 6 10:59:29 2026 +0100
+
+    feat(kiosk) ELP-36 flutter app creation (#28)
+
+commit 1883c603f0a9ecd720ee1681ec8619e808af8eb4
+Author: Maxim <rentedbroadband@tuta.com>
+Date:   Fri Mar 6 10:35:02 2026 +0100
+
+    docs(kiosk): ELP-83 Flowchart app (#27)
+
+commit ba0d4478201c7f8c07b2d151086a959b510ced57
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Mar 6 10:26:40 2026 +0100
+
+    chore(workspace): update code workspace configuration and add Kiosk App folder (#26)
+
+commit 9aa086fea362c2483f19efb54c9d76e13c6e0f62
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Mar 6 09:24:34 2026 +0100
+
+    Feat/elp 91 proxmox setup watchtower (#25)
+    
+    * fix(deploy): remove watchtower scope label from itself to prevent ntfy spam
+    
+    * fix(deploy): update docker-compose.yml
+
+commit fdfcc3bae945117e03a34d0bb74e6ae1849f2995
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Mar 5 02:12:32 2026 +0100
+
+    feat(vision): add robust YOLO live tester utility for local debugging (#24)
+    
+    * feat(vision): add robust YOLO live tester utility for local debugging
+    
+    * chore(vision): setup pytest infrastructure and ci pipeline
+
+commit 789d457677c7cb71ac2aec60bb8857aad61f2df1
+Author: injodp <114516288+injodp@users.noreply.github.com>
+Date:   Thu Mar 5 00:18:12 2026 +0100
+
+    Feat/elp 56 ai model training (#23)
+    
+    * chore(ai): ELP-56 setup isolated workspace for vision model training
+    
+    * feat(ai): ELP-56 added model for testing purposes
+
+commit d7c5d3068912d9dc14fb29dbab61ece5a6c4e918
+Author: injodp <114516288+injodp@users.noreply.github.com>
+Date:   Wed Mar 4 22:36:47 2026 +0100
+
+    chore(ai): ELP-56 setup isolated workspace for vision model training (#22)
+
+commit 596768e71d556e8761ba241d6fe1cc8425d03d20
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Wed Mar 4 20:38:36 2026 +0100
+
+    ci(docker): ELP-14 ELP-91 setup production compose and ghcr deployment pipeline with trivy (#21)
+    
+    * ci(docker): ELP-14 ELP-91 setup production compose and ghcr deployment pipeline with trivy
+    
+    * ci(docker): fix path trigger for github actions
+    
+    * ci(docker): enforce trivy library scans, enable ruff security checks and fix linting errors
+    
+    * ci(docker): pass github token to trivy to fix database 404 download error
+    
+    * ci(docker): force trivy to use ghcr instead of broken google mirror
+
+commit 6c8b12e9e5075ed5c5a058906b7daf3c7d0e5fb9
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sun Mar 1 19:27:50 2026 +0100
+
+    docs(link): add zread AI button (#20)
+
+commit 9930543a3bad32d88107f5da9b88e7a570c6e8bc
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sat Feb 28 14:39:50 2026 +0100
+
+    refactor: remove redundant comments and integrate deepwiki in readme (#19)
+
+commit b62c057d0567d4e71804393061499b45433cd0b7
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Sat Feb 28 00:01:46 2026 +0100
+
+    Feat/elp 19 sqlalchemy schemas (#18)
+    
+    * feat(db): draft sqlalchemy models and configure timezone-aware datetimes
+    
+    * feat(db): ELP-19 setup sqlalchemy schemas, async engine, migrations and documentation
+
+commit aafab7357b145a7ee01461e88b53beb758385901
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 27 23:35:31 2026 +0100
+
+    Chore/team ide settings (#17)
+    
+    * feat(db): draft sqlalchemy models and configure timezone-aware datetimes
+    
+    * chore(config): update gitignore for flutter and enforce strict pylance team settings
+
+commit 295b6d1c445a3e1a046e57571e302590eb550ca0
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 27 23:34:15 2026 +0100
+
+    chore(kiosk): add custom AVD hardware profile for Samsung Tab S10 Lite (#16)
+
+commit f6e765cd42e9e87b2d8ea0c305d1bb8c9bd94d03
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 27 23:33:29 2026 +0100
+
+    docs(guide): add git cheat sheet for team workflow (#15)
+
+commit b76b75d244d411decf44e648d57f38e77ba533ce
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 27 12:17:15 2026 +0100
+
+    docs(architecture): update ERD for YOLOv26 damage reports and switch to Flutter (#14)
+
+commit 7ea7a8b191179223c2cedc92502bbc6dc4ab2448
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 27 09:39:22 2026 +0100
+
+    docs(readme): ELP-66 update section titles for clarity and add full names of main developers (#13)
+
+commit 75b8c8afb3e9e3af714be71b2e0ce988203c5854
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 23:38:56 2026 +0100
+
+    Feat/elp 17 redis config (#12)
+    
+    * feat(cache): ELP-17 implement redis connection, core config, and update compose ports
+    
+    * style: apply ruff fixes after merge main
+
+commit 382f31668d0551645d6d1ec57ab47e51d1f8cb05
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 23:31:52 2026 +0100
+
+    Chore/precommit setup (#11)
+    
+    * chore(ci): implement local pre-commit hooks for ruff
+    
+    * chore: move pre-commit config to repo root
+    
+    * style: apply ruff formatting
+
+commit 4e573bd84f3dd09eccba1c049ae883a6469a3966
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 23:23:34 2026 +0100
+
+    feat(cache): ELP-17 implement redis connection, core config, and update compose ports (#10)
+
+commit 48b96557939cbf83a6cd6535755b8bc7eb46153c
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 21:53:32 2026 +0100
+
+    ci(tests): ELP-15 implement ruff, pytest, and update CI pipeline (#9)
+
+commit 244d137835776b0acfe36f04dbe70270863b8891
+Author: Maxim <rentedbroadband@tuta.com>
+Date:   Thu Feb 26 20:32:28 2026 +0000
+
+    Clarify documentation wording in README.md (#8)
+    
+    Updated wording for clarity in the documentation section.
+
+commit 6d1aabb646ebf182344c8975c05fb4ed0a458ed3
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 21:29:31 2026 +0100
+
+    ci(docker): ELP-14 implement github action for auto-building docker images (#7)
+
+commit 4c450f8ab8cb16615b6c42828aa59ada7a74cf82
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 20:02:27 2026 +0100
+
+    Feat/elp 16 fastapi docker setup (#6)
+    
+    * feat(infra): ELP-16 implement clean docker compose with named volumes
+    
+    * chore(config): add vscode monorepo workspace file
+
+commit 4878727c2d29583930a4fb51515639bd0981d900
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 19:59:29 2026 +0100
+
+    docs(readme): ELP-66 update project readmes and contributing guidelines (#5)
+
+commit 0bf3adcb186545044507cf0b252d59767b3f7821
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Thu Feb 26 19:57:58 2026 +0100
+
+    Merge pull request #4 from easylend-practice-enterprise/docs/ELP-18-erd-tekenen
+    
+    docs(architecture): ELP-18 add final ERD and consolidate C4 diagrams
+    approved
+
+commit 9d761dcd8dfc538c09762eb1a1cfd1ba6ac86994
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Fri Feb 20 11:32:34 2026 +0100
+
+    chore(infra): ELP-13 setup github repo, gitignore and branching strategy (#3)
+
+commit 7fb909dcf2780288d1089dbf0fb243f35a62c07c
+Author: Jasper Savels <73786910+Jaskejaske1@users.noreply.github.com>
+Date:   Wed Feb 11 21:34:23 2026 +0100
+
+    Initial commit

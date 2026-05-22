@@ -2,7 +2,6 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'catalog_item.g.dart';
 
-/// User view - grouped category counts for non-admin users
 @JsonSerializable()
 class CatalogUserView {
   @JsonKey(name: 'category_id')
@@ -26,7 +25,6 @@ class CatalogUserView {
   Map<String, dynamic> toJson() => _$CatalogUserViewToJson(this);
 }
 
-/// Admin view - one row per asset with loan context
 @JsonSerializable()
 class CatalogAdminView {
   @JsonKey(name: 'asset_id')

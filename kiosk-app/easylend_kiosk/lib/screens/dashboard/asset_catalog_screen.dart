@@ -43,7 +43,6 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
   }
 
   void _onLendItem(CatalogUserView item) {
-    // Navigate to scan screen for checkout
     context.go('/scan');
   }
 
@@ -128,9 +127,7 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
                   }
                   return _buildCatalogList(items);
                 },
-                loading: () => const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                loading: () => const Center(child: CircularProgressIndicator()),
                 error: (error, _) => _buildErrorState(error.toString()),
               ),
             ),
@@ -145,15 +142,27 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               if (!kDebugMode) ...[
-                _NavItem(icon: Icons.grid_view, label: 'Catalog', selected: true),
-                _NavItem(icon: Icons.sync_alt, label: 'Transfers', selected: false),
+                _NavItem(
+                  icon: Icons.grid_view,
+                  label: 'Catalog',
+                  selected: true,
+                ),
+                _NavItem(
+                  icon: Icons.sync_alt,
+                  label: 'Transfers',
+                  selected: false,
+                ),
               ],
               FloatingActionButton(
                 onPressed: () => context.go('/scan'),
                 child: const Icon(Icons.qr_code_scanner),
               ),
               if (!kDebugMode)
-                _NavItem(icon: Icons.history, label: 'History', selected: false),
+                _NavItem(
+                  icon: Icons.history,
+                  label: 'History',
+                  selected: false,
+                ),
             ],
           ),
         ),
@@ -166,17 +175,18 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: AppColors.text.withAlpha(128)),
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: AppColors.text.withAlpha(128),
+          ),
           const SizedBox(height: 16),
           Text(
             'No items available',
             style: TextStyle(color: AppColors.text, fontSize: 18),
           ),
           const SizedBox(height: 8),
-          TextButton(
-            onPressed: _onRefresh,
-            child: const Text('Refresh'),
-          ),
+          TextButton(onPressed: _onRefresh, child: const Text('Refresh')),
         ],
       ),
     );
@@ -189,7 +199,11 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline, size: 64, color: Colors.red.withAlpha(200)),
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red.withAlpha(200),
+            ),
             const SizedBox(height: 16),
             Text(
               'Failed to load catalog',
@@ -198,14 +212,14 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
             const SizedBox(height: 8),
             Text(
               error,
-              style: TextStyle(color: AppColors.text.withAlpha(180), fontSize: 14),
+              style: TextStyle(
+                color: AppColors.text.withAlpha(180),
+                fontSize: 14,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _onRefresh,
-              child: const Text('Retry'),
-            ),
+            ElevatedButton(onPressed: _onRefresh, child: const Text('Retry')),
           ],
         ),
       ),
@@ -216,21 +230,22 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
     final userItems = items;
     final adminItems = items.whereType<CatalogAdminView>().toList();
 
-    // If admin view items exist, show them
     if (adminItems.isNotEmpty) {
       return _buildAdminCatalogList(adminItems);
     }
 
-    // Otherwise show user view
     return _buildUserCatalogList(userItems);
   }
 
   Widget _buildUserCatalogList(List<CatalogUserView> items) {
     final filtered = items.where((item) {
-      final matchesSearch = _searchQuery.isEmpty ||
+      final matchesSearch =
+          _searchQuery.isEmpty ||
           item.categoryName.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchesFilter = _selectedFilter == CatalogFilter.all ||
-          (_selectedFilter == CatalogFilter.inStock && item.availableCount > 0) ||
+      final matchesFilter =
+          _selectedFilter == CatalogFilter.all ||
+          (_selectedFilter == CatalogFilter.inStock &&
+              item.availableCount > 0) ||
           (_selectedFilter == CatalogFilter.lent && item.availableCount == 0);
       return matchesSearch && matchesFilter;
     }).toList();
@@ -360,7 +375,9 @@ class _CatalogCard extends StatelessWidget {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: inStock ? AppColors.accent : AppColors.text.withAlpha(128),
+                  color: inStock
+                      ? AppColors.accent
+                      : AppColors.text.withAlpha(128),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -368,7 +385,9 @@ class _CatalogCard extends StatelessWidget {
               Text(
                 '${item.availableCount} available',
                 style: TextStyle(
-                  color: inStock ? AppColors.accent : AppColors.text.withAlpha(128),
+                  color: inStock
+                      ? AppColors.accent
+                      : AppColors.text.withAlpha(128),
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
                 ),
@@ -380,7 +399,9 @@ class _CatalogCard extends StatelessWidget {
             width: double.infinity,
             child: TextButton(
               style: TextButton.styleFrom(
-                backgroundColor: inStock ? AppColors.primary : AppColors.surface,
+                backgroundColor: inStock
+                    ? AppColors.primary
+                    : AppColors.surface,
                 foregroundColor: AppColors.text,
               ),
               onPressed: onTap,
