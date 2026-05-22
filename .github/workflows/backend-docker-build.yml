@@ -51,7 +51,13 @@ jobs:
       - name: Run Pytest (Unit Tests)
         working-directory: ./backend/api
         env:
+          ENVIRONMENT: "test"
           JWT_SECRET_KEY: "dummy-secret-for-ci-testing-only"
+          VISION_API_KEY: "dummy-vision-api-key-for-ci-testing-only"
+          VISION_BOX_API_KEY: "dummy-vision-box-api-key-for-ci-testing-only"
+          SIMULATION_API_KEY: "dummy-simulation-api-key-for-ci-testing-only"
+          DOCS_USERNAME: "ci_test_user"
+          DOCS_PASSWORD: "ci_test_password"
         run: uv run pytest
 
   security-scan:
