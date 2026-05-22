@@ -62,7 +62,7 @@ async def visionbox_websocket_endpoint(
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    # Token valid and kiosk registered — register with the manager
+    # Token valid and kiosk registered: register with the manager
     connected = await manager.connect(websocket, kiosk_id)
     if not connected:
         return

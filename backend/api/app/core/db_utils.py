@@ -1,4 +1,4 @@
-"""Shared database utilities — kept here to avoid DRY violations across endpoints."""
+"""Shared database utilities: kept here to avoid DRY violations across endpoints."""
 
 from sqlalchemy.exc import OperationalError
 

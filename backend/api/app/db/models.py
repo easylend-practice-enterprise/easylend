@@ -22,7 +22,7 @@ class Base(DeclarativeBase):
     pass
 
 
-# USER STATUS ENUM — defined before User class
+# USER STATUS ENUM: defined before User class
 class UserStatus(enum.StrEnum):
     ACTIVE = "ACTIVE"
     INACTIVE = "INACTIVE"

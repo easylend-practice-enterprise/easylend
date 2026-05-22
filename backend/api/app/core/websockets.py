@@ -264,7 +264,7 @@ class ConnectionManager:
             try:
                 await websocket.accept()
             except Exception:
-                # accept failed — clean up the pubsub that was registered above.
+                # accept failed: clean up the pubsub that was registered above.
                 await self._close_pubsub(kiosk_id)
                 raise
 

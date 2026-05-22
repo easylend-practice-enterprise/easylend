@@ -40,7 +40,7 @@ async def _process_single_loan(
                 select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
             )
         except OperationalError:
-            # Another worker has the row locked — skip.
+            # Another worker has the row locked: skip.
             return False
 
         loan = result.scalar_one_or_none()
@@ -100,7 +100,7 @@ async def process_overdue_loans(
 
     while True:
         # Fetch a batch of overdue loan IDs only (no row lock held on this result).
-        # Using yield_per would keep a cursor open — fetching IDs in small batches
+        # Using yield_per would keep a cursor open: fetching IDs in small batches
         # achieves the same memory safety without cursor complexity.
         async with AsyncSessionLocal() as db:
             query = (
@@ -131,7 +131,7 @@ async def process_overdue_loans(
             except Exception:
                 logger.exception("Failed to process overdue loan_id=%s", loan_id)
                 failed_ids.add(loan_id)
-                # Continue to next loan — one failure must not stop the batch.
+                # Continue to next loan: one failure must not stop the batch.
 
     return total_processed
 

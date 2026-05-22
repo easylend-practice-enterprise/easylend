@@ -93,7 +93,7 @@ sequenceDiagram
         AI-->>API: {has_damage_detected}
     end
 
-    Note over API,DB: After AI: deterministic Loan → Asset → Locker lock order during finalization
+    Note over API,DB: After AI: deterministic Loan --> Asset --> Locker lock order during finalization
     Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
     alt Locker empty OR Damage detected

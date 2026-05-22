@@ -2,13 +2,13 @@
 Tests for the Admin Quarantine Dashboard endpoints (ELP-10 Step 10c).
 
 Coverage:
-    1. RBAC: non-admin user → 403 Forbidden
-    2. GET /admin/quarantine → 200 with PENDING_INSPECTION loans
-    3. GET /admin/evaluations/{loan_id} → 200 with latest evaluation
+    1. RBAC: non-admin user --> 403 Forbidden
+    2. GET /admin/quarantine --> 200 with PENDING_INSPECTION loans
+    3. GET /admin/evaluations/{loan_id} --> 200 with latest evaluation
     4. PATCH /admin/evaluations/{evaluation_id}/judge:
-         - is_approved=True  → loan DISPUTED, asset MAINTENANCE
-         - is_approved=False (CHECKOUT) → loan ACTIVE, asset BORROWED, locker AVAILABLE
-         - is_approved=False (RETURN)   → loan COMPLETED, asset AVAILABLE, locker OCCUPIED
+         - is_approved=True  --> loan DISPUTED, asset MAINTENANCE
+         - is_approved=False (CHECKOUT) --> loan ACTIVE, asset BORROWED, locker AVAILABLE
+         - is_approved=False (RETURN)   --> loan COMPLETED, asset AVAILABLE, locker OCCUPIED
 """
 
 import uuid
@@ -127,7 +127,7 @@ class _QuarantineSession(_QueuedSession):
 
 
 def test_quarantine_returns_403_for_non_admin(client_with_overrides):
-    """GET /admin/quarantine without admin role → 403 Forbidden."""
+    """GET /admin/quarantine without admin role --> 403 Forbidden."""
 
     student = _make_medewerker()
 
@@ -261,11 +261,11 @@ def _make_judge_session(admin, evaluation, loan, asset, locker):
     Build a _QueuedSession for the judge endpoint.
 
     execute() order:
-        [0] get_current_user  → admin
-        [1] lock evaluation   → evaluation
-        [2] lock loan         → loan
-        [3] lock asset        → asset
-        [4] lock locker       → locker (if locker is not None)
+        [0] get_current_user  --> admin
+        [1] lock evaluation   --> evaluation
+        [2] lock loan         --> loan
+        [3] lock asset        --> asset
+        [4] lock locker       --> locker (if locker is not None)
     """
     if locker is not None:
         return _QueuedSession(admin, evaluation, loan, asset, locker)
@@ -275,7 +275,7 @@ def _make_judge_session(admin, evaluation, loan, asset, locker):
 def test_judge_approved_sets_loan_disputed_and_asset_maintenance(
     client_with_overrides,
 ):
-    """is_approved=True → loan → DISPUTED, asset → MAINTENANCE, locker → MAINTENANCE."""
+    """is_approved=True --> loan --> DISPUTED, asset --> MAINTENANCE, locker --> MAINTENANCE."""
 
     admin = _make_admin()
     eval_id = uuid.uuid4()
@@ -320,7 +320,7 @@ def test_judge_approved_sets_loan_disputed_and_asset_maintenance(
 def test_judge_rejected_checkout_reverts_to_active_and_borrowed(
     client_with_overrides,
 ):
-    """is_approved=False on CHECKOUT → loan ACTIVE, asset BORROWED, locker AVAILABLE."""
+    """is_approved=False on CHECKOUT --> loan ACTIVE, asset BORROWED, locker AVAILABLE."""
 
     admin = _make_admin()
     eval_id = uuid.uuid4()
@@ -367,7 +367,7 @@ def test_judge_rejected_checkout_reverts_to_active_and_borrowed(
 def test_judge_rejected_return_reverts_to_completed_and_available(
     client_with_overrides,
 ):
-    """is_approved=False on RETURN → loan COMPLETED, asset AVAILABLE, locker OCCUPIED."""
+    """is_approved=False on RETURN --> loan COMPLETED, asset AVAILABLE, locker OCCUPIED."""
 
     admin = _make_admin()
     eval_id = uuid.uuid4()

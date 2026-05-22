@@ -444,7 +444,7 @@
 
     <!-- SLOT -->
     <div class="card" id="slot-card">
-      <div class="card-label">Slot — Solenoid</div>
+      <div class="card-label">Slot: Solenoid</div>
       <div class="slot-status">
         <div class="status-indicator" id="slot-indicator">🔒</div>
         <div class="status-text">
@@ -460,7 +460,7 @@
 
     <!-- MICROSWITCH -->
     <div class="card">
-      <div class="card-label">Microswitch — Deurstatus</div>
+      <div class="card-label">Microswitch: Deurstatus</div>
       <div class="switch-display">
         <div class="switch-pill" id="switch-pill">INACTIEF</div>
         <div class="switch-desc" id="switch-desc">Wacht op signaal...</div>
@@ -469,7 +469,7 @@
 
     <!-- LED -->
     <div class="card led-card">
-      <div class="card-label">LED Strip — WS2812B</div>
+      <div class="card-label">LED Strip: WS2812B</div>
       <div class="led-top">
         <div class="led-label-group">
           <span id="led-status-text">Uit</span>
@@ -552,7 +552,7 @@
       ledAan = !ledAan;
       updateLedUI();
       ledVerstuur();
-      log(`LED ${ledAan ? 'ingeschakeld' : 'uitgeschakeld'} — ${Math.round(helderheid * 100)}%`);
+      log(`LED ${ledAan ? 'ingeschakeld' : 'uitgeschakeld'}: ${Math.round(helderheid * 100)}%`);
     }
 
     function sliderUpdate(val) {
@@ -596,7 +596,7 @@
         updateSlotUI(data === 'slot:open');
       } else if (data.startsWith('switch:')) {
         updateSwitchUI(data === 'switch:aan');
-        log(`Microswitch → ${data === 'switch:aan' ? 'ACTIEF' : 'INACTIEF'}`);
+        log(`Microswitch --> ${data === 'switch:aan' ? 'ACTIEF' : 'INACTIEF'}`);
       } else if (data.startsWith('led:')) {
         const parts = data.split(':');
         ledAan = parts[1] === 'aan';

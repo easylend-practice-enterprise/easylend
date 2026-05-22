@@ -147,7 +147,7 @@ async def test_process_single_reserved_loan_marks_inspection_and_creates_audit()
     # [1] SELECT Loan FOR UPDATE NOWAIT
     # [2] SELECT Asset FOR UPDATE NOWAIT
     # [3] SELECT Locker (checkout) FOR UPDATE NOWAIT
-    # [4] SELECT Locker (return) FOR UPDATE NOWAIT — returns None
+    # [4] SELECT Locker (return) FOR UPDATE NOWAIT: returns None
     # [5] log_audit_event: SELECT most recent audit log
     fake_db = _FakeSession(loan, asset, locker, None, None)
 

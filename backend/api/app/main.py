@@ -51,7 +51,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         # XSS filter (legacy browsers)
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        # Content Security Policy — relaxed only for Swagger/Redoc, strict elsewhere
+        # Content Security Policy: relaxed only for Swagger/Redoc, strict elsewhere
         path = request.url.path
         if (
             path.startswith("/docs")

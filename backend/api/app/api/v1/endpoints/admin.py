@@ -192,10 +192,10 @@ async def judge_evaluation(
     """
     Admin verdict on a quarantined AI evaluation.
 
-    - **is_approved == True** (AI was right): Loan → DISPUTED, Asset → MAINTENANCE.
+    - **is_approved == True** (AI was right): Loan --> DISPUTED, Asset --> MAINTENANCE.
     - **is_approved == False** (AI was wrong):
-        - CHECKOUT eval: Loan → ACTIVE, Asset → BORROWED, Locker → AVAILABLE.
-        - RETURN eval: Loan → COMPLETED, Asset → AVAILABLE, Locker → OCCUPIED.
+        - CHECKOUT eval: Loan --> ACTIVE, Asset --> BORROWED, Locker --> AVAILABLE.
+        - RETURN eval: Loan --> COMPLETED, Asset --> AVAILABLE, Locker --> OCCUPIED.
     """
     try:
         eval_result = await db.execute(

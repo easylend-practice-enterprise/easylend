@@ -25,8 +25,8 @@ async def acquire_distributed_lock(
                      that a crashed holder does not block the next scheduled run.
 
     Returns:
-        True  — lock acquired (this instance should run the critical section).
-        False — lock held by another instance (skip this cycle).
+        True : lock acquired (this instance should run the critical section).
+        False: lock held by another instance (skip this cycle).
     """
     acquired = await redis_client.set(
         lock_key,

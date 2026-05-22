@@ -2,7 +2,7 @@
 Tests for the Equipment CRUD endpoints: ELP-26.
 
 Coverage:
-    1. RBAC / Auth      : unauthenticated → 401, medewerker → 403
+    1. RBAC / Auth      : unauthenticated --> 401, medewerker --> 403
     2. Categories       : GET list (any auth), POST (admin), PUT (admin + 404)
     3. Kiosks           : POST (admin, 201), PUT status (admin + 404)
     4. Lockers          : POST (admin, 201), POST with invalid kiosk_id (400)
@@ -92,7 +92,7 @@ def _make_asset(**kwargs) -> SimpleNamespace:
 def test_write_endpoint_returns_401_without_token(
     method, path, body, client_with_overrides
 ):
-    """POST to admin-only write endpoints without a Bearer token → 401."""
+    """POST to admin-only write endpoints without a Bearer token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = getattr(client, method)(path, json=body)
     assert response.status_code == 401
@@ -116,10 +116,10 @@ def test_write_endpoint_returns_401_without_token(
 def test_write_endpoint_returns_403_for_medewerker(
     method, path, body, client_with_overrides
 ):
-    """POST to admin-only write endpoints with a Medewerker JWT → 403.
+    """POST to admin-only write endpoints with a Medewerker JWT --> 403.
 
     DB execute order:
-    [1] get_current_user → medewerker   (get_current_admin checks role → 403)
+    [1] get_current_user --> medewerker   (get_current_admin checks role --> 403)
     """
     medewerker = _make_medewerker()
     fake_db = _QueuedSession(medewerker)
@@ -137,9 +137,9 @@ def test_list_categories_is_accessible_by_medewerker(client_with_overrides):
     """GET /categories should be readable by any authenticated user (no admin gate).
 
     DB execute order:
-    [1] get_current_user  → medewerker
-    [2] list query        → [laptop_cat, tablet_cat]
-    [3] count query       → 2
+    [1] get_current_user  --> medewerker
+    [2] list query        --> [laptop_cat, tablet_cat]
+    [3] count query       --> 2
     """
     medewerker = _make_medewerker()
     laptop_cat = _make_category(category_name="Laptops")
@@ -157,7 +157,7 @@ def test_list_categories_is_accessible_by_medewerker(client_with_overrides):
 
 
 def test_list_categories_returns_401_without_token(client_with_overrides):
-    """GET /categories without a JWT → 401 (any-auth gate still enforced)."""
+    """GET /categories without a JWT --> 401 (any-auth gate still enforced)."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.get("/api/v1/categories")
     assert response.status_code == 401
@@ -167,7 +167,7 @@ def test_create_category_returns_201_for_admin(client_with_overrides):
     """POST /categories (admin) creates a new category and returns 201.
 
     DB execute order:
-    [1] get_current_user → admin
+    [1] get_current_user --> admin
     """
     admin = _make_admin()
 
@@ -191,10 +191,10 @@ def test_create_category_returns_201_for_admin(client_with_overrides):
 
 
 def test_create_category_returns_403_for_medewerker(client_with_overrides):
-    """POST /categories as medewerker → 403.
+    """POST /categories as medewerker --> 403.
 
     DB execute order:
-    [1] get_current_user → medewerker
+    [1] get_current_user --> medewerker
     """
     medewerker = _make_medewerker()
     fake_db = _QueuedSession(medewerker)
@@ -208,11 +208,11 @@ def test_create_category_returns_403_for_medewerker(client_with_overrides):
 
 
 def test_update_category_returns_404_for_unknown_category(client_with_overrides):
-    """PATCH /categories/{id} where the category doesn't exist → 404.
+    """PATCH /categories/{id} where the category doesn't exist --> 404.
 
     DB execute order:
-    [1] get_current_user           → admin
-    [2] _get_category_or_404       → None → 404
+    [1] get_current_user           --> admin
+    [2] _get_category_or_404       --> None --> 404
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -230,8 +230,8 @@ def test_update_category_returns_200_and_mutates_name(client_with_overrides):
     """PATCH /categories/{id} (admin) renames the category in-place.
 
     DB execute order:
-    [1] get_current_user     → admin
-    [2] _get_category_or_404 → existing_cat
+    [1] get_current_user     --> admin
+    [2] _get_category_or_404 --> existing_cat
     """
     admin = _make_admin()
     existing_cat = _make_category(category_name="Old Name")
@@ -259,7 +259,7 @@ def test_create_kiosk_returns_201_for_admin(client_with_overrides):
     """POST /kiosks (admin) registers a new kiosk and returns 201.
 
     DB execute order:
-    [1] get_current_user → admin
+    [1] get_current_user --> admin
     (create_kiosk has no extra execute calls before commit + refresh)
     """
     admin = _make_admin()
@@ -283,18 +283,18 @@ def test_create_kiosk_returns_201_for_admin(client_with_overrides):
 
 
 def test_list_kiosks_returns_401_without_token(client_with_overrides):
-    """GET /kiosks without any token → 401."""
+    """GET /kiosks without any token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.get("/api/v1/kiosks")
     assert response.status_code == 401
 
 
 def test_update_kiosk_status_returns_404_for_unknown_kiosk(client_with_overrides):
-    """PATCH /kiosks/{id}/status where kiosk doesn't exist → 404.
+    """PATCH /kiosks/{id}/status where kiosk doesn't exist --> 404.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_kiosk_or_404 → None → 404
+    [1] get_current_user  --> admin
+    [2] _get_kiosk_or_404 --> None --> 404
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -314,8 +314,8 @@ def test_update_kiosk_status_returns_200_and_mutates_status(
     """PATCH /kiosks/{id}/status (admin) transitions kiosk to MAINTENANCE.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_kiosk_or_404 → kiosk
+    [1] get_current_user  --> admin
+    [2] _get_kiosk_or_404 --> kiosk
     """
     from unittest.mock import AsyncMock
 
@@ -368,8 +368,8 @@ def test_create_locker_returns_201_for_admin(client_with_overrides):
     """POST /lockers (admin) creates a locker attached to an existing kiosk.
 
     DB execute order:
-    [1] get_current_user   → admin
-    [2] kiosk_exists check → kiosk_id (scalar: exists)
+    [1] get_current_user   --> admin
+    [2] kiosk_exists check --> kiosk_id (scalar: exists)
     """
     admin = _make_admin()
     kiosk_id = uuid.uuid4()
@@ -395,11 +395,11 @@ def test_create_locker_returns_201_for_admin(client_with_overrides):
 
 
 def test_create_locker_returns_400_for_invalid_kiosk_id(client_with_overrides):
-    """POST /lockers with a kiosk_id that doesn't exist → 400.
+    """POST /lockers with a kiosk_id that doesn't exist --> 400.
 
     DB execute order:
-    [1] get_current_user   → admin
-    [2] kiosk_exists check → None (kiosk not found → 400)
+    [1] get_current_user   --> admin
+    [2] kiosk_exists check --> None (kiosk not found --> 400)
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -417,11 +417,11 @@ def test_create_locker_returns_400_for_invalid_kiosk_id(client_with_overrides):
 
 
 def test_get_locker_by_id_returns_404_for_unknown_locker(client_with_overrides):
-    """GET /lockers/{id} for a non-existent locker → 404.
+    """GET /lockers/{id} for a non-existent locker --> 404.
 
     DB execute order:
-    [1] get_current_user   → admin
-    [2] _get_locker_or_404 → None → 404
+    [1] get_current_user   --> admin
+    [2] _get_locker_or_404 --> None --> 404
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -432,11 +432,11 @@ def test_get_locker_by_id_returns_404_for_unknown_locker(client_with_overrides):
 
 
 def test_get_locker_by_id_returns_200_for_admin(client_with_overrides):
-    """GET /lockers/{id} for an existing locker → 200.
+    """GET /lockers/{id} for an existing locker --> 200.
 
     DB execute order:
-    [1] get_current_user   → admin
-    [2] _get_locker_or_404 → locker
+    [1] get_current_user   --> admin
+    [2] _get_locker_or_404 --> locker
     """
     admin = _make_admin()
     locker = _make_locker(logical_number=7)
@@ -459,9 +459,9 @@ def test_create_asset_returns_201_for_admin(client_with_overrides, monkeypatch):
     """POST /assets (admin) registers a new asset with category + locker.
 
     DB execute order:
-    [1] get_current_user      → admin
-    [2] category_exists check → category_id (exists)
-    [3] locker_exists check   → locker_id   (exists)
+    [1] get_current_user      --> admin
+    [2] category_exists check --> category_id (exists)
+    [3] locker_exists check   --> locker_id   (exists)
     """
     from unittest.mock import AsyncMock
 
@@ -494,11 +494,11 @@ def test_create_asset_returns_201_for_admin(client_with_overrides, monkeypatch):
 
 
 def test_create_asset_returns_400_for_invalid_category_id(client_with_overrides):
-    """POST /assets with a category_id that doesn't exist → 400.
+    """POST /assets with a category_id that doesn't exist --> 400.
 
     DB execute order:
-    [1] get_current_user      → admin
-    [2] category_exists check → None (not found → 400)
+    [1] get_current_user      --> admin
+    [2] category_exists check --> None (not found --> 400)
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -516,12 +516,12 @@ def test_create_asset_returns_400_for_invalid_category_id(client_with_overrides)
 
 
 def test_create_asset_returns_400_for_invalid_locker_id(client_with_overrides):
-    """POST /assets with a locker_id that doesn't exist → 400.
+    """POST /assets with a locker_id that doesn't exist --> 400.
 
     DB execute order:
-    [1] get_current_user      → admin
-    [2] category_exists check → category_id (found)
-    [3] locker_exists check   → None (not found → 400)
+    [1] get_current_user      --> admin
+    [2] category_exists check --> category_id (found)
+    [3] locker_exists check   --> None (not found --> 400)
     """
     admin = _make_admin()
     category_id = uuid.uuid4()
@@ -544,9 +544,9 @@ def test_list_assets_is_accessible_by_medewerker(client_with_overrides):
     """GET /assets is accessible by any authenticated user (no admin gate).
 
     DB execute order:
-    [1] get_current_user → medewerker
-    [2] list query       → [asset_a, asset_b]
-    [3] count query      → 2
+    [1] get_current_user --> medewerker
+    [2] list query       --> [asset_a, asset_b]
+    [3] count query      --> 2
     """
     medewerker = _make_medewerker()
     asset_a = _make_asset(name="Laptop A", aztec_code="AZT-A")
@@ -566,9 +566,9 @@ def test_list_assets_with_status_filter(client_with_overrides):
     """GET /assets?asset_status=AVAILABLE filters by status.
 
     DB execute order:
-    [1] get_current_user → admin
-    [2] filtered list    → [available_asset]
-    [3] filtered count   → 1
+    [1] get_current_user --> admin
+    [2] filtered list    --> [available_asset]
+    [3] filtered count   --> 1
     """
     admin = _make_admin()
     available_asset = _make_asset(asset_status="AVAILABLE")
@@ -589,8 +589,8 @@ def test_get_asset_by_id_returns_200_for_any_authenticated_user(client_with_over
     """GET /assets/{id} is accessible by medewerker (not admin-gated).
 
     DB execute order:
-    [1] get_current_user    → medewerker
-    [2] _get_asset_or_404   → asset
+    [1] get_current_user    --> medewerker
+    [2] _get_asset_or_404   --> asset
     """
     medewerker = _make_medewerker()
     asset = _make_asset(name="ThinkPad X1", aztec_code="AZT-X1")
@@ -607,11 +607,11 @@ def test_get_asset_by_id_returns_200_for_any_authenticated_user(client_with_over
 
 
 def test_get_asset_by_id_returns_404_for_unknown_asset(client_with_overrides):
-    """GET /assets/{id} for a non-existent asset → 404.
+    """GET /assets/{id} for a non-existent asset --> 404.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_asset_or_404 → None → 404
+    [1] get_current_user  --> admin
+    [2] _get_asset_or_404 --> None --> 404
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -627,8 +627,8 @@ def test_update_asset_returns_200_and_mutates_status(
     """PATCH /assets/{id} (admin) changes asset_status to MAINTENANCE in-place.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_asset_or_404 → asset
+    [1] get_current_user  --> admin
+    [2] _get_asset_or_404 --> asset
     """
     from unittest.mock import AsyncMock
 
@@ -678,8 +678,8 @@ def test_soft_delete_asset_returns_204_for_admin(client_with_overrides):
     `is_deleted` is toggled to True on the object; no response body is returned.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_asset_or_404 → asset
+    [1] get_current_user  --> admin
+    [2] _get_asset_or_404 --> asset
     """
     admin = _make_admin()
     asset = _make_asset()
@@ -698,11 +698,11 @@ def test_soft_delete_asset_returns_204_for_admin(client_with_overrides):
 
 
 def test_soft_delete_asset_returns_404_for_unknown_asset(client_with_overrides):
-    """DELETE /assets/{id} for a non-existent asset → 404.
+    """DELETE /assets/{id} for a non-existent asset --> 404.
 
     DB execute order:
-    [1] get_current_user  → admin
-    [2] _get_asset_or_404 → None → 404
+    [1] get_current_user  --> admin
+    [2] _get_asset_or_404 --> None --> 404
     """
     admin = _make_admin()
     fake_db = _QueuedSession(admin, None)
@@ -715,10 +715,10 @@ def test_soft_delete_asset_returns_404_for_unknown_asset(client_with_overrides):
 
 
 def test_soft_delete_asset_returns_403_for_medewerker(client_with_overrides):
-    """DELETE /assets/{id} by a medewerker → 403.
+    """DELETE /assets/{id} by a medewerker --> 403.
 
     DB execute order:
-    [1] get_current_user → medewerker (role check → 403)
+    [1] get_current_user --> medewerker (role check --> 403)
     """
     medewerker = _make_medewerker()
     fake_db = _QueuedSession(medewerker)
@@ -812,15 +812,15 @@ def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
     with available_count=0 (LEFT OUTER JOIN, not INNER JOIN). Verifies DRIFT-01.
 
     DB execute order:
-    [1] get_current_user → medewerker
-    [2] grouped query    → [(cat1_id, 'Laptops', 2), (cat2_id, 'Tablets', 0)]
+    [1] get_current_user --> medewerker
+    [2] grouped query    --> [(cat1_id, 'Laptops', 2), (cat2_id, 'Tablets', 0)]
     """
     medewerker = _make_medewerker()
     cat1_id = uuid.uuid4()
     cat2_id = uuid.uuid4()
 
-    # The fake DB queue: [get_current_user → medewerker, grouped query → list of tuples]
-    # cat2 (Tablets) has 0 available assets — the outerjoin must still emit this row.
+    # The fake DB queue: [get_current_user --> medewerker, grouped query --> list of tuples]
+    # cat2 (Tablets) has 0 available assets: the outerjoin must still emit this row.
     grouped_rows = [(cat1_id, "Laptops", 2), (cat2_id, "Tablets", 0)]
     fake_db = _QueuedSession(medewerker, grouped_rows)
 
@@ -838,7 +838,7 @@ def test_get_catalog_as_non_admin_sees_grouped_counts(client_with_overrides):
     assert laptops["category_name"] == "Laptops"
     assert laptops["available_count"] == 2
 
-    # Tablets: 0 available — must still be present (DRIFT-01 regression guard)
+    # Tablets: 0 available: must still be present (DRIFT-01 regression guard)
     tablets = next((r for r in data if r.get("category_id") == str(cat2_id)), None)
     assert tablets is not None
     assert tablets["category_name"] == "Tablets"

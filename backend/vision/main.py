@@ -416,7 +416,7 @@ def _update_single_model(url: str, model_path: str):
         settings.model_file_extension, settings.openvino_export_suffix
     )
 
-    # Resolve once — no TOCTOU window. Skip non-global IPs; prefer IPv4.
+    # Resolve once: no TOCTOU window. Skip non-global IPs; prefer IPv4.
     addr_info = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
     chosen_ip: str | None = None
     for info in addr_info:

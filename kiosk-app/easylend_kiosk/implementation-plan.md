@@ -122,9 +122,9 @@ High-Level Goals:
 - [ ] Implement `POST /api/v1/loans/checkout` with idempotency key
 - [ ] Implement `POST /api/v1/loans/return/initiate`
 - [ ] Polling strategy (exponential backoff):
-  - 0–10s: poll every 2 seconds.
-  - 10–30s: poll every 5 seconds.
-  - 30–45s: poll every 10 seconds.
+  - 0-10s: poll every 2 seconds.
+  - 10-30s: poll every 5 seconds.
+  - 30-45s: poll every 10 seconds.
 - [ ] Hard timeout handling: At the configured timeout, transition UI to a "Transaction Pending" screen and finalize in the background.
 - [ ] WebSocket integration for Vision Box communication
 

@@ -79,7 +79,7 @@ async def verify_audit_chain(
 
     Pagination prevents memory exhaustion when the audit log grows large.
     Use `skip` and `limit` to walk the chain in batches; the chain must
-    be verified contiguously — gaps indicate tampering.
+    be verified contiguously: gaps indicate tampering.
     """
     result = await db.execute(
         select(AuditLog)

@@ -2,7 +2,7 @@
 
 Prevents duplicate processing of POST/PATCH requests that share the same
 idempotency key. Uses SET NX EX (set-if-not-exists with TTL) for atomic
-acquisition — the first request with a given key wins; concurrent duplicates
+acquisition: the first request with a given key wins; concurrent duplicates
 receive 409 Conflict.
 """
 

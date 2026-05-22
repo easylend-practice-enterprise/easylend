@@ -45,7 +45,7 @@ sequenceDiagram
 
     alt Administrator approves (AI was correct: damage is real)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: true, rejection_reason?}
-        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation --> Loan --> Asset --> Locker (deterministic lock order)
         API->>DB: UPDATE ai_evaluations SET is_approved = true, rejection_reason = ? WHERE evaluation_id = ?
         API->>LoanStateMachine: apply_transition(loan, asset, locker, DISPUTED)
         alt Transition invalid
@@ -58,7 +58,7 @@ sequenceDiagram
         end
     else Administrator rejects (AI was wrong: false positive)
         Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: false, rejection_reason}
-        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation --> Loan --> Asset --> Locker (deterministic lock order)
         API->>DB: UPDATE ai_evaluations SET is_approved = false, rejection_reason = ? WHERE evaluation_id = ?
 
         alt Evaluation was CHECKOUT type

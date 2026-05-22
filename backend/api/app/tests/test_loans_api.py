@@ -225,21 +225,21 @@ class _LoanLockingSession(_QueuedSession):
 
 
 def test_list_loans_returns_401_without_token(client_with_overrides):
-    """GET /loans without any Bearer token → 401."""
+    """GET /loans without any Bearer token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.get("/api/v1/loans")
     assert response.status_code == 401
 
 
 def test_get_loan_status_returns_401_without_token(client_with_overrides):
-    """GET /loans/{id}/status without any Bearer token → 401."""
+    """GET /loans/{id}/status without any Bearer token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.get(f"/api/v1/loans/{uuid.uuid4()}/status")
     assert response.status_code == 401
 
 
 def test_checkout_returns_401_without_token(client_with_overrides):
-    """POST /loans/checkout without any Bearer token → 401."""
+    """POST /loans/checkout without any Bearer token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/loans/checkout",
@@ -250,7 +250,7 @@ def test_checkout_returns_401_without_token(client_with_overrides):
 
 
 def test_return_initiate_returns_401_without_token(client_with_overrides):
-    """POST /loans/return/initiate without any Bearer token → 401."""
+    """POST /loans/return/initiate without any Bearer token --> 401."""
     with client_with_overrides(_QueuedSession()) as client:
         response = client.post(
             "/api/v1/loans/return/initiate",
@@ -261,7 +261,7 @@ def test_return_initiate_returns_401_without_token(client_with_overrides):
 
 
 def test_checkout_returns_400_when_idempotency_header_missing(client_with_overrides):
-    """POST /loans/checkout with auth but no Idempotency-Key header → 400."""
+    """POST /loans/checkout with auth but no Idempotency-Key header --> 400."""
     student = _make_student()
     with client_with_overrides(_QueuedSession(student, [])) as client:
         response = client.post(
@@ -277,7 +277,7 @@ def test_checkout_returns_400_when_idempotency_header_missing(client_with_overri
 def test_return_initiate_returns_400_when_idempotency_header_missing(
     client_with_overrides,
 ):
-    """POST /loans/return/initiate with auth but no Idempotency-Key header → 400."""
+    """POST /loans/return/initiate with auth but no Idempotency-Key header --> 400."""
     student = _make_student()
     with client_with_overrides(_QueuedSession(student, [])) as client:
         response = client.post(
@@ -299,9 +299,9 @@ def test_list_loans_admin_sees_all_loans(client_with_overrides):
     """GET /loans as admin returns all loans in the system.
 
     DB execute order:
-    [1] get_current_user → admin
-    [2] list query       → [loan_a, loan_b]
-    [3] count query      → 2
+    [1] get_current_user --> admin
+    [2] list query       --> [loan_a, loan_b]
+    [3] count query      --> 2
     """
     admin = _make_admin()
     loan_a = _make_loan()
@@ -321,9 +321,9 @@ def test_list_loans_student_sees_only_own(client_with_overrides):
     """GET /loans as a student returns only their own loans.
 
     DB execute order:
-    [1] get_current_user → student
-    [2] scoped list      → [own_loan]
-    [3] scoped count     → 1
+    [1] get_current_user --> student
+    [2] scoped list      --> [own_loan]
+    [3] scoped count     --> 1
     """
     student = _make_student()
     own_loan = _make_loan(user_id=student.user_id)
@@ -344,11 +344,11 @@ def test_list_loans_student_sees_only_own(client_with_overrides):
 
 
 def test_get_loan_status_returns_200_for_owner(client_with_overrides):
-    """GET /loans/{id}/status for the loan owner → 200 with loan_status.
+    """GET /loans/{id}/status for the loan owner --> 200 with loan_status.
 
     DB execute order:
-    [1] get_current_user   → student
-    [2] _get_loan_or_404   → loan (same user_id)
+    [1] get_current_user   --> student
+    [2] _get_loan_or_404   --> loan (same user_id)
     """
     student = _make_student()
     loan = _make_loan(user_id=student.user_id, loan_status="ACTIVE")
@@ -366,11 +366,11 @@ def test_get_loan_status_returns_200_for_owner(client_with_overrides):
 
 
 def test_get_loan_status_returns_403_for_wrong_user(client_with_overrides):
-    """GET /loans/{id}/status by a different (non-admin) user → 403.
+    """GET /loans/{id}/status by a different (non-admin) user --> 403.
 
     DB execute order:
-    [1] get_current_user   → student_b
-    [2] _get_loan_or_404   → loan (owned by student_a)
+    [1] get_current_user   --> student_b
+    [2] _get_loan_or_404   --> loan (owned by student_a)
     """
     student_b = _make_student()
     other_user_id = uuid.uuid4()
@@ -389,8 +389,8 @@ def test_get_loan_status_returns_200_for_admin_on_any_loan(client_with_overrides
     """GET /loans/{id}/status as admin can access any loan.
 
     DB execute order:
-    [1] get_current_user   → admin
-    [2] _get_loan_or_404   → loan (different user_id)
+    [1] get_current_user   --> admin
+    [2] _get_loan_or_404   --> loan (different user_id)
     """
     admin = _make_admin()
     loan = _make_loan(user_id=uuid.uuid4(), loan_status="RETURNING")
@@ -414,9 +414,9 @@ def test_checkout_returns_202_on_happy_path(client_with_overrides):
     """POST /checkout with a valid aztec_code creates a loan and returns 202.
 
     DB execute order:
-    [1] get_current_user      → student
-    [2] SELECT asset FOR UPDATE NOWAIT → available asset (with locker_id)
-    [3] SELECT locker FOR UPDATE NOWAIT → locker
+    [1] get_current_user      --> student
+    [2] SELECT asset FOR UPDATE NOWAIT --> available asset (with locker_id)
+    [3] SELECT locker FOR UPDATE NOWAIT --> locker
     (db.add + commit + refresh)
     """
     student = _make_student()
@@ -526,11 +526,11 @@ def test_return_initiate_returns_207_when_manager_send_command_returns_false(
 
 
 def test_checkout_returns_400_when_asset_not_found(client_with_overrides):
-    """POST /checkout with unknown aztec_code → 400.
+    """POST /checkout with unknown aztec_code --> 400.
 
     DB execute order:
-    [1] get_current_user → student
-    [2] asset query      → None (not found)
+    [1] get_current_user --> student
+    [2] asset query      --> None (not found)
     """
     student = _make_student()
     fake_db = _QueuedSession(student, None)
@@ -547,12 +547,12 @@ def test_checkout_returns_400_when_asset_not_found(client_with_overrides):
 
 
 def test_checkout_returns_400_when_asset_not_available(client_with_overrides):
-    """POST /checkout on a BORROWED asset → 400.
+    """POST /checkout on a BORROWED asset --> 400.
 
     DB execute order:
-    [1] get_current_user → student
+    [1] get_current_user --> student
     [2] count(0)
-    [3] asset query      → asset with status=BORROWED
+    [3] asset query      --> asset with status=BORROWED
     """
     student = _make_student()
     borrowed_asset = _make_asset(asset_status="BORROWED")
@@ -592,13 +592,13 @@ def test_checkout_returns_400_when_asset_has_no_locker(client_with_overrides):
 
 
 def test_checkout_returns_409_on_lock_contention(client_with_overrides):
-    """POST /checkout when the asset row is locked by another TX → 409.
+    """POST /checkout when the asset row is locked by another TX --> 409.
 
     The _LockingSession raises OperationalError on the 3rd execute call
     (which is the FOR UPDATE NOWAIT on the asset).
     """
     student = _make_student()
-    # Queue: [1]=get_current_user, [2]=count(passes), [3]=asset NOWAIT→raises
+    # Queue: [1]=get_current_user, [2]=count(passes), [3]=asset NOWAIT-->raises
     locking_db = _LockingSession(student, [])
     with client_with_overrides(locking_db) as client:
         response = client.post(
@@ -672,16 +672,16 @@ _VALID_KIOSK_ID = uuid.uuid4()
 
 
 def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
-    """POST /return/initiate for an active loan assigns a return locker → 202.
+    """POST /return/initiate for an active loan assigns a return locker --> 202.
 
     DB execute order:
-    [1] get_current_user      → student
-    [2] count query           → 0
-    [3] kiosk query           → kiosk object (exists)
-    [4] asset query           → asset
-    [5] loan query            → active loan (same user)
-    [6] lock loan row         → active loan (locked)
-    [7] free locker query     → available locker
+    [1] get_current_user      --> student
+    [2] count query           --> 0
+    [3] kiosk query           --> kiosk object (exists)
+    [4] asset query           --> asset
+    [5] loan query            --> active loan (same user)
+    [6] lock loan row         --> active loan (locked)
+    [7] free locker query     --> available locker
     """
     student = _make_student()
     asset = _make_asset(aztec_code="AZT-RET-HAPPY")
@@ -712,13 +712,13 @@ def test_return_initiate_returns_202_on_happy_path(client_with_overrides):
 
 
 def test_return_initiate_returns_404_for_unknown_asset(client_with_overrides):
-    """POST /return/initiate with an unknown aztec_code → 404.
+    """POST /return/initiate with an unknown aztec_code --> 404.
 
     DB execute order:
-    [1] get_current_user → student
-    [2] count query      → 0
-    [3] kiosk query      → kiosk object (exists)
-    [4] asset query      → None → 404
+    [1] get_current_user --> student
+    [2] count query      --> 0
+    [3] kiosk query      --> kiosk object (exists)
+    [4] asset query      --> None --> 404
     """
     student = _make_student()
     fake_db = _QueuedSession(student, [], SimpleNamespace(), None)
@@ -734,14 +734,14 @@ def test_return_initiate_returns_404_for_unknown_asset(client_with_overrides):
 
 
 def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
-    """POST /return/initiate on another user's loan by a non-admin → 403.
+    """POST /return/initiate on another user's loan by a non-admin --> 403.
 
     DB execute order:
-    [1] get_current_user → student_b
-    [2] count query      → 0
-    [3] kiosk query      → kiosk object (exists)
-    [4] asset query      → asset
-    [5] loan query       → loan owned by student_a
+    [1] get_current_user --> student_b
+    [2] count query      --> 0
+    [3] kiosk query      --> kiosk object (exists)
+    [4] asset query      --> asset
+    [5] loan query       --> loan owned by student_a
     """
     student_b = _make_student()
     asset = _make_asset(aztec_code="AZT-WRONG-USER")
@@ -761,14 +761,14 @@ def test_return_initiate_returns_403_for_wrong_user(client_with_overrides):
 
 
 def test_return_initiate_returns_400_when_no_active_loan(client_with_overrides):
-    """POST /return/initiate when asset has no active loan → 400.
+    """POST /return/initiate when asset has no active loan --> 400.
 
     DB execute order:
-    [1] get_current_user → student
-    [2] count query      → 0
-    [3] kiosk query      → kiosk object (exists)
-    [4] asset query      → asset
-    [5] loan query       → None (no active loan)
+    [1] get_current_user --> student
+    [2] count query      --> 0
+    [3] kiosk query      --> kiosk object (exists)
+    [4] asset query      --> asset
+    [5] loan query       --> None (no active loan)
     """
     student = _make_student()
     asset = _make_asset(aztec_code="AZT-NO-ACTIVE")
@@ -790,16 +790,16 @@ def test_return_initiate_returns_400_when_no_active_loan(client_with_overrides):
 
 
 def test_return_initiate_returns_503_when_no_locker_available(client_with_overrides):
-    """POST /return/initiate when all lockers at the kiosk are occupied → 503.
+    """POST /return/initiate when all lockers at the kiosk are occupied --> 503.
 
     DB execute order:
-    [1] get_current_user      → student
-    [2] count query           → 0
-    [3] kiosk query           → kiosk object (exists)
-    [4] asset query           → asset
-    [5] loan query            → active loan
-    [6] lock loan row         → active loan (locked)
-    [7] free locker query     → None (no available locker)
+    [1] get_current_user      --> student
+    [2] count query           --> 0
+    [3] kiosk query           --> kiosk object (exists)
+    [4] asset query           --> asset
+    [5] loan query            --> active loan
+    [6] lock loan row         --> active loan (locked)
+    [7] free locker query     --> None (no available locker)
     """
     student = _make_student()
     asset = _make_asset(aztec_code="AZT-NO-LOCKER")
@@ -825,12 +825,12 @@ def test_return_initiate_returns_503_when_no_locker_available(client_with_overri
 
 
 def test_return_initiate_returns_404_for_unknown_kiosk(client_with_overrides):
-    """POST /return/initiate with an unknown kiosk_id → 404.
+    """POST /return/initiate with an unknown kiosk_id --> 404.
 
     DB execute order:
-    [1] get_current_user      → student
-    [2] count query           → 0
-    [3] kiosk query           → None (kiosk does not exist)
+    [1] get_current_user      --> student
+    [2] count query           --> 0
+    [3] kiosk query           --> None (kiosk does not exist)
     """
     student = _make_student()
     fake_db = _QueuedSession(student, [], None)
@@ -854,7 +854,7 @@ def test_return_initiate_returns_409_on_loan_lock_contention(client_with_overrid
 
     _LoanLockingSession raises OperationalError on the 5th execute call.
     Queue: [1]=auth, [2]=count, [3]=kiosk, [4]=asset, [5]=loan (non-locking),
-    [6]=loan lock (raises on call 6 now — need adjusted session).
+    [6]=loan lock (raises on call 6 now: need adjusted session).
     """
     student = _make_student()
     asset = _make_asset(aztec_code="AZT-LOCK-LOAN")

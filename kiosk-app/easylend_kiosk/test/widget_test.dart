@@ -11,12 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:easylend_kiosk/app.dart';
 
 void main() {
-  testWidgets('renders login screen on app start', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(
-      const ProviderScope(child: App()),
-    );
+  testWidgets('renders login screen on app start', (WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: App()));
     await tester.pumpAndSettle();
     // App starts at /login via MaterialApp.router initialLocation
     expect(find.text('Asset Manager'), findsOneWidget);

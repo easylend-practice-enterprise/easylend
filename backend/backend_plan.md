@@ -10,7 +10,7 @@
 
 ## Step 1: Password Hashing (complete)
 
-**Ticket:** ELP-23 · **Status:** ✅ Done
+**Ticket:** ELP-23: **Status:** ✅ Done
 
 - Integrate `passlib` or `bcrypt` into the FastAPI app
 - Hash password on registration / update
@@ -31,7 +31,7 @@
 
 ## Step 2: Finish Auth Research
 
-**Ticket:** ELP-82 · **Status:** ✅ Done
+**Ticket:** ELP-82: **Status:** ✅ Done
 
 ELP-82 is research, not implementation. Mark this done once a decision has been made on:
 
@@ -42,7 +42,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 3: Define JWT Model
 
-**Ticket:** ELP-21 · **Status:** ✅ Done · *Requires: step 2*
+**Ticket:** ELP-21: **Status:** ✅ Done: *Requires: step 2*
 
 - Pydantic model for JWT payload:
 
@@ -60,7 +60,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 4: Create JWT Tokens
 
-**Ticket:** ELP-22 · **Status:** ✅ Done · *Requires: step 3*
+**Ticket:** ELP-22: **Status:** ✅ Done: *Requires: step 3*
 
 - `create_access_token()` and `verify_access_token()` functions
 - FastAPI dependency `get_current_user` via `Authorization: Bearer`
@@ -76,7 +76,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 5: Refresh Token Mechanism
 
-**Ticket:** ELP-24 · **Status:** ✅ Done · *Requires: step 4*
+**Ticket:** ELP-24: **Status:** ✅ Done: *Requires: step 4*
 
 - `POST /api/v1/auth/refresh` endpoint
 - Validate refresh token --> issue new access token
@@ -87,7 +87,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 6: Redis Integration (refresh tokens)
 
-**Ticket:** ELP-25 · **Status:** ✅ Done · *Requires: step 5*
+**Ticket:** ELP-25: **Status:** ✅ Done: *Requires: step 5*
 
 - Redis config is already ready (ELP-17 ✅ Done)
 - Store refresh tokens in Redis with TTL (Multi-session):
@@ -104,7 +104,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 7: CRUD: Users & Permissions
 
-**Ticket:** ELP-27 · **Status:** ✅ Done · *Requires: step 4 (auth middleware)*
+**Ticket:** ELP-27: **Status:** ✅ Done: *Requires: step 4 (auth middleware)*
 
 - [x] `GET /api/v1/users` (admin: list of all users, pagination via `skip`/`limit`)
 - [x] `GET /api/v1/users/me`
@@ -121,7 +121,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 8: CRUD: Kiosks --> Categories --> Lockers --> Assets
 
-**Ticket:** ELP-26 · **Status:** ✅ Done · *Requires: step 7 (permissions)*
+**Ticket:** ELP-26: **Status:** ✅ Done: *Requires: step 7 (permissions)*
 
 > **FK order required:** Each entity has an FK to the previous one. Build in this order.
 
@@ -166,7 +166,7 @@ ELP-82 is research, not implementation. Mark this done once a decision has been 
 
 ## Step 9: M2M Authentication (Static Device Tokens)
 
-**Ticket:** ELP-90 · **Status:** ✅ Done · *Requires: step 4*
+**Ticket:** ELP-90: **Status:** ✅ Done: *Requires: step 4*
 
 > ⚠️ **Moved up.** The Vision Box needs a Static Device Token to call `POST /api/v1/vision/analyze` (Step 10b). Must be ready before the hardware integration.
 
@@ -185,7 +185,7 @@ Hardware clients (Vision Box, Simulation) authenticate with a pre-configured, lo
 
 ## Step 10a: Transaction CRUD (checkout / return)
 
-**Ticket:** ELP-28 · **Status:** ✅ Done · *Requires: step 8 (assets + lockers)*
+**Ticket:** ELP-28: **Status:** ✅ Done: *Requires: step 8 (assets + lockers)*
 
 Core business logic without hardware coupling: testable via Swagger/Postman.
 
@@ -252,7 +252,7 @@ Core business logic without hardware coupling: testable via Swagger/Postman.
 
 ## Step 10b: Hardware & AI Integration (Dual-Model)
 
-**Status:** ✅ Done · *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
+**Status:** ✅ Done: *Requires: step 9 (Static Device Tokens) + step 10a* (fallback tests added)
 
 By far the most complex part. Couples the transaction logic with physical hardware.
 
@@ -288,19 +288,19 @@ We use a **Local Docker Volume** (`/app/uploads`). This fits perfectly within th
 
 ## Step 10c: Admin Quarantine Dashboard
 
-**Status:** ✅ Done · *Requires: step 10b*
+**Status:** ✅ Done: *Requires: step 10b*
 
 Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in the Quarantine Flow.
 
-- [x] `GET /api/v1/admin/quarantine` — list of loans in `PENDING_INSPECTION` status with joined relation names
-- [x] `GET /api/v1/admin/evaluations/{loan_id}` — most recent AI evaluation for a loan
-- [x] `PATCH /api/v1/admin/evaluations/{evaluation_id}/judge` — admin verdict: approve (DISPUTED + MAINTENANCE) or reject (revert to normal flow)
-- [x] `SELECT … FOR UPDATE NOWAIT` with `OperationalError` handling on all judgment DB rows
+- [x] `GET /api/v1/admin/quarantine`: list of loans in `PENDING_INSPECTION` status with joined relation names
+- [x] `GET /api/v1/admin/evaluations/{loan_id}`: most recent AI evaluation for a loan
+- [x] `PATCH /api/v1/admin/evaluations/{evaluation_id}/judge`: admin verdict: approve (DISPUTED + MAINTENANCE) or reject (revert to normal flow)
+- [x] `SELECT ... FOR UPDATE NOWAIT` with `OperationalError` handling on all judgment DB rows
 - [x] Tests in `backend/api/app/tests/test_admin_api.py`
 
 ## Step 11: Input Sanitisation
 
-**Ticket:** ELP-30 · **Status:** ✅ Done · *Can be executed in parallel with step 10+*
+**Ticket:** ELP-30: **Status:** ✅ Done: *Can be executed in parallel with step 10+*
 
 - [x] Pydantic validators and field constraints added across request schemas (`backend/api/app/schemas/`): `Field(..., min_length / max_length)`, `EmailStr`, `ge`/`le` numeric bounds, and `ConfigDict(extra="forbid")` to reject extra fields.
 - [x] URL validation implemented via `@field_validator` in `backend/api/app/schemas/vision.py` to enforce HTTPS model URLs and prevent unsafe schemes.
@@ -309,7 +309,7 @@ Endpoints for the admin panel to handle blocked loans (damage or fraud). Used in
 
 ## Step 12: Rate Limiting & Abuse Prevention
 
-**Ticket:** ELP-31 · **Status:** ✅ Done · *Requires: step 6 (Redis)*
+**Ticket:** ELP-31: **Status:** ✅ Done: *Requires: step 6 (Redis)*
 
 Rate limiting happens in 3 strategic layers (hybrid approach):
 
@@ -363,7 +363,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 ## Step 13: Hash-Chaining Audit Logs
 
-**Ticket:** ELP-29 · **Status:** ✅ Done · *Requires: step 10a (transactions)*
+**Ticket:** ELP-29: **Status:** ✅ Done: *Requires: step 10a (transactions)*
 
 - [x] Foundation helper added: `app/core/audit.py` (`log_audit_event`, genesis hash, hash computation)
 
@@ -374,7 +374,7 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 
 ## Step 14: Overdue Worker
 
-**Ticket:** ELP-96 · **Status:** ✅ Done
+**Ticket:** ELP-96: **Status:** ✅ Done
 
 - Overdue Worker: Background task that runs every 1 hour. Queries `Loan` where `loan_status = ACTIVE` and `due_date < NOW()`, marks them `OVERDUE`, and writes `LOAN_OVERDUE` audit events with `loan_id` and `asset_id` in the payload.
 - [x] `process_overdue_loans()` in `app/workers/overdue_worker.py` with `FOR UPDATE SKIP LOCKED`
@@ -412,12 +412,12 @@ Write tests directly in the same PR as the feature. Use the minimum test set per
 Architectural rules established during the final Zero-Trust security audit:
 
 1. **Connection Pool Integrity:** Slow external I/O (e.g. Vision AI HTTP calls with 30s timeouts) must NEVER hold a database session. The `POST /api/v1/vision/analyze` endpoint uses 3-phase session management:
-   - **Phase 1:** Short-lived session for pre-flight validation → connection returned to pool.
+   - **Phase 1:** Short-lived session for pre-flight validation --> connection returned to pool.
    - **AI Call:** HTTP requests run with ZERO database connections held.
    - **Phase 2:** Fresh session for row locks (`FOR UPDATE NOWAIT`) + mutations + `db.commit()`.
 
 2. **Redis DoS Protection:** Unbounded user inputs that become Redis keys (like `Idempotency-Key` headers) must be hard-capped at the application layer. The idempotency guard rejects keys exceeding 256 characters with `400 Bad Request`. Redis should also be configured with `maxmemory` + `maxmemory-policy volatile-ttl` at the infrastructure level.
 
-3. **Hardware Split-Brain Prevention:** Hardware commands (WSS `open_slot`, `set_led`) must ONLY fire AFTER `await db.commit()`. If the hardware command fails post-commit, the endpoint raises `503 Service Unavailable` — the database state is durable and the audit trail is intact. The system never rolls back committed state due to hardware failure.
+3. **Hardware Split-Brain Prevention:** Hardware commands (WSS `open_slot`, `set_led`) must ONLY fire AFTER `await db.commit()`. If the hardware command fails post-commit, the endpoint raises `503 Service Unavailable`: the database state is durable and the audit trail is intact. The system never rolls back committed state due to hardware failure.
 
 4. **WebSocket Zombie Protection:** PubSub subscriptions must be registered BEFORE `websocket.accept()`. The `ConnectionManager.connect()` enforces a global connection cap (100) and cleans up PubSub on connection failure to prevent file descriptor exhaustion.

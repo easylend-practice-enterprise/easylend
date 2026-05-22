@@ -15,7 +15,7 @@ sequenceDiagram
         API->>DB: SELECT loan FOR UPDATE NOWAIT
         API->>DB: SELECT asset FOR UPDATE NOWAIT
         API->>DB: SELECT locker FOR UPDATE NOWAIT
-        Note over API,DB: Lock order: Loan → Asset → Locker → Users (FOR UPDATE NOWAIT)
+        Note over API,DB: Lock order: Loan --> Asset --> Locker --> Users (FOR UPDATE NOWAIT)
 
         API->>API: Validate grace period using borrowed_at OR created_at (max 5 minutes)
         Note over API: If created_at is unavailable, the implementation falls back to reserved_at.

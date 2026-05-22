@@ -34,7 +34,7 @@ async def log_audit_event(
         .limit(1)
     )
     last_audit = last_audit_result.scalar_one_or_none()
-    # Normalise None payload to empty dict — ensures the stored value and
+    # Normalise None payload to empty dict: ensures the stored value and
     # the hash computation are always consistent (null != {} in JSON).
     payload = payload or {}
     previous_hash = (

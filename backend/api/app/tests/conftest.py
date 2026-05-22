@@ -182,7 +182,7 @@ class _FakePipeline:
         results = []
         for cmd, args, _ in self._commands:
             if cmd == "incr":
-                results.append(1)  # count starts at 1 — well under any limit
+                results.append(1)  # count starts at 1: well under any limit
             elif cmd == "expire":
                 results.append(True)
         self._commands.clear()

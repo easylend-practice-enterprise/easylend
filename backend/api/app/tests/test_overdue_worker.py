@@ -35,7 +35,7 @@ def _make_loan(**kwargs) -> SimpleNamespace:
 
 
 class _FakeResult:
-    """Mirrors _FakeResult from conftest — unified result stub."""
+    """Mirrors _FakeResult from conftest: unified result stub."""
 
     def __init__(self, value):
         self._value = value
@@ -228,7 +228,7 @@ async def test_process_overdue_loans_calls_process_for_each_batch_id():
     def factory():
         call_count[0] += 1
         if call_count[0] == 1:
-            # First session: batch SELECT — scalars().all() must return [ID1, ID2]
+            # First session: batch SELECT: scalars().all() must return [ID1, ID2]
             return _FakeSession([loan_a.loan_id, loan_b.loan_id])
         return _FakeSession(None, None)  # _process_single_loan: loan not found
 

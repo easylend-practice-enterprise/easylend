@@ -6,9 +6,9 @@ APIRouter: prefix="/loans", tags=["loans"]
 Business rules (Step 10a, hardware-free path):
   - Any authenticated user may list their own loans and poll status.
   - Admins see all loans.
-  - Checkout uses SELECT … FOR UPDATE NOWAIT to prevent concurrent
+  - Checkout uses SELECT ... FOR UPDATE NOWAIT to prevent concurrent
     double-assignment of the same asset (409 on lock contention).
-        - Return/initiate uses SELECT … FOR UPDATE SKIP LOCKED so locked
+        - Return/initiate uses SELECT ... FOR UPDATE SKIP LOCKED so locked
                 candidate lockers are skipped and the first available locker is chosen.
 """
 
@@ -41,9 +41,6 @@ from app.db.models import (
     Locker,
     LockerStatus,
     User,
-)
-from app.db.redis import (
-    redis_client,  # noqa: F401 — test fixtures monkeypatch this name
 )
 from app.schemas.loan import (
     CheckoutRequest,
@@ -212,13 +209,13 @@ async def checkout(
     """
     Begin a checkout by scanning an asset's Aztec barcode.
 
-    Uses `SELECT … FOR UPDATE NOWAIT` to guarantee that two concurrent
+    Uses `SELECT ... FOR UPDATE NOWAIT` to guarantee that two concurrent
     requests for the same asset cannot both succeed. If the row is already
     locked, a **409 Conflict** is returned immediately (no retry).
 
     **State transitions (hardware-free path):**
     - `Loan.loan_status`: `RESERVED` (initial status before hardware confirms pickup)
-    - `Asset.asset_status`: `AVAILABLE` → `BORROWED`
+    - `Asset.asset_status`: `AVAILABLE` --> `BORROWED`
     - `Asset.locker_id`: unchanged until Vision confirms the checkout result
     - `Locker.locker_status`: unchanged until Vision confirms the locker is empty
     - New `Loan` record created with `loan_status = RESERVED`
@@ -468,13 +465,13 @@ async def report_damage(
     db_committed = False
     locker: Locker | None = None
 
-    # Step 1 — rate limit before idempotency guard to avoid stale key locks.
+    # Step 1: rate limit before idempotency guard to avoid stale key locks.
     await check_token_rate_limit(request, str(current_user.user_id))
     if idempotency_key:
         await guard_idempotency(idempotency_key, current_user.user_id)
 
     try:
-        # Step 2 — lock loan.
+        # Step 2: lock loan.
         try:
             loan_result = await db.execute(
                 select(Loan).where(Loan.loan_id == loan_id).with_for_update(nowait=True)
@@ -509,7 +506,7 @@ async def report_damage(
                 detail="Loan must be ACTIVE or FRAUD_SUSPECTED to report damage.",
             )
 
-        # Step 3 — lock asset.
+        # Step 3: lock asset.
         try:
             asset_result = await db.execute(
                 select(Asset)
@@ -534,7 +531,7 @@ async def report_damage(
                 detail="Asset not found.",
             )
 
-        # Step 4 — lock locker.
+        # Step 4: lock locker.
         if loan.checkout_locker_id is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -565,7 +562,7 @@ async def report_damage(
                 detail="Locker not found.",
             )
 
-        # Step 5 — validate grace period from borrowed_at or created_at fallback.
+        # Step 5: validate grace period from borrowed_at or created_at fallback.
         checkout_time = (
             loan.borrowed_at or getattr(loan, "created_at", None) or loan.reserved_at
         )
@@ -582,7 +579,7 @@ async def report_damage(
                 detail="Grace period has expired for damage reporting.",
             )
 
-        # Step 6 — apply state transition.
+        # Step 6: apply state transition.
         try:
             outcome = LoanStateMachine.apply_transition(
                 loan,
@@ -596,7 +593,7 @@ async def report_damage(
                 detail=str(exc),
             ) from exc
 
-        # Step 7 — suspend users if transition requires it.
+        # Step 7: suspend users if transition requires it.
         previous_loan_id: UUID | None = None
         if outcome.suspend_users:
             suspension_until = now + timedelta(days=7)
@@ -667,7 +664,7 @@ async def report_damage(
                     )
                 previous_user.locked_until = suspension_until
 
-        # Step 8 — write audit event.
+        # Step 8: write audit event.
         await log_audit_event(
             db,
             action_type="GRACE_PERIOD_DAMAGE_REPORTED",
@@ -681,7 +678,7 @@ async def report_damage(
             user_id=current_user.user_id,
         )
 
-        # Step 9 — commit before hardware side effects.
+        # Step 9: commit before hardware side effects.
         await db.commit()
         db_committed = True
         await db.refresh(loan)
@@ -698,7 +695,7 @@ async def report_damage(
             await release_idempotency_key(idempotency_key, current_user.user_id)
         raise
 
-    # Step 10 — hardware sync after commit; failures are logged but do not rollback.
+    # Step 10: hardware sync after commit; failures are logged but do not rollback.
     if locker is not None:
         try:
             command_ok = await manager.send_command(
@@ -753,13 +750,13 @@ async def return_initiate(
     Initiate the return process for an active loan.
 
     Finds and locks the first available locker at the kiosk where the
-    user is standing (`payload.kiosk_id`) using `SELECT … FOR UPDATE NOWAIT`
+    user is standing (`payload.kiosk_id`) using `SELECT ... FOR UPDATE NOWAIT`
     to fail fast if the slot is currently in use by another transaction.
 
     **State transitions:**
-    - `Locker.locker_status`: `AVAILABLE` → `OCCUPIED` (reserved for this return)
+    - `Locker.locker_status`: `AVAILABLE` --> `OCCUPIED` (reserved for this return)
     - `Loan.return_locker_id`: assigned to the chosen locker
-    - `Loan.loan_status`: `ACTIVE` → `RETURNING`
+    - `Loan.loan_status`: `ACTIVE` --> `RETURNING`
 
     Rate-limited: 60 req/min per authenticated user (Layer 3).
     """

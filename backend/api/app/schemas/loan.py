@@ -11,7 +11,7 @@ from app.db.models import LoanStatus
 
 
 class LoanPublicResponse(BaseModel):
-    """Loan response WITHOUT user identity — for regular (non-admin) users.
+    """Loan response WITHOUT user identity: for regular (non-admin) users.
 
     Excludes user_id to prevent IDOR: regular authenticated users must not
     learn which other users are associated with specific loans.
@@ -36,7 +36,7 @@ class LoanPublicResponse(BaseModel):
 class LoanResponse(LoanPublicResponse):
     """Full representation of a loan record returned from the API.
 
-    Includes user_id — for admin users only.
+    Includes user_id: for admin users only.
     """
 
     user_id: UUID  # admin-only field
@@ -52,7 +52,7 @@ class LoanListResponse(BaseModel):
 
 
 class LoanPublicListResponse(BaseModel):
-    """Paginated list of loans for regular (non-admin) users — no user_id per item."""
+    """Paginated list of loans for regular (non-admin) users: no user_id per item."""
 
     model_config = ConfigDict(extra="forbid")
 

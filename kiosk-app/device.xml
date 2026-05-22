@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<d:devices xmlns:d="http://schemas.android.com/sdk/devices/8" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<d:devices xmlns:d="http://schemas.android.com/sdk/devices/8"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <d:device>
     <d:name>Samsung Tab S10 Lite</d:name>
     <d:id>New Device</d:id>
     <d:manufacturer>User</d:manufacturer>
-    <d:meta/>
+    <d:meta />
     <d:hardware>
       <d:screen>
         <d:screen-size>xlarge</d:screen-size>
@@ -24,17 +25,17 @@
         </d:touch>
       </d:screen>
       <d:networking>
-Bluetooth
-Wifi
-NFC</d:networking>
+        Bluetooth
+        Wifi
+        NFC</d:networking>
       <d:sensors>
-Accelerometer
-Barometer
-Compass
-GPS
-Gyroscope
-LightSensor
-ProximitySensor</d:sensors>
+        Accelerometer
+        Barometer
+        Compass
+        GPS
+        Gyroscope
+        LightSensor
+        ProximitySensor</d:sensors>
       <d:mic>true</d:mic>
       <d:camera>
         <d:location>back</d:location>
@@ -51,8 +52,8 @@ ProximitySensor</d:sensors>
       <d:ram unit="GiB">4</d:ram>
       <d:buttons>soft</d:buttons>
       <d:internal-storage unit="GiB">
-4</d:internal-storage>
-      <d:removable-storage unit="TiB"/>
+        4</d:internal-storage>
+      <d:removable-storage unit="TiB" />
       <d:cpu>Generic CPU</d:cpu>
       <d:gpu>Generic GPU</d:gpu>
       <d:abi>armeabi</d:abi>
@@ -64,16 +65,16 @@ ProximitySensor</d:sensors>
       <d:abis>mips</d:abis>
       <d:abis>mips64</d:abis>
       <d:abis>riscv64</d:abis>
-      <d:dock/>
+      <d:dock />
       <d:power-type>battery</d:power-type>
       <d:skin>_no_skin</d:skin>
     </d:hardware>
     <d:software>
       <d:api-level>-</d:api-level>
       <d:live-wallpaper-support>true</d:live-wallpaper-support>
-      <d:bluetooth-profiles/>
+      <d:bluetooth-profiles />
       <d:gl-version>2.0</d:gl-version>
-      <d:gl-extensions/>
+      <d:gl-extensions />
       <d:status-bar>false</d:status-bar>
     </d:software>
     <d:state default="true" name="Portrait">

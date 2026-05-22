@@ -6,7 +6,7 @@ from app.core import security
 from app.db.models import UserStatus
 from app.tests.conftest import _bearer, _make_admin, _make_medewerker, _QueuedSession
 
-# ─────────────────────────── 1. Unauthenticated → 401 ────────────────────────
+# ─────────────────────────── 1. Unauthenticated --> 401 ────────────────────────
 # No Authorization header -> auth dependency raises 401 before any DB call.
 
 
@@ -49,8 +49,8 @@ def test_update_user_nfc_unauthenticated(client_with_overrides):
     assert response.status_code == 401
 
 
-# ─────────────────────────── 2. Non-admin role → 403 ─────────────────────────
-# Valid JWT, wrong role → get_current_admin raises 403 after one DB execute
+# ─────────────────────────── 2. Non-admin role --> 403 ─────────────────────────
+# Valid JWT, wrong role --> get_current_admin raises 403 after one DB execute
 # (get_current_user fetches the user, get_current_admin checks role_name).
 
 
@@ -111,7 +111,7 @@ def test_update_user_nfc_forbidden_for_non_admin(client_with_overrides):
 def test_get_me_returns_current_user_for_any_role(client_with_overrides):
     # Works for a non-admin role to confirm it is NOT admin-gated.
     medewerker = _make_medewerker()
-    # DB execute order: [1] get_current_user → medewerker
+    # DB execute order: [1] get_current_user --> medewerker
     fake_db = _QueuedSession(medewerker)
     with client_with_overrides(fake_db) as client:
         response = client.get("/api/v1/users/me", headers=_bearer(medewerker))
@@ -129,9 +129,9 @@ def test_list_users_returns_list_for_admin(client_with_overrides):
     admin = _make_admin()
     other = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user       → admin          (scalar_one_or_none)
-    # [2] list_users body query  → [admin, other] (scalars().all())
-    # [3] list_users total query → 2
+    # [1] get_current_user       --> admin          (scalar_one_or_none)
+    # [2] list_users body query  --> [admin, other] (scalars().all())
+    # [3] list_users total query --> 2
     fake_db = _QueuedSession(admin, [admin, other], 2)
     with client_with_overrides(fake_db) as client:
         response = client.get("/api/v1/users", headers=_bearer(admin))
@@ -144,9 +144,9 @@ def test_list_users_returns_list_for_admin(client_with_overrides):
 def test_list_users_respects_skip_and_limit_params(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user  → admin
-    # [2] list_users query  → single user (simulating skip/limit result)
-    # [3] list_users total  → 1
+    # [1] get_current_user  --> admin
+    # [2] list_users query  --> single user (simulating skip/limit result)
+    # [3] list_users total  --> 1
     fake_db = _QueuedSession(admin, [_make_medewerker()], 1)
     with client_with_overrides(fake_db) as client:
         response = client.get("/api/v1/users?skip=0&limit=1", headers=_bearer(admin))
@@ -163,8 +163,8 @@ def test_get_user_by_id_returns_user_for_admin(client_with_overrides):
     admin = _make_admin()
     target = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → target
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> target
     fake_db = _QueuedSession(admin, target)
     with client_with_overrides(fake_db) as client:
         response = client.get(f"/api/v1/users/{target.user_id}", headers=_bearer(admin))
@@ -175,8 +175,8 @@ def test_get_user_by_id_returns_user_for_admin(client_with_overrides):
 def test_get_user_by_id_returns_404_for_unknown_user(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → None → 404
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> None --> 404
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
         response = client.get(f"/api/v1/users/{uuid.uuid4()}", headers=_bearer(admin))
@@ -205,10 +205,10 @@ def test_create_user_returns_201_for_admin(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
-    # [1] get_current_user                       → admin
-    # [2] email uniqueness check                 → None   (no collision)
-    # [3] role_exists check                      → target_role_id  (exists)
-    # [4] _get_user_with_role_or_404 after commit → created_user
+    # [1] get_current_user                       --> admin
+    # [2] email uniqueness check                 --> None   (no collision)
+    # [3] role_exists check                      --> target_role_id  (exists)
+    # [4] _get_user_with_role_or_404 after commit --> created_user
     fake_db = _QueuedSession(admin, None, target_role_id, created_user)
     payload = {
         "first_name": "New",
@@ -229,8 +229,8 @@ def test_create_user_returns_400_on_duplicate_email(client_with_overrides):
     admin = _make_admin()
     existing_user = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user       → admin
-    # [2] email uniqueness check → existing_user (collision → 400)
+    # [1] get_current_user       --> admin
+    # [2] email uniqueness check --> existing_user (collision --> 400)
     fake_db = _QueuedSession(admin, existing_user)
     payload = {
         "first_name": "Dubbel",
@@ -248,9 +248,9 @@ def test_create_user_returns_400_on_duplicate_email(client_with_overrides):
 def test_create_user_returns_400_on_invalid_role_id(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user       → admin
-    # [2] email uniqueness check → None    (no collision)
-    # [3] role_exists check      → None    (role not found → 400)
+    # [1] get_current_user       --> admin
+    # [2] email uniqueness check --> None    (no collision)
+    # [3] role_exists check      --> None    (role not found --> 400)
     fake_db = _QueuedSession(admin, None, None)
     payload = {
         "first_name": "New",
@@ -285,9 +285,9 @@ def test_update_user_unblocks_locked_account(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
-    # [1] get_current_user                        → admin
-    # [2] _get_user_with_role_or_404 (start)      → locked_user (setattr mutates in-place)
-    # [3] _get_user_with_role_or_404 (after commit) → locked_user (now mutated)
+    # [1] get_current_user                        --> admin
+    # [2] _get_user_with_role_or_404 (start)      --> locked_user (setattr mutates in-place)
+    # [3] _get_user_with_role_or_404 (after commit) --> locked_user (now mutated)
     fake_db = _QueuedSession(admin, locked_user, locked_user)
     with client_with_overrides(fake_db) as client:
         response = client.patch(
@@ -305,8 +305,8 @@ def test_update_user_unblocks_locked_account(client_with_overrides):
 def test_update_user_returns_404_for_unknown_user(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → None → 404
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> None --> 404
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
         response = client.patch(
@@ -384,10 +384,10 @@ def test_update_user_nfc_links_new_tag(client_with_overrides, monkeypatch):
         **{**vars(target_user), "nfc_tag_id": security.hash_nfc_tag("NFC-NEW-007")}
     )
     # DB execute order:
-    # [1] get_current_user                          → admin
-    # [2] _get_user_with_role_or_404                → target_user
-    # [3] NFC uniqueness check                      → None (tag available)
-    # [4] _get_user_with_role_or_404 (after commit) → updated_user
+    # [1] get_current_user                          --> admin
+    # [2] _get_user_with_role_or_404                --> target_user
+    # [3] NFC uniqueness check                      --> None (tag available)
+    # [4] _get_user_with_role_or_404 (after commit) --> updated_user
     fake_db = _QueuedSession(admin, target_user, None, updated_user)
     with client_with_overrides(fake_db) as client:
         response = client.patch(
@@ -424,9 +424,9 @@ def test_update_user_nfc_returns_400_on_duplicate_tag(
     )
     tag_owner = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → target_user
-    # [3] NFC uniqueness check        → tag_owner (collision → 400)
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> target_user
+    # [3] NFC uniqueness check        --> tag_owner (collision --> 400)
     fake_db = _QueuedSession(admin, target_user, tag_owner)
     with client_with_overrides(fake_db) as client:
         response = client.patch(
@@ -489,12 +489,12 @@ def test_anonymize_user_success(client_with_overrides):
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order (log_audit_event is NOT patched so its internals DO pop):
-    # [1] get_current_user                         → admin
-    # [2] FOR UPDATE on user row                   → target_user (mutated in-place)
-    # [3] active loans count                       → 0 (no active loans)
-    # [4] log_audit_event SELECT FOR UPDATE NOWAIT → fake_audit_chain
-    #     (audit internals: SELECT last_audit → fake_audit_chain, INSERT new audit log)
-    # [5] _get_user_with_role_or_404 after commit  → anonymized_user
+    # [1] get_current_user                         --> admin
+    # [2] FOR UPDATE on user row                   --> target_user (mutated in-place)
+    # [3] active loans count                       --> 0 (no active loans)
+    # [4] log_audit_event SELECT FOR UPDATE NOWAIT --> fake_audit_chain
+    #     (audit internals: SELECT last_audit --> fake_audit_chain, INSERT new audit log)
+    # [5] _get_user_with_role_or_404 after commit  --> anonymized_user
     fake_audit_chain = SimpleNamespace(current_hash="0" * 64)
     fake_db = _QueuedSession(admin, target_user, 0, fake_audit_chain, anonymized_user)
     with client_with_overrides(fake_db) as client:
@@ -533,8 +533,8 @@ def test_anonymize_user_returns_400_when_already_anonymized(client_with_override
         role=SimpleNamespace(role_name="Medewerker"),
     )
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → already_anon (status=ANONYMIZED → 400)
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> already_anon (status=ANONYMIZED --> 400)
     fake_db = _QueuedSession(admin, already_anon)
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -559,8 +559,8 @@ def test_anonymize_user_forbidden_for_non_admin(client_with_overrides):
 def test_anonymize_user_returns_404_for_unknown_user(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404  → None → 404
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404  --> None --> 404
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
         response = client.post(
@@ -624,12 +624,12 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
 
     # The retry loop re-executes from the FOR UPDATE select (line 371),
     # NOT from the start of the function. The endpoint structure is:
-    #   1. get_current_admin → db.execute (queue[0] = admin)
-    #   2. FOR UPDATE select → db.execute (queue[1] = target_user)
-    #   3. active loans count → db.execute (queue[2] = 0)
-    #   4. Retry loop attempt 1: log_audit_event (patched) + commit → IntegrityError + rollback
-    #   5. Retry loop attempt 2: same mutations + log_audit_event (patched) + commit → success
-    #   6. _get_user_with_role_or_404 after commit → patched to return anon_user
+    #   1. get_current_admin --> db.execute (queue[0] = admin)
+    #   2. FOR UPDATE select --> db.execute (queue[1] = target_user)
+    #   3. active loans count --> db.execute (queue[2] = 0)
+    #   4. Retry loop attempt 1: log_audit_event (patched) + commit --> IntegrityError + rollback
+    #   5. Retry loop attempt 2: same mutations + log_audit_event (patched) + commit --> success
+    #   6. _get_user_with_role_or_404 after commit --> patched to return anon_user
     #
     # The retry loop only retries the mutation block (lines 413-443),
     # it does NOT re-execute the FOR UPDATE or active_loans queries.
@@ -656,7 +656,7 @@ def test_anonymize_user_retries_on_integrity_error(client_with_overrides):
     assert response.json()["status"] == UserStatus.ANONYMIZED
     # log_audit_event called in both loop iterations (inside try block, before commit)
     assert fake_audit_log.call_count == 2
-    # 2 commits: first fails (IntegrityError → rollback), second succeeds
+    # 2 commits: first fails (IntegrityError --> rollback), second succeeds
     assert fake_db.commit_calls == 2
 
 
@@ -674,8 +674,8 @@ def test_export_user_data_forbidden_for_non_admin_or_other_user(client_with_over
     medewerker = _make_medewerker()
     other = _make_admin()
     # DB execute order:
-    # [1] get_current_user → medewerker
-    # [2] _get_user_with_role_or_404 → other (but RBAC check fails first → 403)
+    # [1] get_current_user --> medewerker
+    # [2] _get_user_with_role_or_404 --> other (but RBAC check fails first --> 403)
     fake_db = _QueuedSession(medewerker, other)
     with client_with_overrides(fake_db) as client:
         response = client.get(
@@ -690,10 +690,10 @@ def test_export_user_data_returns_data_for_self(client_with_overrides):
     """A user may export their own data."""
     medewerker = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user             → medewerker
-    # [2] _get_user_with_role_or_404 → medewerker
-    # [3] loans query (all loans, eager eval) → [] (no loans)
-    # [4] audit query                  → []
+    # [1] get_current_user             --> medewerker
+    # [2] _get_user_with_role_or_404 --> medewerker
+    # [3] loans query (all loans, eager eval) --> [] (no loans)
+    # [4] audit query                  --> []
     fake_db = _QueuedSession(medewerker, medewerker, [], [])
     with client_with_overrides(fake_db) as client:
         response = client.get(
@@ -715,10 +715,10 @@ def test_export_user_data_returns_data_for_admin(client_with_overrides):
     admin = _make_admin()
     target = _make_medewerker()
     # DB execute order:
-    # [1] get_current_user             → admin
-    # [2] _get_user_with_role_or_404 → target
-    # [3] loans query                → []
-    # [4] audit query                → []
+    # [1] get_current_user             --> admin
+    # [2] _get_user_with_role_or_404 --> target
+    # [3] loans query                --> []
+    # [4] audit query                --> []
     fake_db = _QueuedSession(admin, target, [], [])
     with client_with_overrides(fake_db) as client:
         response = client.get(
@@ -734,8 +734,8 @@ def test_export_user_data_returns_data_for_admin(client_with_overrides):
 def test_export_user_data_returns_404_for_unknown_user(client_with_overrides):
     admin = _make_admin()
     # DB execute order:
-    # [1] get_current_user            → admin
-    # [2] _get_user_with_role_or_404 → None → 404
+    # [1] get_current_user            --> admin
+    # [2] _get_user_with_role_or_404 --> None --> 404
     fake_db = _QueuedSession(admin, None)
     with client_with_overrides(fake_db) as client:
         response = client.get(

@@ -70,7 +70,7 @@ async def test_check_rate_limit_fails_open_on_redis_error():
 
     with patch("app.core.rate_limit.redis_client") as mock_redis:
         mock_redis.incr.side_effect = RedisError("connection refused")
-        # Must NOT raise — fail-open
+        # Must NOT raise: fail-open
         await _check_rate_limit("ratelimit:test:key3", limit=10, window_seconds=60)
 
 
@@ -80,7 +80,7 @@ async def test_check_rate_limit_at_boundary():
     with patch("app.core.rate_limit.redis_client") as mock_redis:
         mock_redis.incr = AsyncMock(return_value=10)  # count == limit
         mock_redis.expire = AsyncMock()  # should NOT be called
-        # Must NOT raise — limit is inclusive
+        # Must NOT raise: limit is inclusive
         await _check_rate_limit("ratelimit:test:key4", limit=10, window_seconds=60)
         mock_redis.expire.assert_not_awaited()
 
@@ -96,7 +96,7 @@ async def test_check_ip_rate_limit_uses_x_forwarded_for_for_internal_proxy():
     with patch("app.core.rate_limit.redis_client") as mock_redis:
         mock_redis.incr = AsyncMock(return_value=1)
         mock_redis.expire = AsyncMock(return_value=True)
-        # request.client.host is 172.17.0.1 (Docker bridge) — trusted proxy
+        # request.client.host is 172.17.0.1 (Docker bridge): trusted proxy
         request = make_mock_request(
             client_host="172.17.0.1",
             headers={"X-Forwarded-For": "203.0.113.50, 172.17.0.1"},

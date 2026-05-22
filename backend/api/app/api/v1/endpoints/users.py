@@ -427,7 +427,7 @@ async def anonymize_user(
             user.locked_until = None
 
             # Atomic: audit event is staged before the single commit that covers both
-            # user mutations and the audit log entry — rollback covers both on failure.
+            # user mutations and the audit log entry: rollback covers both on failure.
             await log_audit_event(
                 db,
                 action_type="USER_ANONYMIZED",
@@ -441,7 +441,7 @@ async def anonymize_user(
                 await revoke_all_refresh_tokens(str(user_id))
             except Exception:
                 logger.exception(
-                    "revoke_all_refresh_tokens failed for user %s — best-effort, non-critical",
+                    "revoke_all_refresh_tokens failed for user %s: best-effort, non-critical",
                     user_id,
                 )
 

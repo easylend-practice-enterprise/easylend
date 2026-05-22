@@ -327,8 +327,8 @@ async def analyze_image(
 
     # --- Phase 2: Acquire a FRESH session, lock rows, apply mutations ---
     # A new session is created here. Row locks are held only for the ~100ms
-    # DB write + WS command — NOT for the 30s AI call that just completed.
-    # Locking order: Loan → Asset → Locker (deterministic, matches judge_evaluation).
+    # DB write + WS command: NOT for the 30s AI call that just completed.
+    # Locking order: Loan --> Asset --> Locker (deterministic, matches judge_evaluation).
     async with AsyncSessionLocal() as db:
         try:
             locked_loan_result = await db.execute(
@@ -431,7 +431,7 @@ async def analyze_image(
                     },
                 )
 
-                # COMMIT FIRST — forensic trail must be durable before side effects
+                # COMMIT FIRST: forensic trail must be durable before side effects
                 await db.commit()
             except InvalidLoanTransitionError as exc:
                 raise HTTPException(
@@ -452,7 +452,7 @@ async def analyze_image(
                     detail="Failed to finalize vision evaluation.",
                 ) from exc
 
-            # Hardware command fires AFTER DB commit — outside the try block so
+            # Hardware command fires AFTER DB commit: outside the try block so
             # RedisError or command_ok=False cannot mask the 500 from a failed commit.
             # If this fails the DB is already safe; an SRE must investigate the LED.
             command_ok = await manager.send_command(
@@ -465,7 +465,7 @@ async def analyze_image(
             )
             if not command_ok:
                 logger.warning(
-                    "Failed to set LED color to orange for locker_id=%s — DB committed but LED incorrect.",
+                    "Failed to set LED color to orange for locker_id=%s: DB committed but LED incorrect.",
                     locker_id_for_eval,
                 )
 
@@ -569,7 +569,7 @@ async def analyze_image(
                 exc_info=exc,
             )
 
-        # Phase A: Database transaction — point of no return for the commit.
+        # Phase A: Database transaction: point of no return for the commit.
         # If this succeeds, the DB is durable and the photo URL metadata is saved
         # (either a real path or a storage_error sentinel).
         # If this fails, rollback is safe and we may delete the photo.
@@ -628,7 +628,7 @@ async def analyze_image(
             ) from exc
 
         # Phase B: Hardware command fires AFTER successful commit.
-        # This block is OUTSIDE the try above — a RedisError or command_ok=False
+        # This block is OUTSIDE the try above: a RedisError or command_ok=False
         # must NOT rollback a committed DB or delete a committed photo.
         command_ok = await manager.send_command(
             str(locker.kiosk_id),
@@ -640,7 +640,7 @@ async def analyze_image(
         )
         if not command_ok:
             logger.error(
-                "set_led failed for loan_id=%s, locker_id=%s — DB committed but LED incorrect.",
+                "set_led failed for loan_id=%s, locker_id=%s: DB committed but LED incorrect.",
                 loan.loan_id,
                 locker.locker_id,
             )

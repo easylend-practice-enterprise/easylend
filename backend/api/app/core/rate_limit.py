@@ -72,7 +72,7 @@ async def _check_rate_limit(
 
 
 # ---------------------------------------------------------------------------
-# Layer 2 – IP-based (public endpoints)
+# Layer 2: IP-based (public endpoints)
 # ---------------------------------------------------------------------------
 
 IP_RATE_LIMIT = _IP_LIMIT
@@ -84,7 +84,7 @@ def _is_internal_ip(ip: str) -> bool:
     if ip.startswith("127."):
         return True
     if ip.startswith("172."):
-        # Docker bridge / Compose networks: 172.17–172.31
+        # Docker bridge / Compose networks: 172.17-172.31
         second = int(ip.split(".")[1])
         if 17 <= second <= 31:
             return True
@@ -130,7 +130,7 @@ IpRateLimitDep = Annotated[None, check_ip_rate_limit]
 
 
 # ---------------------------------------------------------------------------
-# Layer 3 – Token-based (authenticated endpoints)
+# Layer 3: Token-based (authenticated endpoints)
 # ---------------------------------------------------------------------------
 
 TOKEN_RATE_LIMIT = _TOKEN_LIMIT

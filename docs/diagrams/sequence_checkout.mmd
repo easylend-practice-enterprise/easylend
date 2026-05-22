@@ -84,7 +84,7 @@ sequenceDiagram
         AI-->>API: {has_damage_detected}
     end
 
-    Note over API,DB: Loan → Asset → Locker locks acquired NOWAIT after AI analysis completes
+    Note over API,DB: Loan --> Asset --> Locker locks acquired NOWAIT after AI analysis completes
     Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
 
     alt Locker NOT empty (fraud / item not taken)

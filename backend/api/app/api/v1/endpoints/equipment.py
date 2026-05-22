@@ -2,10 +2,10 @@
 Equipment CRUD endpoints: ELP-26
 
 Four APIRouters, one per entity, in dependency order:
-    categories_router  → /categories
-    kiosks_router      → /kiosks
-    lockers_router     → /lockers
-    assets_router      → /assets
+    categories_router  --> /categories
+    kiosks_router      --> /kiosks
+    lockers_router     --> /lockers
+    assets_router      --> /assets
 
 Auth rules:
     - All write operations (POST / PATCH / DELETE) require Admin.
@@ -345,7 +345,7 @@ async def update_kiosk_status(
     Update a kiosk's operational status.
 
     Requires Admin role. Typically used to change `kiosk_status`
-    (e.g. `ONLINE` → `MAINTENANCE`) via the Admin Remote Control flow.
+    (e.g. `ONLINE` --> `MAINTENANCE`) via the Admin Remote Control flow.
     """
     kiosk = await _get_kiosk_or_404(db, kiosk_id)
 
@@ -480,7 +480,7 @@ async def create_locker(
     Add a new locker to an existing kiosk.
 
     Requires Admin role. `kiosk_id` must reference an existing kiosk.
-    `logical_number` is the physical slot label (1, 2, 3 …) and must be
+    `logical_number` is the physical slot label (1, 2, 3 ...) and must be
     unique within the kiosk.
     """
     kiosk_exists = await db.execute(

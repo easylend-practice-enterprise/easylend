@@ -54,7 +54,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
     environment:
-      <<: [ *core-env, *api-secrets ]
+      <<: [*core-env, *api-secrets]
     mem_limit: 4g
     networks:
       - backend-net
@@ -71,11 +71,15 @@ services:
       redis:
         condition: service_started
     environment:
-      <<: [ *core-env, *api-secrets ]
+      <<: [*core-env, *api-secrets]
     command: python -m app.workers.loan_timeout_worker
     mem_limit: 512m
     healthcheck:
-      test: [ "CMD-SHELL", "ps -ef | grep loan_timeout_worker | grep -v grep || exit 1" ]
+      test:
+        [
+          "CMD-SHELL",
+          "ps -ef | grep loan_timeout_worker | grep -v grep || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -94,11 +98,12 @@ services:
       redis:
         condition: service_started
     environment:
-      <<: [ *core-env, *api-secrets ]
+      <<: [*core-env, *api-secrets]
     command: python -m app.workers.overdue_worker
     mem_limit: 512m
     healthcheck:
-      test: [ "CMD-SHELL", "ps -ef | grep overdue_worker | grep -v grep || exit 1" ]
+      test:
+        ["CMD-SHELL", "ps -ef | grep overdue_worker | grep -v grep || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -121,7 +126,7 @@ services:
       - pg_data:/var/lib/postgresql/data
     shm_size: 256mb
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5

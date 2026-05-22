@@ -92,7 +92,7 @@ class AuthInterceptor extends Interceptor {
         return handler.next(err);
       }
 
-      // No refresh in flight — start one and hold onto it for concurrent 401s
+      // No refresh in flight: start one and hold onto it for concurrent 401s
       final refreshFuture = _ref.read(authServiceProvider).refreshToken();
       _refreshInFlight = refreshFuture;
 
