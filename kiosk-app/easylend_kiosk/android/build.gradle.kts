@@ -1,3 +1,5 @@
+import com.android.build.api.dsl.LibraryExtension
+
 allprojects {
     repositories {
         google()
@@ -17,6 +19,16 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    plugins.withId("com.android.library") {
+        extensions.configure<LibraryExtension> {
+            if (namespace.isNullOrBlank()) {
+                namespace = project.group.toString().ifBlank {
+                    "be.easylend.${project.name.replace('-', '_')}"
+                }
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

@@ -26,4 +26,5 @@ As part of our commitment to engineering transparency, this document registers t
 | **PXE Boot Service** | Infrastructure | **None** | Referenced in logical topology but explicitly marked as **Out of Scope** for the MVP. |
 
 ## 4. Integrity Chain Scale
+
 The `GET /audit/verify` endpoint is currently optimized for batch processing. While it ensures continuity across batches, a full chain verification for millions of records would require a dedicated background worker to prevent API timeouts—this is deferred until the system reaches high-volume production.
