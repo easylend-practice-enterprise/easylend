@@ -15,6 +15,8 @@ uv run python main.py
 ```
 
 ## Configuration
+
 Requires a `.env` file with:
+
 - `VISIONBOX_WS_URL`: The WebSocket URL for the kiosk being simulated.
 - `SIMULATION_API_KEY`: Matching the backend simulator key.

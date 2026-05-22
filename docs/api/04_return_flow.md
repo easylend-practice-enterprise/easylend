@@ -1,3 +1,12 @@
+# Return flow
+
+Logic for returning borrowed assets and verifying their condition.
+
+## Return initiation
+
+The student scans the asset's Aztec code. The API assigns an available locker and moves the loan to a pre-vision mutex state (`RETURNING`).
+
+```mermaid
 sequenceDiagram
     actor User as User
     participant App as Kiosk App (Flutter)
@@ -55,7 +64,7 @@ sequenceDiagram
                             API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_RETURN_INITIATED', payload: {loan_id, asset_id, return_locker_id}}
 
                             %% Hardware command sent AFTER DB commit
-                            Note over API,VB: DB committed BEFORE send&#59; command outcome does not change endpoint response
+                            Note over API,VB: DB committed BEFORE send; command outcome does not change endpoint response
                             API->>DB: COMMIT
 
                             Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
@@ -135,3 +144,4 @@ sequenceDiagram
         API-->>App: 200 OK {loan_status: COMPLETED}
         App-->>User: "Item successfully returned!"
     end
+```

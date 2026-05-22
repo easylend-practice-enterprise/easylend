@@ -1,10 +1,10 @@
-# System Topology
+# System topology
 
-EasyLend uses a microservices-inspired architecture designed to isolate heavy AI inference workloads from reactive API traffic. Our infrastructure is centralized on a Proxmox Virtual Environment, with physical hardware and simulations acting as "Thin Clients."
+EasyLend uses a microservices-inspired architecture to isolate heavy AI inference from reactive API traffic. Infrastructure is centralized on Proxmox, with edge hardware acting as thin clients.
 
-## Physical Topology
+## Physical topology
 
-We split our workloads across two Virtual Machines (Ubuntu) to ensure that YOLO inference does not starve the main API of CPU or Memory resources.
+Workloads are split across two virtual machines to prevent resource starvation during inference.
 
 ```mermaid
 flowchart TD
@@ -13,40 +13,37 @@ flowchart TD
     classDef db fill:#fef08a,stroke:#eab308,stroke-width:2px,color:#000;
     classDef edge fill:#bbf7d0,stroke:#22c55e,stroke-width:2px,color:#000;
 
-    subgraph Edge ["Edge Devices & Interfaces"]
+    subgraph Edge [Edge devices]
         direction TB
-        K["Android Kiosk App<br/>(NFC + UI)"]:::edge
-        V["Vision Box<br/>(Camera + Slot)"]:::edge
-        S["Digital Twin<br/>(Python Simulation)"]:::edge
+        K["Kiosk app: 10.0.2.x"]:::edge
+        V["Vision box: 10.0.2.x"]:::edge
     end
 
-    subgraph Proxmox ["Proxmox VE Server (Hypervisor)"]
+    subgraph Proxmox [Proxmox server]
         direction TB
 
-        subgraph VM1 ["VM 1: Core Backend (10.0.2.147)"]
-            API["FastAPI REST & WSS (Port 8000)"]:::container
+        subgraph VM1 [VM 1: Core backend - 10.0.2.147]
+            API["FastAPI REST and WSS: Port 8000"]:::container
             DB[("PostgreSQL 17")]:::db
-            REDIS[("Redis Cache")]:::db
+            REDIS[("Redis cache")]:::db
         end
 
-        subgraph VM2 ["VM 2: AI Microservice (10.0.2.146)"]
-            YOLO["YOLO26 Medium (Port 8001)"]:::container
+        subgraph VM2 [VM 2: AI service - 10.0.2.146]
+            YOLO["YOLO26 inference: Port 8001"]:::container
         end
     end
 
     %% Connections
-    K <-->|"HTTPS / WSS (Port 8000)"| API
-    V <-->|"WSS (Port 8000) & POST Image"| API
-    S <-->|"HTTP / WSS (Port 8000)"| API
-
-    API <-->|"Read / Write"| DB
-    API <-->|"Pub / Sub"| REDIS
-    API <-->|"POST Image (Port 8001)"| YOLO
+    K <-->|"HTTPS and WSS: Port 8000"| API
+    V <-->|"WSS and POST image"| API
+    API <-->|"Read and write"| DB
+    API <-->|"Pub and sub"| REDIS
+    API <-->|"POST image: Port 8001"| YOLO
 ```
 
-## Logical Topology
+## Logical topology
 
-Our logical structure is divided into three primary domains: the **Kiosk (Frontend)**, the **Backend (API & AI)**, and the **Vision Box (Hardware Orchestrator)**.
+The system is divided into three functional domains.
 
 ```mermaid
 flowchart TD
@@ -55,38 +52,38 @@ flowchart TD
     classDef hard fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#000;
     classDef data fill:#FFF9C4,stroke:#FBC02d,stroke-width:2px,color:#000;
 
-    %% DOMAIN 1: KIOSK
-    subgraph Kiosk ["Kiosk (Frontend)"]
+    subgraph Kiosk [Kiosk]
         direction TB
-        NFC[NFC Reader]:::hard
-        App["Android App (Flutter)"]:::soft
+        NFC[NFC reader]:::hard
+        CamTab["Tablet camera: scanner"]:::hard
+        App["Kiosk app: Flutter"]:::soft
+
         NFC -->|Badge ID| App
+        CamTab -->|Aztec code| App
     end
 
-    %% DOMAIN 2: BACKEND
-    subgraph Backend ["Backend"]
+    subgraph Backend [Backend]
         direction TB
-        API["FastAPI & WebSockets"]:::soft
-        AIService["YOLO26 AI Service"]:::soft
+        API["FastAPI and WebSockets"]:::soft
+        AIService["YOLO26 AI service"]:::soft
         DB[(PostgreSQL 17)]:::data
-        Redis[(Redis Cache)]:::data
+        Redis[(Redis cache)]:::data
 
-        API <-->|"Query / Log"| DB
-        API <-->|"Pub/Sub + Token Whitelist"| Redis
-        API <-->|"Analyze Image"| AIService
+        API <-->|"Query and log"| DB
+        API <-->|"Pub and sub"| Redis
+        API <-->|"Analyze image"| AIService
     end
 
-    %% DOMAIN 3: VISION BOX
-    subgraph Box ["Vision Box (Thin Client)"]
+    subgraph Box [Vision box]
         direction TB
         RPi["Raspberry Pi 4"]:::hard
         CamBox[Camera]:::hard
-        Lock["Electronic lock"]:::hard
+        Lock[Electronic lock]:::hard
         CamBox -->|Photo| RPi
-        RPi -->|"Open/Close"| Lock
+        RPi -->|"Open and close"| Lock
     end
 
     %% CONNECTIONS
-    App <-->|"HTTPS REST + Polling"| API
-    RPi <-->|"WSS & POST Image"| API
+    App <-->|"HTTPS REST and polling"| API
+    RPi <-->|"WSS and POST image"| API
 ```

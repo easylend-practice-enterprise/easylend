@@ -1,24 +1,23 @@
-# Background Workers
+# Background workers
 
-To maintain system state without blocking the main API thread, EasyLend runs two specialized background workers as separate containers.
+EasyLend runs specialized workers to maintain state without blocking API requests.
 
-## 1. Loan Timeout Worker
+## 1. Timeout worker
 
-- **Interval**: Runs every 60 seconds.
-- **Purpose**: Scans for `RESERVED` or `RETURNING` loans that have not progressed within 3 minutes.
-- **Action**: Transitions the loan to `PENDING_INSPECTION` and marks the associated locker as `MAINTENANCE`. This handles scenarios where a user walks away without closing a door or a hardware sensor fails to report.
+- **Interval:** 60 seconds.
+- **Lock TTL:** 55 seconds.
+- **Goal:** Process loans in `RESERVED` or `RETURNING` states that exceed the 3-minute inactivity threshold.
+- **Result:** Transitions loan to `PENDING_INSPECTION` and marks the locker as `MAINTENANCE`.
 
-## 2. Overdue Worker
+## 2. Overdue worker
 
-- **Interval**: Runs every 1 hour.
-- **Purpose**: Identifies `ACTIVE` loans that have passed their `due_date`.
-- **Action**: Transitions the loan to `OVERDUE`.
-- **Impact**: Once a loan is marked `OVERDUE`, the user is immediately blocked from starting any new checkouts until the item is returned.
+- **Interval:** 1 hour.
+- **Lock TTL:** 3500 seconds.
+- **Goal:** Identify `ACTIVE` loans past their `due_date`.
+- **Result:** Transitions loan to `OVERDUE`, blocking the user from new checkouts.
 
-## Reliable Execution
+## Reliability
 
-Both workers utilize:
-
-- **Distributed Redis Locks**: Ensures only one instance of a worker runs across multiple API replicas.
-- **Per-Row NOWAIT Locking**: Prevents the worker from blocking concurrent API requests.
-- **Poison-Pill Exclusion**: Failing records are isolated so a single problematic loan does not stall the entire batch.
+- **Distributed locks:** Redis-backed locks prevent duplicate execution.
+- **Isolation:** Loans are processed in individual transactions.
+- **Stability:** Poison-pill exclusion ensures one failing record doesn't stall the batch.

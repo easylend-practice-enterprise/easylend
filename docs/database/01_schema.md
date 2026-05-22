@@ -1,10 +1,10 @@
-# Database Schema
+# Database schema
 
-EasyLend uses a strictly normalized (3NF) PostgreSQL 17 database designed to handle asynchronous hardware statuses and flexible AI analysis results.
+EasyLend uses a 3NF PostgreSQL 17 database designed for transactional integrity and AI analysis flexibility.
 
-## Entity Relationship Diagram (ERD)
+## Entity relationship diagram
 
-The schema balances rigid transactional integrity for loans with flexible JSONB storage for AI detections.
+The schema balances rigid loan logic with JSONB storage for computer vision results.
 
 ```mermaid
 erDiagram
@@ -22,28 +22,128 @@ erDiagram
     LOCKERS ||--o{ LOANS : checkout_location
     LOCKERS ||--o{ LOANS : return_location
 
-    %% Analyses & Audit
+    %% Analyses, Security & AI
     LOANS ||--o{ AI_EVALUATIONS : evaluated_by
+    AI_EVALUATIONS ||--o{ DAMAGE_REPORTS : detects
     USERS ||--o{ AUDIT_LOGS : performs
+
+    ROLES {
+        uuid role_id PK
+        varchar role_name UK
+    }
+
+    CATEGORIES {
+        uuid category_id PK
+        varchar category_name UK
+    }
+
+    USERS {
+        uuid user_id PK
+        uuid role_id FK
+        varchar first_name
+        varchar last_name
+        varchar email UK
+        varchar nfc_tag_id UK "Nullable: For onboarding"
+        varchar pin_hash
+        int failed_login_attempts "Anti-brute-force"
+        timestamp locked_until "Lockout timer"
+        enum status "ACTIVE, INACTIVE, BANNED, ANONYMIZED"
+        varchar ban_reason "Nullable"
+        boolean accepted_privacy_policy
+    }
+
+    KIOSKS {
+        uuid kiosk_id PK
+        varchar name
+        varchar location_description
+        enum kiosk_status "ONLINE, OFFLINE, MAINTENANCE"
+    }
+
+    LOCKERS {
+        uuid locker_id PK
+        uuid kiosk_id FK
+        int logical_number "Physical number 1, 2, 3... (UK per kiosk: uq_kiosk_logical_number)"
+        enum locker_status "AVAILABLE, OCCUPIED, MAINTENANCE, ERROR_OPEN"
+    }
+
+    ASSETS {
+        uuid asset_id PK
+        uuid category_id FK
+        uuid locker_id FK "Nullable: NULL when on loan or in inspection"
+        varchar name
+        varchar aztec_code UK
+        enum asset_status "AVAILABLE, BORROWED, RESERVED, PENDING_INSPECTION, MAINTENANCE, LOST"
+        boolean is_deleted
+    }
+
+    LOANS {
+        uuid loan_id PK
+        uuid user_id FK
+        uuid asset_id FK
+        uuid checkout_locker_id FK
+        uuid return_locker_id FK "Nullable: Until item is returned"
+        timestamp reserved_at "Nullable"
+        timestamp borrowed_at "Nullable"
+        timestamp due_date "Nullable"
+        timestamp returned_at "Nullable"
+        timestamp updated_at "System set on every change"
+        enum loan_status "RESERVED, ACTIVE, RETURNING, OVERDUE, COMPLETED, FRAUD_SUSPECTED, DISPUTED, PENDING_INSPECTION"
+    }
+    %% (*) RETURNING is a pre-vision mutex set by POST /api/v1/loans/return/initiate.
+    %%     It prevents duplicate return initiations and is enforced by POST /api/v1/vision/analyze
+    %%     (409 if loan_status != RETURNING for a RETURN evaluation).
+
+    AI_EVALUATIONS {
+        uuid evaluation_id PK
+        uuid loan_id FK
+        enum evaluation_type "CHECKOUT, RETURN"
+        varchar photo_url
+        float ai_confidence "NOT NULL: 0.0 when no detections"
+        jsonb detected_objects "E.g. detections list with bounding boxes"
+        boolean has_damage_detected "Quickly filter problem evaluations"
+        varchar model_version "NOT NULL: e.g. 'yolo26-dual-model'"
+        boolean is_approved "Nullable: set by admin judge endpoint"
+        varchar rejection_reason "Nullable: admin note when is_approved=false"
+        timestamp analyzed_at
+    }
+
+    DAMAGE_REPORTS {
+        uuid damage_id PK
+        uuid evaluation_id FK
+        varchar damage_type "E.g. scratch, crack, missing key"
+        varchar severity "Free-form string"
+        jsonb segmentation_data "YOLO polygon/bounding box coordinates"
+        boolean requires_repair
+    }
+
+    AUDIT_LOGS {
+        uuid audit_id PK
+        uuid user_id FK "Nullable: For anonymous errors"
+        varchar action_type "LOGIN_SUCCESS, LOGIN_FAILED, USER_ANONYMIZED, USER_STATUS_CHANGED, EVALUATION_APPROVED, EVALUATION_REJECTED, VISION_EVALUATION_PROCESSED, VISION_EVALUATION_FAILED, ADMIN_FORCED_OPEN, ASSET_SOFT_DELETED, LOAN_RESERVED_TIMEOUT, LOAN_OVERDUE, LOAN_CHECKOUT_INITIATED, LOAN_CHECKOUT_CONFIRMED, LOAN_CHECKOUT_FRAUD, LOAN_RETURN_INITIATED, LOAN_RETURN_CONFIRMED, ASSET_CREATED, ASSET_STATUS_CHANGED, USER_PIN_CHANGED, USER_NFC_ASSIGNED, LOCKER_STATUS_CHANGED, KIOSK_STATUS_CHANGED"
+        jsonb payload
+        varchar(64) previous_hash "NOT NULL: SHA-256 hex of predecessor"
+        varchar(64) current_hash "NOT NULL: SHA-256 hex of this record"
+        timestamp created_at
+    }
 ```
 
-## Core Concepts
+## Core concepts
 
-### 1. Dynamic Locker Assignment
+### 1. Dynamic locker assignment
 
-Assets are not hardcoded to physical slots. `ASSETS.locker_id` represents the *current* location. During checkout, we record the source locker; during return, the system dynamically allocates the first available slot at the user's kiosk. This handles faulty lockers gracefully.
+Assets are not fixed to physical slots. Source lockers are recorded at checkout, but return lockers are allocated dynamically from available slots at the user's current kiosk.
 
-### 2. JSONB Flexibility
+### 2. JSONB usage
 
-We use PostgreSQL's `JSONB` type for:
+We use JSONB for flexible data structures:
 
-- **`AI_EVALUATIONS.detected_objects`**: Stores raw YOLO bounding box and class data.
-- **`AUDIT_LOGS.payload`**: Captures rich event context without schema bloat.
+- **detections:** YOLO bounding boxes and classes.
+- **audit_payload:** Detailed event context without schema drift.
 
-### 3. Soft Delete
+### 3. Soft delete
 
-Assets are never physically removed. The `is_deleted` flag is gated by an active-loan guard, ensuring we never "delete" an item that is currently in a user's possession.
+Assets are never physically deleted. A flag is used, protected by a loan-status guard to prevent deleting items currently in use.
 
-### 4. Integrity Chain
+### 4. Integrity chain
 
-The `AUDIT_LOGS` table implements a cryptographic hash-chain, where each row's `current_hash` depends on the `previous_hash` of the preceding record, making the audit trail tamper-proof.
+The audit log implements a cryptographic chain where every record references the fingerprint of the predecessor, ensuring tamper detection.

@@ -30,7 +30,16 @@ repos:
         args: [ "--fix" ]
       - id: ruff-format
 
-  # 4. Strict Type Checking (Pyright - ensures your type annotations are solid before you commit)
+  # 4. Markdown Linter & Formatter
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.17.0
+    hooks:
+      - id: markdownlint-cli2
+        args: [ "--fix" ]
+        files: '.*\.md$'
+        exclude: '(\.claude/|/\.venv/|\.venv/)'
+
+  # 5. Strict Type Checking (Pyright - ensures your type annotations are solid before you commit)
   - repo: local
     hooks:
       - id: pyright

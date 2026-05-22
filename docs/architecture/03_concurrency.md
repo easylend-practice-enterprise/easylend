@@ -1,40 +1,43 @@
-# Concurrency & Locking Strategy
+# Concurrency and locking
 
-To ensure database integrity in high-traffic campus environments, EasyLend implements a **Zero-Trust Concurrency Model**. This prevents lock convoys, deadlocks, and race conditions between multiple kiosks.
+EasyLend implements a zero-trust concurrency model to ensure database integrity in high-traffic environments. This prevents lock convoys, deadlocks, and race conditions between kiosks.
 
-## Deterministic Lock Order
+## Deterministic lock order
 
-Multi-entity transactions (such as analyzing a return) always acquire row locks in a strict, deterministic order to prevent deadlocks:
+Transactions targeting multiple entities always acquire row locks in a strict order:
 
-1. **Loan** → 2. **Asset** → 3. **Locker** → 4. **Users**
+1. **Loan**
+2. **Asset**
+3. **Locker**
+4. **Users**
 
-## Locking Patterns
+## Locking patterns
 
-### 1. Fail-Fast (NOWAIT)
+### 1. Fail-fast
 
-Used during **Checkout** and **Admin Judgments**. We use `SELECT ... FOR UPDATE NOWAIT`.
+Used during checkout and admin judgments via `SELECT ... FOR UPDATE NOWAIT`.
 
-- **Behavior**: If the required resource (Asset or Locker) is currently locked by another transaction, the API returns an immediate `409 Conflict` instead of waiting.
-- **Benefit**: Prevents user sessions from hanging and avoids resource exhaustion on the server.
+- **Behavior:** If a resource is locked by another transaction, the API returns an immediate `409 Conflict`.
+- **Benefit:** Prevents hanging sessions and resource exhaustion.
 
-### 2. Priority Selection (SKIP LOCKED)
+### 2. Priority selection
 
-Used during **Locker Allocation** for returns. We use `SELECT ... FOR UPDATE SKIP LOCKED`.
+Used for locker allocation during return initiation via `SELECT ... FOR UPDATE SKIP LOCKED`.
 
-- **Behavior**: When assigning a locker for a return, the query skips any currently locked "available" lockers and picks the next free one.
-- **Benefit**: Allows multiple users to initiate returns at the same kiosk simultaneously without colliding or blocking.
+- **Behavior:** The query skips locked available lockers and selects the next free slot.
+- **Benefit:** Supports simultaneous returns at the same kiosk without contention.
 
-## Idempotency Guard
+## Idempotency guard
 
-Every mutable transaction (`/checkout`, `/return/initiate`) requires a mandatory `Idempotency-Key` provided by the client.
+Mutable transactions require a mandatory `Idempotency-Key` header.
 
-- Keys are stored in Redis with a **24-hour TTL**.
-- This ensures that network retries or accidental double-taps in the UI do not result in duplicate loan records or physical door actuations.
+- Keys are persisted in Redis with a 24-hour TTL.
+- This ensures network retries do not result in duplicate records or physical actions.
 
-## Dead Connection Resilience
+## Dead connection resilience
 
-The `ConnectionManager` in the Backend API actively monitors the state of WebSocket connections to the kiosks.
+The backend actively monitors WebSocket connection state.
 
-- **Fail-Safe Transmissions**: All `send_command` calls are wrapped in exception handlers.
-- **Automatic Eviction**: If a WebSocket is found to be dead during a command transmission, the kiosk is immediately removed from the `active_connections` registry.
-- **Transaction Safety**: Connection failures during an API call (like `/checkout`) do not rollback the database transaction; the DB remains the source of truth, and the system relies on the "IoT Partial Success" (207) code to inform the Kiosk of the delivery failure.
+- **Fail-safe transmission:** Command calls are wrapped in exception handlers.
+- **Automatic eviction:** Dead sockets are removed from the active connection registry immediately.
+- **Transaction safety:** Connection failures do not trigger database rollbacks: the database remains the source of truth, and the system relies on the 207 status code for kiosk-side error handling.

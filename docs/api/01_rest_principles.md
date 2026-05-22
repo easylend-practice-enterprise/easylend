@@ -1,26 +1,159 @@
-# API Principles & IoT Patterns
+# API principles
 
-EasyLend uses a specific set of architectural patterns to handle the inherent unreliability of IoT hardware while maintaining a fast, reactive mobile experience.
+Architectural patterns used to handle IoT reliability while maintaining a reactive mobile experience.
 
-## 1. The "Snoepautomaat" Pattern
-Lending transactions follow a **Commit-First, Hardware-Second** architecture. This prevents "split-brain" scenarios where a physical locker opens but the database record fails to persist (or vice versa).
+## Snoepautomaat pattern
 
-1. **Client** sends request (e.g., `/checkout`).
-2. **API** validates logic and commits the loan record to the database.
-3. **API** returns a success code immediately after commit.
-4. **Hardware Command** is sent asynchronously via WebSockets.
-5. **Client** polls for the physical outcome (e.g., transition to `ACTIVE`).
+Lending transactions use a commit-first, hardware-second design. This prevents split-brain scenarios where hardware acts but the database fails to persist.
 
-## 2. The "IoT Partial Success" Pattern (202 vs 207)
-We use two different success codes to manage hardware synchronization:
-- **`202 Accepted`**: The transaction is committed and the hardware command was successfully dispatched to the local proxy.
-- **`207 Multi-Status`**: The transaction is committed, but the backend **immediately knows** the hardware command failed (e.g., the Vision Box is offline).
-  - *UX Benefit*: The Kiosk can show an immediate "Hardware Error" instead of waiting for a 10-second polling timeout.
+```mermaid
+sequenceDiagram
+    actor User as User
+    participant App as Kiosk App (Flutter)
+    participant API as FastAPI Backend
+    participant FSM as LoanStateMachine
+    participant DB as PostgreSQL
+    participant VB as Vision Box (RPi 4)
+    participant AI as Vision AI Service (yolo26-dual-model)
+    participant Redis as Redis Cache
 
-## 3. Lending Quotas & Blocks
-We enforce two primary compliance rules at the API level:
-- **Concurrent Quota**: A user is limited to a configurable number of active loans (Default: 2).
-- **Overdue Block**: If a user has any item in the `OVERDUE` state, they are prohibited from starting new checkouts until the item is returned.
+    User->>App: Selects asset from catalog
+    App->>API: POST /api/v1/loans/checkout {aztec_code} [JWT, Idempotency-Key]
 
-## 4. Status Polling Rules
-Clients must poll the `/status` endpoint every **2 seconds** after a `202` or `207` response until a terminal state is reached or a 10-second hardware timeout occurs.
+    API->>Redis: EXISTS idempotency:{key}
+    alt Duplicate Idempotency-Key
+        API-->>App: 409 Conflict {"Request already processing"}
+    else Key not seen
+        API->>Redis: SETEX idempotency:{key} 86400 "processing"
+
+        %% Phase 1: Validate and reserve (row locks acquired NOWAIT)
+        API->>DB: BEGIN TRANSACTION
+        API->>DB: SELECT asset BY aztec_code FOR UPDATE NOWAIT
+
+        alt Asset row lock contention
+            API-->>App: 409 Conflict {"Asset is currently being processed"}
+            App-->>User: "Item is currently being processed"
+        else Asset loaded
+            alt Asset missing/deleted/not available/no locker
+                API-->>App: 400 Bad Request
+            else Asset valid
+                API->>DB: SELECT locker BY locker_id FOR UPDATE NOWAIT
+
+                alt Locker row lock contention
+                    API-->>App: 409 Conflict {"Locker is currently being processed"}
+                else Locker missing
+                    API-->>App: 404 Not Found
+                else Locker valid
+                    alt Vision Box offline (WSS not connected)
+                        API-->>App: 503 Service Unavailable
+                        App-->>User: "Locker currently out of service"
+                    else Vision Box online
+                        %% State mutations applied immediately
+                        Note over API,FSM: Centralized transition authority for reservation
+                        API->>FSM: apply_transition(loan, asset, locker, RESERVED)
+                        FSM-->>API: loan_status='RESERVED', asset_status='BORROWED'
+                        API->>DB: INSERT INTO loans {reserved_at: NOW(), checkout_locker_id, status from FSM}
+                        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_INITIATED', payload: {loan_id, asset_id, locker_id}}
+
+                        %% Hardware command sent AFTER DB commit
+                        Note over API,VB: DB committed BEFORE send; command outcome does not change HTTP response from this endpoint
+                        API->>DB: COMMIT
+
+                        Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
+                        API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
+
+                        alt Hardware command failed immediately (disconnection)
+                            Note over API,App: API returns 207 to indicate DB success but HW delivery failure
+                            API-->>App: 207 Multi-Status {loan_id, checkout_locker_id, loan_status: RESERVED}
+                            App-->>User: Show error: "Hardware communication failed"
+                        else Hardware command accepted/dispatched
+                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, loan_status: RESERVED}
+                            App-->>User: Show loader: "Go to locker #N"
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    VB->>VB: GPIO: open slot + LED green
+    User->>VB: Takes item from locker, closes door
+    VB->>API: WSS: slot_closed {event: "slot_closed", locker_id: "<logical_number>"}
+    Note over API: slot_closed is logged only (no transactional state change)
+
+    %% Vision Box triggers AI analysis (M2M, no JWT)
+    VB->>API: POST /api/v1/vision/analyze (X-Device-Token) {loan_id, image, evaluation_type: CHECKOUT}
+
+    %% Phase 2: Vision AI analysis (row locks acquired AFTER analysis)
+    par Object Detection (Phase 1 of 2)
+        API->>AI: POST /detect {image}
+        AI-->>API: {locker_empty, detections}
+    and Segmentation (Phase 2 of 2)
+        API->>AI: POST /segment {image}
+        AI-->>API: {has_damage_detected}
+    end
+
+    Note over API,DB: Loan → Asset → Locker locks acquired NOWAIT after AI analysis completes
+    Note over API,DB: Reduces contention window: locks held only during ~100ms DB write, not the ~30s AI call
+
+    alt Locker NOT empty (fraud / item not taken)
+        API->>FSM: apply_transition(loan, asset, locker, FRAUD_SUSPECTED)
+        FSM-->>API: loan_status='FRAUD_SUSPECTED', asset_status='AVAILABLE', locker_status='OCCUPIED'
+        API->>DB: UPDATE assets SET locker_id = <checkout_locker_id> WHERE asset_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_FRAUD', payload: {loan_id, asset_id, locker_id}}
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: red}
+    else Locker empty + No damage (success)
+        API->>FSM: apply_transition(loan, asset, locker, ACTIVE)
+        FSM-->>API: loan_status='ACTIVE', asset_status='BORROWED', locker_status='AVAILABLE'
+        API->>DB: UPDATE loans SET borrowed_at = NOW() WHERE loan_id = ?
+        API->>DB: UPDATE assets SET locker_id = NULL WHERE asset_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'LOAN_CHECKOUT_CONFIRMED', payload: {loan_id, asset_id, locker_id}}
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_PROCESSED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: green}
+    else AI service error / model crash
+        Note over API,DB: Failure fallback transition is applied only after Loan/Asset/Locker locks are held
+        API->>FSM: apply_transition(loan, asset, locker, PENDING_INSPECTION)
+        FSM-->>API: loan_status='PENDING_INSPECTION', asset_status='PENDING_INSPECTION', locker_status='MAINTENANCE'
+        API->>DB: UPDATE assets SET locker_id = <checkout_locker_id> WHERE asset_id = ?
+        API->>DB: INSERT INTO audit_logs {action_type: 'VISION_EVALUATION_FAILED'}
+        Note over API,VB: locker_id in WSS = logical_number (physical slot int)
+        API->>VB: WSS: set_led {locker_id: logical_number, color: orange}
+        Note over API,DB: Loan stays PENDING_INSPECTION; timeout worker also monitors RESERVED loans
+    end
+
+    Note over App,API: Polling GET /api/v1/loans/{loan_id}/status is the only authoritative client signal for hardware/AI outcomes
+    App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+    alt loan_status is RESERVED
+        API-->>App: 200 OK {loan_status: RESERVED}
+        App->>API: GET /api/v1/loans/{loan_id}/status [JWT]
+    else loan_status is FRAUD_SUSPECTED
+        API-->>App: 200 OK {loan_status: FRAUD_SUSPECTED}
+        App-->>User: "Error: item not taken."
+    else loan_status is ACTIVE
+        API-->>App: 200 OK {loan_status: ACTIVE}
+        App-->>User: "Good luck! Return the item on time."
+    else loan_status is PENDING_INSPECTION
+        API-->>App: 200 OK {loan_status: PENDING_INSPECTION}
+        App-->>User: "System error. Administrator has been notified."
+    end
+```
+
+## IoT partial success pattern
+
+Success codes indicate the state of hardware synchronization:
+
+- **202 Accepted:** Committed to DB and signal delivered to proxy.
+- **207 Multi-Status:** Committed to DB but signal delivery failed.
+- **UX benefit:** The kiosk provides immediate error feedback instead of waiting for timeouts.
+
+## Quotas and blocks
+
+- **Quota:** Configurable limit on concurrent active loans.
+- **Overdue block:** Active overdue items prohibit new checkouts.
+
+## Polling rules
+
+Clients must poll `/status` every 2 seconds after a successful initiation until a terminal state or hardware timeout is reached.

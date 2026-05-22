@@ -1,27 +1,85 @@
-# Quarantine Flow
+# Quarantine flow
 
-The "Quarantine" state is an administrative safety net for scenarios where automated logic cannot safely resolve a transaction.
+Safety net for transactions that cannot be resolved automatically.
 
-## Triggering Events
+## Triggering events
 
-A loan enters the `PENDING_INSPECTION` state if:
+A loan enters `PENDING_INSPECTION` if:
 
-- **AI Flags Damage**: The segmentation model detects an anomaly during return.
-- **Hardware Timeout**: A door is left open, or a sensor fails to report closure.
-- **Manual Report**: A user reports damage within the 5-minute checkout grace period.
-- **Fraud Detection**: The object detection model finds an empty locker during a return (or a non-empty locker after a checkout).
+- **Anomaly detected:** AI flags damage or fraud.
+- **Timeout:** Hardware fails to report closure within limits.
+- **Manual report:** User flags damage during grace period.
 
-## System State in Quarantine
+## System state
 
-When quarantined:
+Quarantined loans lock assets out of general circulation:
 
-- **Loan Status**: `PENDING_INSPECTION` (or `DISPUTED`).
-- **Asset Status**: `PENDING_INSPECTION` (not available for checkout).
-- **Locker Status**: `MAINTENANCE` (locked in hardware, ignored by allocation logic).
+- **Loan:** `PENDING_INSPECTION`, `DISPUTED`, or `FRAUD_SUSPECTED`.
+- **Asset:** `PENDING_INSPECTION`.
+- **Locker:** `MAINTENANCE`.
 
-## Administrative Resolution
+## Administrative resolution
 
-Administrators use the **Quarantine Dashboard** to review the captured photo and AI report. They can then "Judge" the evaluation:
+Admins review reports via the dashboard and submit judgments to resolve the case.
 
-- **Approve**: Confirms the AI was correct (e.g., damage is real). Asset stays in maintenance.
-- **Reject**: Overrides the AI (e.g., a false positive). Asset is returned to `AVAILABLE` status and the locker is reopened for use.
+```mermaid
+sequenceDiagram
+    participant API as FastAPI Backend
+    participant LoanStateMachine
+    participant DB as PostgreSQL
+    participant Admin as Administrator
+
+    Note over API,DB: Quarantine state: loan=PENDING_INSPECTION, asset=PENDING_INSPECTION, locker=MAINTENANCE
+
+    Admin->>API: GET /api/v1/admin/quarantine [JWT Admin]
+    Note over Admin,API: Paginated list: skip, limit query params
+    API-->>Admin: List[QuarantineLoanView] {loan_id, asset_name, user_name, kiosk_name, loan_status, ...}
+
+    Admin->>API: GET /api/v1/admin/evaluations/{loan_id} [JWT Admin]
+    Note over Admin,API: Returns most recent evaluation for the loan (ordered by analyzed_at DESC)
+    API->>DB: SELECT * FROM ai_evaluations WHERE loan_id = ? ORDER BY analyzed_at DESC LIMIT 1
+    DB-->>API: evaluation record
+    API-->>Admin: EvaluationDetailView {evaluation_id, evaluation_type, photo_url, ai_confidence, has_damage_detected, detected_objects, model_version, analyzed_at}
+
+    Note over Admin: Admin reviews photo and AI report
+
+    alt Administrator approves (AI was correct: damage is real)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: true, rejection_reason?}
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        API->>DB: UPDATE ai_evaluations SET is_approved = true, rejection_reason = ? WHERE evaluation_id = ?
+        API->>LoanStateMachine: apply_transition(loan, asset, locker, DISPUTED)
+        alt Transition invalid
+            API-->>Admin: 409 Conflict {"Illegal loan transition"}
+        else Transition valid
+            LoanStateMachine-->>API: loan DISPUTED, asset MAINTENANCE, locker MAINTENANCE
+            API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_APPROVED', payload: {evaluation_id, loan_id, is_approved}}
+            API->>DB: COMMIT
+            API-->>Admin: 204 No Content
+        end
+    else Administrator rejects (AI was wrong: false positive)
+        Admin->>API: PATCH /api/v1/admin/evaluations/{evaluation_id}/judge {is_approved: false, rejection_reason}
+        Note over API,DB: FOR UPDATE NOWAIT on Evaluation → Loan → Asset → Locker (deterministic lock order)
+        API->>DB: UPDATE ai_evaluations SET is_approved = false, rejection_reason = ? WHERE evaluation_id = ?
+
+        alt Evaluation was CHECKOUT type
+            API->>LoanStateMachine: apply_transition(loan, asset, locker, ACTIVE)
+            alt Transition invalid
+                API-->>Admin: 409 Conflict {"Illegal loan transition"}
+            else Transition valid
+                LoanStateMachine-->>API: loan ACTIVE, asset BORROWED, locker AVAILABLE
+            end
+        else Evaluation was RETURN type
+            API->>LoanStateMachine: apply_transition(loan, asset, locker, COMPLETED)
+            alt Transition invalid
+                API-->>Admin: 409 Conflict {"Illegal loan transition"}
+            else Transition valid
+                LoanStateMachine-->>API: loan COMPLETED, asset AVAILABLE, locker OCCUPIED
+                API->>DB: UPDATE loans SET returned_at = NOW() WHERE loan_id = ?
+            end
+        end
+
+        API->>DB: INSERT INTO audit_logs {action_type: 'EVALUATION_REJECTED', payload: {evaluation_id, loan_id, is_approved}}
+        API->>DB: COMMIT
+        API-->>Admin: 204 No Content
+    end
+```

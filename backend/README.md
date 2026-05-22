@@ -9,13 +9,17 @@ This directory contains the Docker Compose infrastructure to orchestrate the Eas
 You can run the entire backend stack (API, Timeout Worker, Overdue Worker, Database, Redis) using Docker Compose.
 
 ### Local Development
+
 Runs the stack with local ports exposed and mounts source code for hot-reloading:
+
 ```bash
 docker-compose -f docker-compose.local.yml up -d --build
 ```
 
 ### Production
+
 Runs the stack in a secure, isolated network without exposing database ports:
+
 ```bash
 docker-compose -f docker-compose.prod.yml up -d --build
 ```

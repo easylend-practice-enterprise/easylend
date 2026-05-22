@@ -53,11 +53,11 @@ sequenceDiagram
                         Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
                         API->>VB: WSS: open_slot {locker_id: logical_number, loan_id, evaluation_type: CHECKOUT}
 
-                        alt Hardware command failed / timeout (post-commit)
-                            Note over API,App: API still returns 202 because commit already succeeded&#59; polling decides user-visible outcome
-                            API-->>App: 202 Accepted {loan_id, checkout_locker_id, loan_status: RESERVED}
-                            App-->>User: Show loader: "Confirming locker action..."
-                        else Hardware command accepted
+                        alt Hardware command failed immediately (disconnection)
+                            Note over API,App: API returns 207 to indicate DB success but HW delivery failure
+                            API-->>App: 207 Multi-Status {loan_id, checkout_locker_id, loan_status: RESERVED}
+                            App-->>User: Show error: "Hardware communication failed"
+                        else Hardware command accepted/dispatched
                             API-->>App: 202 Accepted {loan_id, checkout_locker_id, loan_status: RESERVED}
                             App-->>User: Show loader: "Go to locker #N"
                         end

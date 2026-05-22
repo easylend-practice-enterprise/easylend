@@ -1,58 +1,50 @@
-# EasyLend Project Documentation
+# EasyLend project documentation
 
-Welcome to the technical documentation for **EasyLend**, an IoT-enabled equipment lending platform. This documentation is structured to provide reviewers and developers with a clear, modular understanding of our system architecture, API design, and hardware integration.
+Technical documentation for EasyLend: an IoT equipment lending platform. This guide provides a modular overview of system architecture, API design, and hardware integration.
 
----
+## Documentation map
 
-## 📖 Suggested Reading Order (Reviewer's Path)
+### 1. System architecture
 
-1. **[Technical Walkthrough](./WALKTHROUGH.md)**: Start here for a narrative overview of how the system works end-to-end.
-2. **[System Topology](./architecture/01_topology.md)**: Understand the "Physical vs Logical" split of our services.
-3. **[Zero-Trust Chain](./architecture/04_zero_trust.md)**: Explore our core security philosophy across API, IoT, and AI.
-4. **[Audit Trail](./architecture/06_audit_trail.md)**: Deep-dive into our blockchain-inspired cryptographic logging.
-5. **[REST Principles](./api/01_rest_principles.md)**: Review our unique "IoT Partial Success" and "Snoepautomaat" patterns.
+High-level design and core principles.
 
----
+- **[Topology](./architecture/01_topology.md):** Physical and logical system layout.
+- **[State management](./architecture/02_state_machine.md):** Centralized transition logic and state machine rules.
+- **[Concurrency and locking](./architecture/03_concurrency.md):** Multi-user traffic handling and resource protection.
+- **[Zero-trust chain](./architecture/04_zero_trust.md):** Trustless interaction across API, IoT, and AI.
+- **[Discipline policy](./architecture/05_user_suspension.md):** Automated enforcement for damage and fraud.
+- **[Audit trail](./architecture/06_audit_trail.md):** Cryptographic transaction logging.
+- **[Security](./architecture/07_security.md):** Hardening, authentication, and rate limiting.
+- **[Technical debt](./architecture/08_technical_debt.md):** Current limitations and future roadmap.
 
-## 🗺️ Documentation Map
+### 2. API and integration
 
-### [1. System Architecture](./architecture/01_topology.md)
+Communication protocols for kiosks and hardware.
 
-*The high-level design of EasyLend.*
+- **[REST principles](./api/01_rest_principles.md):** IoT patterns and business rules.
+- **[Return flow](./api/04_return_flow.md):** Detailed sequence for asset returns.
+- **[Endpoints](./api/02_endpoints.md):** Core reference for lending and administration.
+- **[WebSockets](./api/03_websockets.md):** Real-time IoT hardware communication.
 
-- **[Topology](./architecture/01_topology.md):** Physical and Logical system layout.
-- **[State Management](./architecture/02_state_machine.md):** The Redux-style `LoanStateMachine` and transition logic.
-- **[Concurrency & Locking](./architecture/03_concurrency.md):** Our Zero-Trust approach and dead connection resilience.
-- **[Zero-Trust Chain](./architecture/04_zero_trust.md):** Security philosophy across the whole system.
-- **[Audit Trail](./architecture/06_audit_trail.md):** Blockchain-inspired cryptographic transaction logging.
-- [Traditional Security](./architecture/04_security.md): Authentication, Hardening, and Rate Limiting.
-- [Discipline Policy](./architecture/05_user_suspension.md): Compliance rules for user locking and damage disputes.
-- [Technical Debt & Risk](./architecture/07_technical_debt.md): Registration of known V1 limitations and V2 roadmap.
+### 3. Data model and workers
 
-### [2. API & Integration](./api/01_rest_principles.md)
+Persistence layer and background automation.
 
-*How the Kiosk app and hardware interact with the backend.*
+- **[Database schema](./database/01_schema.md):** ERD and storage strategy.
+- **[Background workers](./database/02_background_workers.md):** Automation for timeouts and overdue loans.
 
-- **[REST Principles](./api/01_rest_principles.md):** The "IoT Partial Success" pattern and business rules.
-- **[Endpoint Reference](./api/02_endpoints.md):** Key REST endpoints for lending and administration.
-- **[WebSocket Protocol](./api/03_websockets.md):** The real-time IoT hardware communication spec.
+### 4. Hardware and vision
 
-### [3. Data Model & Workers](./database/01_schema.md)
+Edge client and computer vision pipeline.
 
-*How we persist state and handle background tasks.*
+- **[Vision integration](./hardware/01_vision_integration.md):** Dual-phase AI analysis.
+- **[Quarantine flow](./hardware/02_quarantine_flow.md):** Administrative resolution for flagged items.
 
-- **[Database Schema](./database/01_schema.md):** The Entity Relationship Diagram (ERD) and JSONB usage.
-- **[Background Workers](./database/02_background_workers.md):** Logic for loan timeouts and overdue detection.
+## Suggested reading order
 
-### [4. Hardware & Vision AI](./hardware/01_vision_integration.md)
-
-*The edge client and computer vision pipeline.*
-
-- **[Vision Integration](./hardware/01_vision_integration.md):** Dual-phase AI analysis and model updates.
-- **[Quarantine Flow](./hardware/02_quarantine_flow.md):** Administrative handling of damage and fraud detections.
-
----
-
-## 🚀 Quick Start
-
-If you are looking for installation and setup instructions, please refer to the [Root README](../README.md).
+1. **[Technical walkthrough](./WALKTHROUGH.md)**: End-to-end narrative of the system in action.
+2. **[Topology](./architecture/01_topology.md)**: Service layout overview.
+3. **[Zero-trust chain](./architecture/04_zero_trust.md)**: Foundational security philosophy.
+4. **[Audit trail](./architecture/06_audit_trail.md)**: Data integrity mechanics.
+5. **[REST principles](./api/01_rest_principles.md)**: Core integration patterns.
+6. **[Return flow](./api/04_return_flow.md)**: Dive into the complex return logic.

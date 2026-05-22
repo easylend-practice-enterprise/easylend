@@ -1,0 +1,33 @@
+# Markdownlint-cli2 configuration
+# See: https://github.com/DavidAnson/markdownlint-cli2
+
+noVersion: true
+
+# Disable rules that are too strict for documentation
+ignore:
+  - .claude/           # Claude internal files
+  - backend/api/.venv/ # Python virtual environment
+  - vision-box/.venv/  # Python virtual environment
+  - simulation/.venv/  # Python virtual environment
+
+config:
+  # Line length - disabled because manual wrapping is tedious and reviewers prefer natural line lengths
+  MD013: false
+
+  # First heading - allow multiple h1 headers in a document
+  MD025: false
+
+  # Code block language - don't require language for fenced code blocks
+  MD040: false
+
+  # Table column style - don't require specific pipe spacing
+  MD060: false
+
+  # Heading increment - allow non-sequential heading levels
+  MD001: false
+
+  # First line heading - allow file to start without h1
+  MD041: false
+
+  # Single line string - allow long lines in tables
+  MD014: false

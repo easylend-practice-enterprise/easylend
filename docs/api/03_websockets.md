@@ -1,15 +1,18 @@
-# WebSocket Protocol (Hardware)
+# WebSockets
 
-The Vision Box (Raspberry Pi 4) connects to the API via a persistent WebSocket connection to receive real-time commands and report sensor events.
+Edge clients connect to the API via persistent sockets to receive real-time commands and report sensor events.
 
 ## Connection
-**URL**: `ws://<host>/ws/visionbox/{kiosk_id}`
-**Auth**: Requires `X-Device-Token` header for authentication.
 
-## Server-to-Client Messages (Commands)
+- **URL:** `ws://<host>/ws/visionbox/{kiosk_id}`
+- **Auth:** Requires `X-Device-Token` header.
 
-### 1. `open_slot`
-Sent when a checkout or return is initiated.
+## Server-to-Client commands
+
+### 1. open_slot
+
+Sent to actuate a physical lock.
+
 ```json
 {
   "action": "open_slot",
@@ -18,11 +21,13 @@ Sent when a checkout or return is initiated.
   "evaluation_type": "CHECKOUT"
 }
 ```
-- `locker_id`: The physical slot number (logical_number).
-- `evaluation_type`: `"CHECKOUT"` or `"RETURN"`.
 
-### 2. `set_led`
-Used for status signaling (e.g., green for success, orange for inspection).
+- **locker_id:** Physical slot index.
+
+### 2. set_led
+
+Signals status via LED color.
+
 ```json
 {
   "action": "set_led",
@@ -31,14 +36,57 @@ Used for status signaling (e.g., green for success, orange for inspection).
 }
 ```
 
-## Client-to-Server Messages (Events)
+## Client-to-Server events
 
-### 1. `slot_closed`
-Sent by the Vision Box when the physical door sensor detects closure.
+### 1. slot_closed
+
+Sent by hardware when a door sensor detects closure.
+
 ```json
 {
   "event": "slot_closed",
   "locker_id": "12"
 }
 ```
-- *Effect*: Backend logs the event and awaits the subsequent AI analysis photo upload.
+
+- **Effect:** Triggers the wait period for the subsequent AI photo upload.
+
+## Administrative synchronization
+
+Admins can remotely control hardware via the dashboard, leveraging the established WebSocket channel.
+
+```mermaid
+sequenceDiagram
+    actor Admin as Administrator
+    participant App as Kiosk App (Virtual or Physical)
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL
+    participant VB as Vision Box (Kiosk A)
+
+    Note over App,API: Scenario A: Kiosk Boot Sequence
+    Note over API,VB: ConnectionManager: on reconnect, closes previous socket for kiosk_id before accepting new one (single-connection-per-kiosk)
+
+    App->>API: GET /api/v1/kiosks/{kiosk_id}/lockers [With JWT Token]
+    API->>DB: SELECT * FROM lockers WHERE kiosk_id = ? ORDER BY logical_number
+    DB-->>API: Statuses (AVAILABLE, MAINTENANCE, OCCUPIED, ERROR_OPEN)
+    API-->>App: 200 OK (LockerListResponse, Kiosk UI renders current lockers)
+
+    Note over Admin,VB: Scenario B: Admin Remote Control
+    Admin->>App: Logs in and opens Kiosk Management [With JWT Admin Token]
+    App->>API: GET /api/v1/kiosks
+    API-->>App: 200 OK (KioskListResponse)
+
+    Admin->>App: Selects Kiosk A -> Locker 1 -> "Force Open"
+    App->>API: POST /api/v1/lockers/{locker_id}/open [JWT Admin]
+    Note over API: Validates that the token holds the Admin role
+    Note over API,VB: locker_id in WSS = logical_number (physical slot int), not UUID
+    API->>DB: INSERT INTO audit_logs {action_type: 'ADMIN_FORCED_OPEN', payload: {locker_id}}
+    API->>DB: COMMIT
+    API->>VB: WSS: open_slot {locker_id: logical_number}
+    Note over API,VB: Fire-and-forget: audit committed before send, no slot_opened event is processed by the API
+    alt Vision Box offline / timeout
+        API-->>App: 503 Service Unavailable
+    else Vision Box accepted command
+        API-->>App: 200 OK {detail: "Locker opened successfully."}
+    end
+```

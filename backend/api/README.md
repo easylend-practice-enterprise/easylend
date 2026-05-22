@@ -19,6 +19,7 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --app-dir .
 ## Database Management
 
 Migrations are handled via Alembic.
+
 ```bash
 # Apply migrations to head
 uv run alembic upgrade head

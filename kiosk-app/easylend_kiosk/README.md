@@ -5,6 +5,7 @@
 This directory contains the Flutter-based kiosk application for Android tablets.
 
 ## Prerequisites
+
 - Flutter SDK (3.11+)
 - Android Studio / ADB
 
@@ -19,12 +20,15 @@ flutter run
 ```
 
 ## Emulator Kiosk Mode Setup
+
 To reproduce lock task behavior on an emulator:
+
 ```bash
 adb shell dpm set-device-owner be.school.easylend_kiosk/.AdminReceiver
 ```
 
 ## Deployment
+
 ```bash
 # Build Android APK
 flutter build apk --release

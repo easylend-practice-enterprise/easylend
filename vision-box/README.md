@@ -5,6 +5,7 @@
 This directory contains the edge client logic for the Raspberry Pi 4 "Vision Box."
 
 ## Hardware Requirements
+
 - Raspberry Pi 4 (8GB recommended)
 - Electronic Lock (connected via GPIO)
 - LED Strip
@@ -21,6 +22,8 @@ uv run python main.py
 ```
 
 ## Environment Variables
+
 Ensure the following are set in your `.env` file:
+
 - `VISIONBOX_WS_URL`: WebSocket endpoint of the API.
 - `VISION_BOX_API_KEY`: Secret token matching the backend configuration.
