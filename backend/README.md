@@ -30,9 +30,9 @@ docker-compose -f docker-compose.prod.yml up -d --build
 - **Tear Down:** `docker-compose -f docker-compose.local.yml down -v`
 - **Rebuild specific service:** `docker-compose -f docker-compose.local.yml up -d --build api`
 
-## Full Reset & Seeding
+## Full Reset & Seeding (Development)
 
-If you want to start from a completely clean state (purge all data) and populate the database with real-world scenarios:
+If you want to start from a completely clean state (purge all data) and populate the database with real-world scenarios for testing:
 
 1. **Prepare Environment:**
 
@@ -45,23 +45,46 @@ If you want to start from a completely clean state (purge all data) and populate
 
     ```bash
     # From project root
-    docker compose -f backend/docker-compose.local.yml down -v
-    docker compose -f backend/vision/docker-compose.local.yml down -v
+    docker compose -f docker-compose.local.yml down -v
+    docker compose -f vision/docker-compose.local.yml down -v
 
-    docker compose -f backend/docker-compose.local.yml build --no-cache
-    docker compose -f backend/vision/docker-compose.local.yml build --no-cache
+    docker compose -f docker-compose.local.yml build --no-cache
+    docker compose -f vision/docker-compose.local.yml build --no-cache
     ```
 
 3. **Start Stack:**
 
     ```bash
-    docker compose -f backend/docker-compose.local.yml up -d
-    docker compose -f backend/vision/docker-compose.local.yml up -d
+    docker compose -f docker-compose.local.yml up -d
+    docker compose -f vision/docker-compose.local.yml up -d
     ```
 
-4. **Run Advanced Seed:**
+4. **Run Dev Seeder:**
 
     ```powershell
-    cd backend/api
-    uv run scripts/seed.py
+    cd api
+    # Use --reset to wipe the database before seeding (recommended for dev)
+    uv run scripts/seed_dev.py --reset
     ```
+
+## Production Bootstrapping
+
+When deploying to a new location or a clean production environment where you do NOT want test data:
+
+1. **Start Minimal Stack:**
+
+    ```bash
+    # Ensure Docker Compose is up for the target environment
+    docker compose -f docker-compose.prod.yml up -d
+    ```
+
+2. **Bootstrap Roles & Admin:**
+
+    ```powershell
+    cd api
+    uv run scripts/bootstrap.py
+    ```
+
+    *Optional: Use `uv run scripts/bootstrap.py --force-purge` if you need to wipe an existing non-production environment completely before bootstrapping.*
+
+After running `bootstrap.py`, the system is in a "sterile" but secure state. You can now log in via the **Digital Twin / Management Interface** to configure real kiosks, lockers, and assets.

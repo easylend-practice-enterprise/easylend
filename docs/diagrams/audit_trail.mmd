@@ -1,0 +1,30 @@
+flowchart TD
+
+A[Genesis Block<br/>0000000000000000000000000000000000000000000000000000000000000000]
+
+A --> B[Audit Event 1<br/>action_type: CHECKOUT<br/>payload: loan created<br/>current_hash = SHA256]
+B --> C[Audit Event 2<br/>action_type: LOCK_OPENED<br/>payload: slot_id<br/>current_hash = SHA256]
+C --> D[Audit Event 3<br/>action_type: RETURN<br/>payload: loan completed<br/>current_hash = SHA256]
+D --> E[Audit Event 4<br/>action_type: DAMAGE_DETECTED<br/>payload: quarantine<br/>current_hash = SHA256]
+
+subgraph Hash calculation
+F[previous_hash]
+G[action_type]
+H[payload JSON]
+F --> I[SHA-256]
+G --> I
+H --> I
+I --> J[current_hash]
+end
+
+K[GET /audit/verify]
+K --> L[Recompute hashes]
+L --> M{Chain valid?}
+
+M -->|Yes| N[Integrity OK]
+M -->|No| O[Tampered record identified]
+
+style A fill:#f4f4f4
+style K fill:#e8f0ff
+style N fill:#e8ffe8
+style O fill:#ffe8e8

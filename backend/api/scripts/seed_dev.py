@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import select
 
 # ---------------------------------------------------------------------------
 # Runtime Preparation
@@ -27,9 +27,8 @@ def _prepare_runtime() -> None:
 
 _prepare_runtime()
 
-# Now we can import app components
+# Now we can import app components and the bootstrap logic
 from app.core.audit import log_audit_event  # noqa: E402
-from app.core.security import get_pin_hash, hash_nfc_tag  # noqa: E402
 from app.db.database import AsyncSessionLocal  # noqa: E402
 from app.db.models import (  # noqa: E402
     AIEvaluation,
@@ -42,11 +41,10 @@ from app.db.models import (  # noqa: E402
     LoanStatus,
     Locker,
     LockerStatus,
-    Role,
     User,
-    UserStatus,
 )
 from app.main import app  # noqa: E402
+from scripts.bootstrap import bootstrap_admin, purge_database  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration & Constants
@@ -57,7 +55,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%H:%M:%S",
 )
-logger = logging.getLogger("seed")
+logger = logging.getLogger("seed_dev")
 
 # These can be overridden via environment variables
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api/v1")
@@ -85,70 +83,6 @@ async def get_asset_id_by_code(session, code: str) -> UUID:
     if not val:
         raise RuntimeError(f"Asset {code} not found")
     return val
-
-
-# ---------------------------------------------------------------------------
-# Phase 1: Bootstrap (Direct DB)
-# ---------------------------------------------------------------------------
-
-
-async def bootstrap_admin():
-    """
-    Ensures that the basic roles and at least one Admin user exist.
-    This bypasses the API as we need an initial user to authenticate.
-    """
-    logger.info("--- Phase 1: Bootstrap ---")
-    logger.info("Ensuring roles and admin user exist in the database...")
-
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            # 1. Ensure Roles exist
-            roles_to_create = ["ADMIN", "USER", "KIOSK"]
-            role_map = {}
-            for role_name in roles_to_create:
-                res = await session.execute(select(Role).filter_by(role_name=role_name))
-                role = res.scalar_one_or_none()
-                if not role:
-                    role = Role(role_name=role_name)
-                    session.add(role)
-                    await session.flush()
-                    logger.info(f"Created missing role: {role_name}")
-                role_map[role_name] = role
-
-            # 2. Ensure Bootstrap Admin User exists
-            hashed_nfc = hash_nfc_tag(ADMIN_NFC)
-
-            # Check by email or NFC to avoid duplicates
-            res = await session.execute(
-                select(User).where(
-                    or_(User.email == ADMIN_EMAIL, User.nfc_tag_id == hashed_nfc)
-                )
-            )
-            admin = res.scalar_one_or_none()
-
-            if not admin:
-                admin = User(
-                    email=ADMIN_EMAIL,
-                    nfc_tag_id=hashed_nfc,
-                    role_id=role_map["ADMIN"].role_id,
-                    first_name="Admin",
-                    last_name="EasyLend",
-                    pin_hash=get_pin_hash(ADMIN_PIN),
-                    status=UserStatus.ACTIVE,
-                    accepted_privacy_policy=True,
-                )
-                session.add(admin)
-                logger.info(f"Created bootstrap admin user: {ADMIN_EMAIL}")
-            else:
-                admin.email = ADMIN_EMAIL
-                admin.nfc_tag_id = hashed_nfc
-                admin.pin_hash = get_pin_hash(ADMIN_PIN)
-                admin.role_id = role_map["ADMIN"].role_id
-                admin.status = UserStatus.ACTIVE
-                admin.accepted_privacy_policy = True
-                logger.info(f"Updated existing admin user: {ADMIN_EMAIL}")
-
-    logger.info("Bootstrap successful.")
 
 
 # ---------------------------------------------------------------------------
@@ -309,35 +243,35 @@ async def seed_master_data():
             {
                 "first": "Jan",
                 "last": "Janssens",
-                "email": "jan.janssens@student.thomasmore.be",
+                "email": "jan.janssens@student.ucll.be",
                 "nfc": "NFC-USER-001",
                 "pin": "111111",
             },
             {
                 "first": "Marie",
                 "last": "Peeters",
-                "email": "marie.peeters@student.thomasmore.be",
+                "email": "marie.peeters@student.ucll.be",
                 "nfc": "NFC-USER-002",
                 "pin": "222222",
             },
             {
                 "first": "Tom",
                 "last": "Wauters",
-                "email": "tom.wauters@thomasmore.be",
+                "email": "tom.wauters@ucll.be",
                 "nfc": "NFC-USER-003",
                 "pin": "333333",
             },
             {
                 "first": "Lotte",
                 "last": "De Smet",
-                "email": "lotte.desmet@student.thomasmore.be",
+                "email": "lotte.desmet@student.ucll.be",
                 "nfc": "NFC-USER-004",
                 "pin": "444444",
             },
             {
                 "first": "Sam",
                 "last": "Vermeulen",
-                "email": "sam.vermeulen@student.thomasmore.be",
+                "email": "sam.vermeulen@student.ucll.be",
                 "nfc": "NFC-USER-005",
                 "pin": "555555",
             },
@@ -377,9 +311,7 @@ async def seed_scenarios():
         async with session.begin():
             # 1. Scenario: OVERDUE Loan
             # User Jan has an iPad that was due yesterday.
-            jan_id = await get_user_id_by_email(
-                session, "jan.janssens@student.thomasmore.be"
-            )
+            jan_id = await get_user_id_by_email(session, "jan.janssens@student.ucll.be")
             ipad_id = await get_asset_id_by_code(session, "AZ-TAB-001")
 
             # Find a locker to 'checkout' from (even if it's now available)
@@ -418,7 +350,7 @@ async def seed_scenarios():
             # 2. Scenario: PENDING_INSPECTION (AI Detected Damage)
             # Marie returned a Dell XPS, but AI flagged a scratch.
             marie_id = await get_user_id_by_email(
-                session, "marie.peeters@student.thomasmore.be"
+                session, "marie.peeters@student.ucll.be"
             )
             dell_id = await get_asset_id_by_code(session, "AZ-LAP-001")
 
@@ -483,7 +415,7 @@ async def seed_scenarios():
 
             # 3. Scenario: FRAUD_SUSPECTED
             # Tom tried to checkout a MacBook, but didn't take it.
-            tom_id = await get_user_id_by_email(session, "tom.wauters@thomasmore.be")
+            tom_id = await get_user_id_by_email(session, "tom.wauters@ucll.be")
             mac_id = await get_asset_id_by_code(session, "AZ-LAP-003")
 
             locker3_res = await session.execute(
@@ -535,10 +467,10 @@ async def seed_scenarios():
             # Lotte picked up a camera, but reported it broken within 5 mins.
             # We need a previous borrower (Sam) to be implicated.
             lotte_id = await get_user_id_by_email(
-                session, "lotte.desmet@student.thomasmore.be"
+                session, "lotte.desmet@student.ucll.be"
             )
             sam_id = await get_user_id_by_email(
-                session, "sam.vermeulen@student.thomasmore.be"
+                session, "sam.vermeulen@student.ucll.be"
             )
             cam_id = await get_asset_id_by_code(session, "AZ-CAM-001")
 
@@ -622,13 +554,33 @@ async def seed_scenarios():
 
 
 async def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="EasyLend Development Seeder")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Purges the database before seeding (dev only).",
+    )
+
+    args = parser.parse_args()
+
     try:
+        if args.reset:
+            logger.info("Reset flag detected. Purging database...")
+            success = await purge_database()
+            if not success:
+                logger.error("Purge failed. Aborting seed.")
+                sys.exit(1)
+
+        # First ensure foundation is set up
         await bootstrap_admin()
+        # Then seed dev data
         await seed_master_data()
         await seed_scenarios()
-        logger.info("Database seeding completed successfully.")
+        logger.info("Development seeding completed successfully.")
     except Exception:
-        logger.exception("A critical error occurred during seeding")
+        logger.exception("A critical error occurred during dev seeding")
         sys.exit(1)
 
 

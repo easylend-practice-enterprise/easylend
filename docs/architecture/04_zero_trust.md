@@ -57,6 +57,15 @@ sequenceDiagram
         end
     end
 
+    opt Auto-Logout (Inactivity) or Manual Logout
+        User-->>App: Stops interacting or clicks Logout
+        App-->>User: Show popup / loading screen
+        App->>API: POST /api/v1/auth/logout {refresh_token}
+        API->>Redis: DEL refresh:<user_id>:<jti> (Revoke Token)
+        API-->>App: 200 OK (Successfully logged out)
+        App-->>User: Return to NFC start screen
+    end
+
     opt Token Refresh (Access Token expired)
         App->>API: POST /api/v1/auth/refresh {refresh_token}
         API->>Redis: DEL refresh:<user_id>:<old_jti> (Atomically Validate & Revoke)

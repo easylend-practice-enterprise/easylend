@@ -1,0 +1,16 @@
+flowchart LR
+
+U[Gebruiker]
+K[Kiosk App]
+B[Backend API]
+V[Vision Box]
+DB[(PostgreSQL)]
+
+U -->|Badge + PIN| K
+K -->|JWT| B
+V -->|X-Device-Token| B
+B -->|WebSocket Commands| V
+B -->|Validated Transactions| DB
+
+style B fill:#e8f0ff
+style DB fill:#f5f5f5

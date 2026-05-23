@@ -16,6 +16,7 @@ High-level design and core principles.
 - **[Audit trail](./architecture/06_audit_trail.md):** Cryptographic transaction logging.
 - **[Security](./architecture/07_security.md):** Hardening, authentication, and rate limiting.
 - **[Technical debt](./architecture/08_technical_debt.md):** Current limitations and future roadmap.
+- **[Testing en validatie](./architecture/09_testing.md):** Testaanpak, validatie van backend, frontend, AI en hardware.
 
 ### 2. API and integration
 
