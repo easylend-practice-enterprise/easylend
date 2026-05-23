@@ -333,7 +333,8 @@ class _CatalogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inStock = (item.availableCount ?? 0) > 0;
+    final availableCount = item.availableCount ?? 0;
+    final inStock = availableCount > 0;
 
     return Container(
       decoration: BoxDecoration(
