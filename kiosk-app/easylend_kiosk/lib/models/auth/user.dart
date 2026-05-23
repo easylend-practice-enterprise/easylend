@@ -32,16 +32,16 @@ class User {
   final DateTime? lockedUntil;
 
   @JsonKey(name: 'is_active')
-  final bool isActive;
+  final bool? isActive;
 
   @JsonKey(name: 'is_anonymized')
-  final bool isAnonymized;
+  final bool? isAnonymized;
 
   @JsonKey(name: 'ban_reason')
   final String? banReason;
 
   @JsonKey(name: 'accepted_privacy_policy')
-  final bool acceptedPrivacyPolicy;
+  final bool? acceptedPrivacyPolicy;
 
   User({
     required this.userId,
@@ -53,10 +53,10 @@ class User {
     this.nfcTagId,
     required this.failedLoginAttempts,
     this.lockedUntil,
-    required this.isActive,
-    required this.isAnonymized,
+    this.isActive,
+    this.isAnonymized,
     this.banReason,
-    required this.acceptedPrivacyPolicy,
+    this.acceptedPrivacyPolicy,
   });
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);

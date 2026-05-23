@@ -140,7 +140,6 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
 
               const SizedBox(height: 24),
 
-              // Submit button
               SizedBox(
                 width: double.infinity,
                 height: 56,

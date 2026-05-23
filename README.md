@@ -50,4 +50,4 @@ uv run pytest app/tests/integration/
 ## 👥 The Team
 
 **Maxim Huardel, Jasper Savels, and Injo De Pot**
-*EA ICT: Final Year Practice Enterprise Project*
+*EA ICT: First Year Practice Enterprise Project*
