@@ -5,18 +5,18 @@ part 'catalog_item.g.dart';
 @JsonSerializable()
 class CatalogUserView {
   @JsonKey(name: 'category_id')
-  final String categoryId;
+  final String? categoryId;
 
   @JsonKey(name: 'category_name')
-  final String categoryName;
+  final String? categoryName;
 
   @JsonKey(name: 'available_count')
-  final int availableCount;
+  final int? availableCount;
 
   CatalogUserView({
-    required this.categoryId,
-    required this.categoryName,
-    required this.availableCount,
+    this.categoryId,
+    this.categoryName,
+    this.availableCount = 0,
   });
 
   factory CatalogUserView.fromJson(Map<String, dynamic> json) =>
@@ -70,4 +70,14 @@ class CatalogAdminView {
       _$CatalogAdminViewFromJson(json);
 
   Map<String, dynamic> toJson() => _$CatalogAdminViewToJson(this);
+}
+
+/// Runtime factory to deserialize the correct catalog type.
+/// The backend returns admin rows (with asset_id) for admin users
+/// and category rows for regular users.
+CatalogUserView catalogItemFromJson(Map<String, dynamic> json) {
+  if (json.containsKey('asset_id')) {
+    return CatalogAdminView.fromJson(json) as CatalogUserView;
+  }
+  return CatalogUserView.fromJson(json);
 }

@@ -54,9 +54,11 @@ class ApiClient {
       '/api/v1/catalog',
       queryParameters: {'skip': skip, 'limit': limit},
     );
+    debugPrint('[Catalog] raw response type: ${response.data.runtimeType}');
+    debugPrint('[Catalog] raw response: $response.data');
     final List<dynamic> data = response.data as List<dynamic>;
     return data
-        .map((e) => CatalogUserView.fromJson(e as Map<String, dynamic>))
+        .map((e) => catalogItemFromJson(e as Map<String, dynamic>))
         .toList();
   }
 

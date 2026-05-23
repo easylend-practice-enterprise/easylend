@@ -227,26 +227,25 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
   }
 
   Widget _buildCatalogList(List<CatalogUserView> items) {
-    final userItems = items;
     final adminItems = items.whereType<CatalogAdminView>().toList();
 
     if (adminItems.isNotEmpty) {
       return _buildAdminCatalogList(adminItems);
     }
 
-    return _buildUserCatalogList(userItems);
+    return _buildUserCatalogList(items);
   }
 
   Widget _buildUserCatalogList(List<CatalogUserView> items) {
     final filtered = items.where((item) {
       final matchesSearch =
           _searchQuery.isEmpty ||
-          item.categoryName.toLowerCase().contains(_searchQuery.toLowerCase());
+          (item.categoryName?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false);
       final matchesFilter =
           _selectedFilter == CatalogFilter.all ||
           (_selectedFilter == CatalogFilter.inStock &&
-              item.availableCount > 0) ||
-          (_selectedFilter == CatalogFilter.lent && item.availableCount == 0);
+              (item.availableCount ?? 0) > 0) ||
+          (_selectedFilter == CatalogFilter.lent && (item.availableCount ?? 0) == 0);
       return matchesSearch && matchesFilter;
     }).toList();
 
@@ -269,7 +268,7 @@ class _AssetCatalogScreenState extends ConsumerState<AssetCatalogScreen> {
           final item = filtered[index];
           return _CatalogCard(
             item: item,
-            onTap: item.availableCount > 0 ? () => _onLendItem(item) : null,
+            onTap: (item.availableCount ?? 0) > 0 ? () => _onLendItem(item) : null,
           );
         },
       ),
@@ -313,10 +312,12 @@ class _FilterChip extends StatelessWidget {
           color: selected ? AppColors.primary : const Color(0xFF111111),
           borderRadius: BorderRadius.circular(999),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? AppColors.onPrimary : AppColors.text,
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? AppColors.onPrimary : AppColors.text,
+            ),
           ),
         ),
       ),
@@ -332,7 +333,7 @@ class _CatalogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final inStock = item.availableCount > 0;
+    final inStock = (item.availableCount ?? 0) > 0;
 
     return Container(
       decoration: BoxDecoration(
@@ -360,7 +361,7 @@ class _CatalogCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            item.categoryName,
+            item.categoryName ?? 'Unknown',
             style: TextStyle(
               color: AppColors.text,
               fontWeight: FontWeight.bold,
