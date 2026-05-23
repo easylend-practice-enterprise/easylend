@@ -5,14 +5,14 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# AI Data & Modellen (Blokkeer de hele mappen, niet alleen specifieke extensies!)
-models/
+# AI Data & Modellen (Exclude large folders, but allow specific model files)
+# models/  <-- Commented out to allow local models
 runs/
 datasets/
 training/
 
-# Zware model bestanden (voor de zekerheid, waar ze ook staan)
-*.pt
+# Heavy model files (uncomment specific ones if needed)
+# *.pt  <-- Commented out to allow loading local weights
 *.onnx
 *.bin
 *.xml
