@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'app.dart';
+import 'app_router.dart';
 import 'providers/providers.dart';
 
 Future<void> main() async {
@@ -13,10 +13,7 @@ Future<void> main() async {
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(
     ProviderScope(
-      child: _IdleTimerWrapper(
-        onIdle: () {},
-        child: const App(),
-      ),
+      child: _IdleTimerWrapper(onIdle: () {}, child: const App()),
     ),
   );
 }
@@ -48,7 +45,7 @@ class _IdleTimerWrapperState extends ConsumerState<_IdleTimerWrapper> {
 
   void _handleIdle() {
     ref.read(authProvider.notifier).logout();
-    context.go('/login');
+    ref.read(routerProvider).go('/login');
   }
 
   @override
@@ -59,9 +56,6 @@ class _IdleTimerWrapperState extends ConsumerState<_IdleTimerWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (_) => _resetTimer(),
-      child: widget.child,
-    );
+    return Listener(onPointerDown: (_) => _resetTimer(), child: widget.child);
   }
 }
