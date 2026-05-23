@@ -8,9 +8,9 @@ part of 'catalog_item.dart';
 
 CatalogUserView _$CatalogUserViewFromJson(Map<String, dynamic> json) =>
     CatalogUserView(
-      categoryId: json['category_id'] as String,
-      categoryName: json['category_name'] as String,
-      availableCount: (json['available_count'] as num).toInt(),
+      categoryId: json['category_id'] as String?,
+      categoryName: json['category_name'] as String?,
+      availableCount: (json['available_count'] as num?)?.toInt() ?? 0,
     );
 
 Map<String, dynamic> _$CatalogUserViewToJson(CatalogUserView instance) =>
