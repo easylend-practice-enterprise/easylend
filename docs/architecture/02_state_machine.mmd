@@ -1,0 +1,43 @@
+stateDiagram-v2
+    direction LR
+
+    [*] --> RESERVED : Checkout started
+
+    RESERVED --> ACTIVE : Pickup confirmed
+    ACTIVE --> RETURNING : Return started
+    RETURNING --> COMPLETED : Vision OK
+    COMPLETED --> [*]
+
+    RESERVED --> FRAUD_SUSPECTED : Pickup failed
+    RETURNING --> FRAUD_SUSPECTED : Empty locker
+
+    RESERVED --> PENDING_INSPECTION : Timeout
+    RETURNING --> PENDING_INSPECTION : Damage / error
+
+    ACTIVE --> OVERDUE : Deadline exceeded
+    OVERDUE --> RETURNING : Late return
+
+    ACTIVE --> DISPUTED : User damage report
+
+    FRAUD_SUSPECTED --> DISPUTED : Admin review
+
+    PENDING_INSPECTION --> DISPUTED : Damage confirmed
+    PENDING_INSPECTION --> ACTIVE : False detections
+    PENDING_INSPECTION --> COMPLETED : Return approved
+
+    DISPUTED --> [*]
+
+    note right of RESERVED
+        Locker assigned
+        Waiting for pickup
+    end note
+
+    note right of ACTIVE
+        Device loaned
+        Normal usage phase
+    end note
+
+    note right of PENDING_INSPECTION
+        Vision detects anomaly
+        Manual inspection required
+    end note

@@ -1,0 +1,33 @@
+flowchart TD
+
+    A[API request] --> B{Type aanvraag}
+
+    B -->|Checkout| C[Acquire locks]
+    B -->|Retour| D[Zoek vrije locker]
+
+    C --> E[Loan]
+    E --> F[Asset]
+    F --> G[Locker]
+    G --> H[User]
+
+    H --> I{Lock beschikbaar?}
+
+    I -->|Ja| J[Transactie uitvoeren]
+    I -->|Nee| K[409 Conflict NOWAIT]
+
+    D --> L[SELECT FOR UPDATE SKIP LOCKED]
+
+    L --> M{Locker gevonden?}
+
+    M -->|Ja| N[Locker reserveren]
+    M -->|Nee| O[Geen slot beschikbaar]
+
+    J --> P[Commit]
+    N --> P
+
+    P --> Q[Hardware command]
+
+    Q --> R{WebSocket OK?}
+
+    R -->|Ja| S[202 Accepted]
+    R -->|Nee| T[207 Multi-Status]
