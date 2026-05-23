@@ -5,8 +5,14 @@ description = "Hardware simulation client for Vision Box"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.136.1",
     "httpx>=0.28.1",
+    "pillow>=12.2.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
     "python-dotenv>=1.2.2",
+    "ruff>=0.15.7",
+    "uvicorn>=0.47.0",
     "websockets>=16.0",
 ]
 [dependency-groups]

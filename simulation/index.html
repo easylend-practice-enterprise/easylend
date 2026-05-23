@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyLend | Digital Twin Control Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'JetBrains Mono', monospace; }
+        .glow-open { box-shadow: 0 0 20px rgba(34, 197, 94, 0.4); }
+        .glow-closed { box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-full text-slate-200">
+    <div class="flex h-full flex-col">
+        <!-- Header -->
+        <header class="flex items-center justify-between border-b border-slate-800 bg-slate-900/50 px-6 py-4 backdrop-blur-md">
+            <div class="flex items-center gap-3">
+                <div class="rounded bg-indigo-500 p-1.5 text-white">
+                    <i data-lucide="binary" class="w-5 h-5"></i>
+                </div>
+                <h1 class="text-lg font-bold tracking-tight text-white uppercase">Digital Twin <span class="text-indigo-400">Lab</span></h1>
+            </div>
+            <div id="connection-status" class="flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-slate-400">
+                <span class="h-2 w-2 rounded-full bg-slate-500 animate-pulse"></span>
+                CONNECTING TO BACKEND...
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex flex-1 overflow-hidden">
+            <!-- Left: Console -->
+            <section class="flex w-1/2 flex-col border-r border-slate-800 bg-black/20">
+                <div class="flex items-center justify-between border-b border-slate-800 px-4 py-2">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">System Console</span>
+                    <button id="clear-console" class="text-[10px] text-slate-600 hover:text-slate-300 transition-colors uppercase font-bold">Clear</button>
+                </div>
+                <div id="console" class="flex-1 overflow-y-auto p-4 space-y-1 text-[11px] leading-relaxed">
+                    <div class="text-slate-500">[SYSTEM] Digital Twin initialized. Waiting for handshake...</div>
+                </div>
+            </section>
+
+            <!-- Right: Dashboard -->
+            <section class="flex w-1/2 flex-col bg-slate-950 p-8 space-y-8">
+
+                <!-- Status Row -->
+                <div class="grid grid-cols-2 gap-6">
+                    <!-- Slot Status -->
+                    <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-6 flex flex-col items-center justify-center space-y-4">
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Locker 01 - Physical State</span>
+                        <div id="slot-visual" class="relative rounded-2xl border-4 border-slate-700 p-8 transition-all duration-500 glow-closed">
+                            <i id="slot-icon" data-lucide="lock" class="w-12 h-12 text-red-500 transition-colors duration-500"></i>
+                        </div>
+                        <div id="slot-label" class="text-xl font-black text-white uppercase tracking-tighter">Locker Closed</div>
+                    </div>
+
+                    <!-- LED Status -->
+                    <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-6 flex flex-col items-center justify-center space-y-4 text-center">
+                        <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">LED Status Indicator</span>
+                        <div id="led-visual" class="h-12 w-32 rounded-full border-2 border-slate-700 bg-slate-800 shadow-inner transition-all duration-300"></div>
+                        <div class="text-sm font-bold text-slate-400 uppercase tracking-widest" id="led-label">System Offline</div>
+                    </div>
+                </div>
+
+                <!-- Simulation Controls -->
+                <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-6 space-y-4">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Hardware Simulator Controls</span>
+                    <div class="flex gap-4">
+                        <button id="btn-close" class="flex-1 rounded bg-slate-800 py-3 text-xs font-bold uppercase tracking-widest text-slate-400 hover:bg-slate-700 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            Simulate Door Closure
+                        </button>
+                        <button id="btn-open" class="flex-1 rounded border border-indigo-500/30 bg-indigo-500/10 py-3 text-xs font-bold uppercase tracking-widest text-indigo-400 hover:bg-indigo-500/20 transition-all">
+                            Force Open (Debug)
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-600 leading-relaxed italic">
+                        Closing the door will trigger a virtual 'slot_closed' event to the backend and initiate an automatic AI photo upload simulation.
+                    </p>
+                </div>
+
+                <!-- Admin Controls -->
+                <div class="rounded-xl border border-slate-800 bg-slate-900/50 p-6 space-y-4">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Admin Controls</span>
+                    <div class="flex gap-4">
+                        <button id="btn-seed" class="flex-1 rounded border border-emerald-500/30 bg-emerald-500/10 py-3 text-xs font-bold uppercase tracking-widest text-emerald-400 hover:bg-emerald-500/20 transition-all">
+                            Seed Database
+                        </button>
+                        <button id="btn-checkout" class="flex-1 rounded border border-amber-500/30 bg-amber-500/10 py-3 text-xs font-bold uppercase tracking-widest text-amber-400 hover:bg-amber-500/20 transition-all">
+                            Simulate Checkout
+                        </button>
+                        <button id="btn-return" class="flex-1 rounded border border-cyan-500/30 bg-cyan-500/10 py-3 text-xs font-bold uppercase tracking-widest text-cyan-400 hover:bg-cyan-500/20 transition-all">
+                            Simulate Return
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <input id="aztec-input" type="text" placeholder="Aztec code (e.g. AZ-LAP-001)" class="flex-1 rounded bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none" />
+                        <button id="btn-set-aztec" class="rounded bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white hover:bg-indigo-500 transition-all">Set</button>
+                    </div>
+                    <div id="admin-status" class="text-[10px] text-slate-500 italic"></div>
+                </div>
+
+                <!-- Context Footer -->
+                <div class="mt-auto border-t border-slate-800 pt-6 flex justify-between items-center opacity-50">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">EasyLend V1.0 - Production Lab</div>
+                    <div class="text-[10px] font-mono text-slate-600">ID: kiosk_sim_1</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const consoleEl = document.getElementById('console');
+        const slotVisual = document.getElementById('slot-visual');
+        const slotIcon = document.getElementById('slot-icon');
+        const slotLabel = document.getElementById('slot-label');
+        const ledVisual = document.getElementById('led-visual');
+        const ledLabel = document.getElementById('led-label');
+        const btnClose = document.getElementById('btn-close');
+        const connStatus = document.getElementById('connection-status');
+
+        function addLog(msg, type = 'info') {
+            const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+            const div = document.createElement('div');
+
+            const colorClass = {
+                'info': 'text-slate-500',
+                'in': 'text-green-400',
+                'out': 'text-indigo-400',
+                'err': 'text-red-400 font-bold'
+            }[type];
+
+            div.innerHTML = `<span class="opacity-30 mr-2">${time}</span><span class="${colorClass}">${msg}</span>`;
+            consoleEl.appendChild(div);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        // SSE Client
+        const evtSource = new EventSource('/events');
+
+        evtSource.onmessage = (e) => {
+            const data = e.data;
+            if (data.startsWith('slot:')) {
+                const open = data.includes('open');
+                updateSlot(open);
+            } else if (data.startsWith('led:')) {
+                const parts = data.split(':');
+                const state = parts[1]; // aan/uit
+                const val = parseFloat(parts[2]);
+                updateLED(state === 'aan', val);
+            } else if (data.startsWith('led_color:')) {
+                const color = data.substring('led_color:'.length);
+                updateLEDColor(color);
+            } else if (data.startsWith('sys:')) {
+                const msg = data.substring(4);
+                addLog(`[SYSTEM] ${msg}`, 'info');
+                if (msg.includes("Connected")) {
+                    connStatus.innerHTML = '<span class="h-2 w-2 rounded-full bg-green-500"></span>ONLINE';
+                    connStatus.classList.replace('text-slate-400', 'text-green-400');
+                } else if (msg.includes("error")) {
+                    connStatus.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500"></span>WSS ERROR';
+                    connStatus.classList.replace('text-slate-400', 'text-red-400');
+                }
+            } else if (data.startsWith('cmd:')) {
+                addLog(`[INBOUND] ${data.substring(4)}`, 'in');
+            }
+        };
+
+        evtSource.onerror = () => {
+            connStatus.innerHTML = '<span class="h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>SSE ERROR';
+            connStatus.classList.replace('text-slate-400', 'text-red-400');
+        };
+
+        function updateSlot(open) {
+            if (open) {
+                slotVisual.className = 'relative rounded-2xl border-4 border-green-500/50 p-8 transition-all duration-500 glow-open bg-green-500/5';
+                slotIcon.setAttribute('data-lucide', 'lock-open');
+                slotIcon.className = 'w-12 h-12 text-green-500 transition-colors duration-500';
+                slotLabel.innerText = 'Locker Open';
+                slotLabel.className = 'text-xl font-black text-green-400 uppercase tracking-tighter';
+                btnClose.disabled = false;
+                btnClose.classList.replace('bg-slate-800', 'bg-slate-700');
+                btnClose.classList.replace('text-slate-400', 'text-white');
+                addLog("LOCKER 01: Physical door release triggered", 'info');
+            } else {
+                slotVisual.className = 'relative rounded-2xl border-4 border-slate-700 p-8 transition-all duration-500 glow-closed';
+                slotIcon.setAttribute('data-lucide', 'lock');
+                slotIcon.className = 'w-12 h-12 text-red-500 transition-colors duration-500';
+                slotLabel.innerText = 'Locker Closed';
+                slotLabel.className = 'text-xl font-black text-white uppercase tracking-tighter';
+                btnClose.disabled = true;
+                btnClose.classList.replace('bg-slate-700', 'bg-slate-800');
+                btnClose.classList.replace('text-white', 'text-slate-400');
+            }
+            lucide.createIcons();
+        }
+
+        function updateLED(aan, helderheid) {
+            if (aan) {
+                ledVisual.style.backgroundColor = `rgba(99, 102, 241, ${helderheid})`;
+                ledVisual.style.boxShadow = `0 0 ${helderheid * 30}px rgba(99, 102, 241, 0.6)`;
+                ledLabel.innerText = `ACTIVE (${Math.round(helderheid * 100)}%)`;
+                ledLabel.className = 'text-sm font-bold text-indigo-400 uppercase tracking-widest';
+            } else {
+                ledVisual.style.backgroundColor = '#1e293b';
+                ledVisual.style.boxShadow = 'none';
+                ledLabel.innerText = 'System Idle';
+                ledLabel.className = 'text-sm font-bold text-slate-400 uppercase tracking-widest';
+            }
+        }
+
+        function updateLEDColor(color) {
+            // Color map: green, red, orange -> CSS color values
+            const colorMap = {
+                'green': 'rgba(34, 197, 94, 1)',
+                'red': 'rgba(239, 68, 68, 1)',
+                'orange': 'rgba(249, 115, 22, 1)',
+                'off': '#1e293b',
+            };
+            const cssColor = colorMap[color] || '#1e293b';
+            ledVisual.style.backgroundColor = cssColor;
+            ledVisual.style.boxShadow = `0 0 20px ${cssColor}`;
+            ledLabel.innerText = color.toUpperCase();
+            ledLabel.className = 'text-sm font-bold uppercase tracking-widest';
+            if (color === 'green') ledLabel.classList.add('text-green-400');
+            else if (color === 'red') ledLabel.classList.add('text-red-400');
+            else if (color === 'orange') ledLabel.classList.add('text-orange-400');
+            else ledLabel.classList.add('text-slate-400');
+        }
+
+        btnClose.onclick = async () => {
+            addLog("SIMULATION: Closing door manually...", 'out');
+            await fetch('/slot/close', { method: 'POST' });
+        };
+
+        document.getElementById('btn-open').onclick = async () => {
+            addLog("DEBUG: Forcing door open...", 'out');
+            await fetch('/slot/open', { method: 'POST' });
+        };
+
+        const adminStatus = document.getElementById('admin-status');
+        const aztecInput = document.getElementById('aztec-input');
+
+        document.getElementById('btn-set-aztec').onclick = () => {
+            addLog(`ADMIN: Aztec code set to "${aztecInput.value}"`, 'info');
+        };
+
+        document.getElementById('btn-seed').onclick = async () => {
+            adminStatus.textContent = 'Seeding database...';
+            addLog("ADMIN: Seeding database...", 'out');
+            try {
+                const resp = await fetch('/admin/seed', {
+                    method: 'POST',
+                    headers: { 'X-Admin-Token': 'admin-secret-token' }
+                });
+                const data = await resp.json();
+                addLog(`ADMIN: Seed complete — ${JSON.stringify(data)}`, 'info');
+                adminStatus.textContent = 'Database seeded.';
+            } catch (e) {
+                addLog(`ADMIN: Seed failed — ${e}`, 'err');
+                adminStatus.textContent = 'Seed failed. Check console.';
+            }
+        };
+
+        document.getElementById('btn-checkout').onclick = async () => {
+            const aztec = aztecInput.value || 'AZ-LAP-001';
+            addLog(`ADMIN: Triggering checkout for ${aztec}...`, 'out');
+            adminStatus.textContent = 'Checkout in progress...';
+            try {
+                const resp = await fetch('/loans/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Token': 'admin-secret-token'
+                    },
+                    body: JSON.stringify({ aztec_code: aztec })
+                });
+                const data = await resp.json();
+                addLog(`ADMIN: Checkout response — ${JSON.stringify(data)}`, 'info');
+                adminStatus.textContent = 'Checkout triggered.';
+            } catch (e) {
+                addLog(`ADMIN: Checkout failed — ${e}`, 'err');
+                adminStatus.textContent = 'Checkout failed.';
+            }
+        };
+
+        document.getElementById('btn-return').onclick = async () => {
+            const aztec = aztecInput.value || 'AZ-LAP-001';
+            addLog(`ADMIN: Triggering return for ${aztec}...`, 'out');
+            adminStatus.textContent = 'Return in progress...';
+            try {
+                const resp = await fetch('/loans/return/initiate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Token': 'admin-secret-token'
+                    },
+                    body: JSON.stringify({ aztec_code: aztec })
+                });
+                const data = await resp.json();
+                addLog(`ADMIN: Return response — ${JSON.stringify(data)}`, 'info');
+                adminStatus.textContent = 'Return triggered.';
+            } catch (e) {
+                addLog(`ADMIN: Return failed — ${e}`, 'err');
+                adminStatus.textContent = 'Return failed.';
+            }
+        };
+
+        document.getElementById('clear-console').onclick = () => {
+            consoleEl.innerHTML = '';
+        };
+
+    </script>
+</body>
+</html>
